@@ -33,12 +33,16 @@ function EcranActualizare({
   stare: Exclude<StareActualizare, { faza: 'in-regula' }>
   instaleaza: () => void
 }) {
+  // Fără `pt-sigur`/`pb-sigur` pe învelișul de mai jos: ecranul apare doar în
+  // aplicația de birou, unde marginile de sistem sunt oricum zero, iar clasele
+  // acelea s-ar fi bătut cu `py-8` pe aceeași proprietate — cu câștigătorul
+  // decis de ordinea din foaia de stil, nu de ordinea scrisă aici.
   return (
     <div
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="titlu-actualizare"
-      className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-canvas px-5 py-8 pt-sigur pb-sigur text-ink"
+      className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-canvas px-5 py-8 text-ink"
     >
       <div className="w-full max-w-md rounded-2xl border border-line bg-surface p-7 shadow-(--umbra-ridicat)">
         {stare.faza === 'esec' ? (
