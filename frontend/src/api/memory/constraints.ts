@@ -7,8 +7,11 @@
  * funcționează, iar la prima rulare pe PostgreSQL ar primi 23P01 de la
  * `programare_fara_suprapunere` fără ca nimeni să fi proiectat acel mesaj.
  *
- * Numele constrângerii încălcate ajunge în `detalii.constrangere`, ca serverul
- * real să poată întoarce exact aceeași informație.
+ * Numele constrângerii NU pleacă spre interfață, nici aici, nici de pe server:
+ * `utilizator_email_uk` nu spune nimic recepției și, în schimb, desenează
+ * oricui întreabă harta tabelelor. Serverul îl ține în jurnalul lui, unde
+ * folosește la depanare. Afară pleacă doar mesajul, câmpul vinovat și datele
+ * de care are nevoie ecranul (câte programări, care programare).
  */
 
 import { eroareConflict, eroareNegasit, eroareValidare } from '@/api/errors'
@@ -38,7 +41,6 @@ export function verificaEmailUnic(email: string, exceptaId?: Uuid): void {
     if (u.id === exceptaId) continue
     if (u.email.trim().toLowerCase() === normalizat) {
       throw eroareConflict('Există deja un cont cu această adresă de e-mail.', {
-        constrangere: 'utilizator_email_uk',
         camp: 'email',
       })
     }
@@ -69,7 +71,6 @@ export function verificaDenumirePunctUnica(denumire: string, exceptaId?: Uuid): 
     if (p.id === exceptaId) continue
     if (p.denumire.trim().toLowerCase() === normalizata) {
       throw eroareConflict('Există deja un punct de lucru cu această denumire.', {
-        constrangere: 'punct_lucru_denumire_key',
         camp: 'denumire',
       })
     }
@@ -163,7 +164,7 @@ export function verificaSuprapunere(
       const executant = magazin.utilizator.get(executant_id)
       throw eroareConflict(
         `${executant?.nume ?? 'Persoana selectată'} are deja o programare care se suprapune cu acest interval.`,
-        { constrangere: 'programare_fara_suprapunere', programare_id: p.id },
+        { camp: 'incepe_la', programare_id: p.id },
       )
     }
   }
@@ -201,7 +202,7 @@ export function verificaStergereClient(client_id: Uuid): void {
     if (vanzari > 0) parti.push(`${vanzari} ${vanzari === 1 ? 'vânzare' : 'vânzări'}`)
     throw eroareConflict(
       `Clientul nu poate fi șters definitiv: are ${parti.join(' și ')}. Arhivează-l în schimb.`,
-      { constrangere: 'programare_client_id_fkey', programari, vanzari },
+      { programari, vanzari },
     )
   }
 }

@@ -55,6 +55,19 @@
   --umbra-ridicat:
     0 10px 30px -12px oklch(0.235 0.012 315 / 0.28),
     0 4px 10px -6px oklch(0.235 0.012 315 / 0.12);
+
+  /*
+    Marginile ocupate de sistem, în jurul zonei în care se poate desena.
+
+    Implicit vin de la browser, prin `env()` — corect pe iOS și pe desktop.
+    Pe Android le rescrie partea nativă (v. `app/margini.ts`), fiindcă acolo
+    `env()` întoarce zero deși barele există. Valorile scrise de acolo ajung ca
+    stil inline pe `<html>`, care are prioritate față de ce se declară aici.
+  */
+  --margine-sus: env(safe-area-inset-top, 0px);
+  --margine-jos: env(safe-area-inset-bottom, 0px);
+  --margine-stanga: env(safe-area-inset-left, 0px);
+  --margine-dreapta: env(safe-area-inset-right, 0px);
 }
 
 .dark {
@@ -221,18 +234,57 @@
 
 @layer utilities {
   /*
-    Zonele sigure de pe iOS: bara de gesturi de jos și decupajul de sus.
+    Înălțimea ferestrei vizibile.
+
+    Trei declarații, în ordinea crescătoare a preciziei; fiecare o suprascrie pe
+    precedenta doar acolo unde browserul o înțelege.
+
+    `100%` cere ca lanțul html → body → #root să fie întreg (v. index.html) și
+    este singura care merge pe webview-uri vechi. `100dvh` este înălțimea
+    *dinamică*: pe telefon, bara de adrese care se retrage la derulare și
+    tastatura care urcă schimbă zona vizibilă, iar `100vh` — care rămâne fixat
+    pe varianta mare — ar împinge ultimele rânduri sub marginea de jos. Acolo
+    ajungea bara de file: exista, dar în afara ecranului.
+
+    `--inaltime-ecran` rămâne pentru cazul în care partea nativă are o măsură
+    mai bună decât ce vede pagina.
+
+    Rezerva se scrie cu `@supports`, nu ca a doua declarație în aceeași regulă:
+    minificatorul știe că ținta de compilare acceptă `dvh` și taie linia cu
+    `100%` ca pe una moartă. Ținta spune ce promitem, nu ce se întâmplă — pe un
+    WebView Android neactualizat de pe un telefon vechi al recepției, `dvh` nu
+    există, iar regula tăiată era tocmai singura care mai ținea cadrul.
+  */
+  .h-ecran {
+    height: 100%;
+  }
+
+  @supports (height: 100dvh) {
+    .h-ecran {
+      height: var(--inaltime-ecran, 100dvh);
+    }
+  }
+
+  /*
+    Zonele sigure: bara de gesturi de jos și decupajul de sus.
     Fără ele, bara de navigație a aplicației ajunge sub bara de gesturi și
     devine imposibil de atins.
+
+    Valorile trec printr-o variabilă, nu direct prin `env()`, fiindcă `env()`
+    răspunde corect pe iOS dar întoarce zero în WebView-ul Android: aplicația
+    este desenată „edge-to-edge” (v. MainActivity.kt) peste barele de sistem,
+    însă Chromium nu raportează acele margini paginii. Partea nativă scrie
+    aceleași variabile din `WindowInsets`, care le știe. Unde nu există punte
+    nativă, `env()` rămâne valoarea implicită și nimic nu se schimbă.
   */
   .pt-sigur {
-    padding-top: env(safe-area-inset-top, 0px);
+    padding-top: var(--margine-sus);
   }
   .pb-sigur {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: var(--margine-jos);
   }
   .h-sigur-jos {
-    height: env(safe-area-inset-bottom, 0px);
+    height: var(--margine-jos);
   }
 
   /* Ascunde bara de derulare, păstrând derularea (file orizontale). */

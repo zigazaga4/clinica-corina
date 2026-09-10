@@ -11,6 +11,7 @@
  */
 
 import type { Request } from 'express'
+import { eroareValidare } from './erori.js'
 
 export class Conditii {
   private readonly parti: string[] = []
@@ -78,6 +79,22 @@ export function textDin(valoare: unknown): string | undefined {
   return typeof valoare === 'string' && valoare.trim() !== '' ? valoare.trim() : undefined
 }
 
+/**
+ * Textul căutat, cu metacaracterele LIKE făcute inofensive.
+ *
+ * `%` și `_` nu sunt litere pentru LIKE/ILIKE, ci „orice” și „un caracter
+ * oarecare”: căutarea unui singur `%` întorcea toată tabela, paginată frumos,
+ * ca și cum aceea ar fi fost lista căutată. Cine tastează `%` caută semnul
+ * procent — de pildă într-o denumire de reducere — și trebuie să primească
+ * rândurile care îl conțin, sau niciunul.
+ *
+ * Caracterul de evadare este backslash-ul, adică exact cel implicit al lui
+ * LIKE; de aceea tiparul nu are nevoie de clauză `ESCAPE`.
+ */
+export function tiparLike(text: string): string {
+  return text.replace(/[\\%_]/g, (semn) => `\\${semn}`)
+}
+
 /** `?activ=true` — absent înseamnă „fără filtru”, nu „false”. */
 export function boolDin(valoare: unknown): boolean | undefined {
   if (valoare === 'true') return true
@@ -96,6 +113,42 @@ export interface Paginare {
 }
 
 /**
+ * Cea mai mare pagină pe care o servim.
+ *
+ * Nu de dragul unei limite, ci pentru că `OFFSET` este `bigint`: la o pagină de
+ * ordinul 10^18 înmulțirea depășea tipul, iar baza răspundea `22003` — adică
+ * 500 pe un număr scris greșit în bara de adrese. Un milion de pagini a câte
+ * 200 de rânduri înseamnă 200 de milioane de rânduri, mai mult decât va avea
+ * vreodată clinica.
+ */
+const PAGINA_MAXIMA = 1_000_000
+
+/**
+ * Un întreg din query string, sau o eroare care spune care parametru e de vină.
+ *
+ * `parseInt` citește prefixul și tace: din `1e3` scotea 1, din
+ * `9007199254740993` un număr apropiat, dar altul. Amândouă întorceau altă
+ * pagină decât cea cerută, fără ca cineva să afle. Aici se cere numărul întreg,
+ * întreg — restul este cerere greșită.
+ */
+function intregDin(
+  valoare: unknown,
+  camp: string,
+  eticheta: string,
+  implicit: number,
+): number {
+  if (valoare === undefined || valoare === null) return implicit
+  const text = String(Array.isArray(valoare) ? valoare[0] : valoare).trim()
+  if (text === '') return implicit
+
+  const n = Number(text)
+  if (!Number.isInteger(n)) {
+    throw eroareValidare(`${eticheta} trebuie să fie un număr întreg.`, camp)
+  }
+  return n
+}
+
+/**
  * Pagina cerută, cu limitele puse la loc sigur.
  *
  * Acceptă și `page`/`limit`: interfața trimite numele din contract, dar pagina
@@ -104,10 +157,25 @@ export interface Paginare {
  */
 export function paginareDin(req: Request, pe_pagina_implicit = 25): Paginare {
   const q = req.query
-  const pagina = Math.max(1, parseInt(String(q['pagina'] ?? q['page'] ?? '1'), 10) || 1)
-  const cerute = parseInt(String(q['pe_pagina'] ?? q['limit'] ?? ''), 10)
+  const numeleFolosit = (contract: string, alias: string) =>
+    q[contract] !== undefined ? contract : alias
+
+  const campPagina = numeleFolosit('pagina', 'page')
+  const pagina = Math.max(1, intregDin(q[campPagina], campPagina, 'Pagina', 1))
+  if (pagina > PAGINA_MAXIMA) {
+    throw eroareValidare('Pagina cerută este prea mare.', campPagina)
+  }
+
+  const campPePagina = numeleFolosit('pe_pagina', 'limit')
+  const cerute = intregDin(
+    q[campPePagina],
+    campPePagina,
+    'Numărul de rezultate pe pagină',
+    pe_pagina_implicit,
+  )
   // Plafonul apără serverul de un `?pe_pagina=999999` care ar cere toată baza.
-  const pe_pagina = Math.min(200, Math.max(1, Number.isFinite(cerute) ? cerute : pe_pagina_implicit))
+  const pe_pagina = Math.min(200, Math.max(1, cerute))
+
   return { pagina, pe_pagina, offset: (pagina - 1) * pe_pagina }
 }
 

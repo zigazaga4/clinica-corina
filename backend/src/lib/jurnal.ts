@@ -55,15 +55,24 @@ export const scrieJurnalDirect = (intrare: IntrareJurnal) => scrieJurnal(pool, i
 /**
  * Adresa de la care s-a operat.
  *
- * `inet` refuză un șir gol, iar în spatele unui reverse proxy `req.ip` este
- * adresa proxy-ului; `x-forwarded-for` poartă adevăratul apelant, primul din
- * listă. Ce nu se poate afla rămâne NULL — o adresă inventată ar face jurnalul
- * să pară mai credibil decât este.
+ * Se ia din `req.ip`, NU direct din `x-forwarded-for`.
+ *
+ * Antetul acela îl scrie clientul; nginx doar adaugă la coada lui. Citind
+ * primul element din listă — cum se făcea aici — se citea exact bucata pe care
+ * o poate inventa oricine: era de ajuns un `X-Forwarded-For: 8.8.8.8` ca
+ * jurnalul de operațiuni să rețină, pentru totdeauna, o adresă aleasă de cel
+ * care voia să nu fie găsit. Un registru care poate fi scris de subiectul lui
+ * este mai rău decât niciun registru, fiindcă i se dă crezare.
+ *
+ * `req.ip` trece prin `trust proxy` (v. `index.ts`), care numără de la coadă
+ * spre cap și se oprește la primul salt în care nu are încredere — adică taie
+ * tocmai partea inventată.
+ *
+ * Ce nu se poate afla rămâne NULL: o adresă ghicită ar face jurnalul să pară
+ * mai credibil decât este.
  */
 export function adresaCererii(req: Request): string | null {
-  const inaintat = req.headers['x-forwarded-for']
-  const brut = Array.isArray(inaintat) ? inaintat[0] : inaintat
-  const adresa = (brut?.split(',')[0] ?? req.ip ?? '').trim()
+  const adresa = (req.ip ?? '').trim()
   if (!adresa) return null
   // Express dă adresele IPv4 în formă mapată IPv6; `inet` le acceptă pe ambele,
   // dar `::ffff:127.0.0.1` este mai greu de citit decât `127.0.0.1`.

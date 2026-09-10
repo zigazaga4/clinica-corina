@@ -16,7 +16,12 @@ import { Router, Response } from 'express'
 import pool, { alege, multe, tranzactie, unu, type Executor } from '../lib/db.js'
 import { eroareValidare, ruta } from '../lib/erori.js'
 import { Conditii, impacheteaza, paginareDin, textDin } from '../lib/filtre.js'
-import { inregistreazaIncasare, pregatesteLinie, programariDeStins } from '../lib/incasari.js'
+import {
+  inregistreazaIncasare,
+  pregatesteLinie,
+  programariDeStins,
+  verificaSedinteleLiniilor,
+} from '../lib/incasari.js'
 import { adresaCererii, diferenta, scrieJurnal } from '../lib/jurnal.js'
 import { atasaLinii, DIN_VANZARI, punctImplicit, vanzareDetaliu, vanzariDetaliu } from '../lib/proiectii.js'
 import { momentCerut, textOptional } from '../lib/validare.js'
@@ -59,8 +64,13 @@ function liniiCerute(valoare: unknown, obligatorii: boolean): DateLinieVanzare[]
 async function scrieLinii(
   ex: Executor,
   vanzare_id: string,
+  client_id: string,
   linii: DateLinieVanzare[],
 ): Promise<void> {
+  // Ședințele trecute pe linii trec prin aceleași reguli ca la încasarea de pe
+  // fișă: să fie ale clientului de pe bon, onorate, și neîncasate deja.
+  await verificaSedinteleLiniilor(ex, client_id, linii, vanzare_id)
+
   const pregatite = []
   for (const linie of linii) pregatite.push(await pregatesteLinie(ex, linie))
 
@@ -91,6 +101,15 @@ router.post('/incasare', ruta(async (req: AuthRequest, res: Response) => {
   const corp = req.body as IncasareRequest
 
   const incasare = await tranzactie(async (ex: Executor) => {
+    /*
+      Aici NU se verifică arhivarea, spre deosebire de `POST /vanzari`.
+
+      Arhivarea oprește lucrul nou, nu încasarea a ceea ce s-a lucrat deja.
+      Dacă cineva arhivează o fișă care mai are ședințe neachitate, banii
+      trebuie să poată intra oricum: altfel datoria rămâne pe veci de neîncasat,
+      iar singura ieșire ar fi dezarhivarea unei fișe pe care cineva a decis-o
+      închisă.
+    */
     await unu(ex, `SELECT id FROM client WHERE id = $1`, [corp.client_id], 'Clientul')
 
     const programari = await programariDeStins(ex, corp.client_id, corp.programare_ids ?? [])
@@ -146,7 +165,10 @@ router.get('/', ruta(async (req: AuthRequest, res: Response) => {
   const [antete, numarate] = await Promise.all([
     multe<VanzareDetaliu>(
       pool,
-      `${DIN_VANZARI} ${unde.where} ORDER BY efectuat_la DESC ${felie}`,
+      // `id` la coadă ca departajare: două bonuri din aceeași secundă altfel se
+      // așază diferit la fiecare interogare, iar paginarea le arată de două ori
+      // pe unele și deloc pe altele.
+      `${DIN_VANZARI} ${unde.where} ORDER BY efectuat_la DESC, id ASC ${felie}`,
       unde.values,
     ),
     multe<{ total: number }>(
@@ -177,7 +199,16 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
   const linii = liniiCerute(corp.linii, true)
 
   const vanzare = await tranzactie(async (ex: Executor) => {
-    await unu(ex, `SELECT id FROM client WHERE id = $1`, [corp.client_id], 'Clientul')
+    // Ca la programări: o fișă arhivată nu mai primește mișcări noi.
+    const clientul = await unu<{ id: string; arhivat_la: Date | null }>(
+      ex, `SELECT id, arhivat_la FROM client WHERE id = $1`, [corp.client_id], 'Clientul',
+    )
+    if (clientul.arhivat_la !== null) {
+      throw eroareValidare(
+        'Clientul este arhivat; dezarhivează-l înainte de a-i scrie o încasare.',
+        'client_id',
+      )
+    }
     const operator_id = corp.operator_id ?? autor.id
     await unu(ex, `SELECT id FROM utilizator WHERE id = $1`, [operator_id], 'Operatorul')
     const punct_lucru_id = corp.punct_lucru_id ?? (await punctImplicit(ex))
@@ -196,7 +227,7 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
     )
     const antet = rows[0]!
 
-    await scrieLinii(ex, antet.id, linii)
+    await scrieLinii(ex, antet.id, corp.client_id, linii)
 
     await scrieJurnal(ex, {
       utilizator_id: autor.id,
@@ -256,7 +287,9 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
     if (corp['linii'] !== undefined) {
       const linii = liniiCerute(corp['linii'], true)
       await ex.query(`DELETE FROM vanzare_linie WHERE vanzare_id = $1`, [id])
-      await scrieLinii(ex, id, linii)
+      // Clientul bonului DUPĂ modificare: dacă antetul tocmai a fost mutat pe
+      // alt client, ședințele trebuie să fie ale aceluia, nu ale celui vechi.
+      await scrieLinii(ex, id, dupa.client_id, linii)
     }
 
     const dif = diferenta(

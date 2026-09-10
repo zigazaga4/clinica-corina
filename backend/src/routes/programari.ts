@@ -184,9 +184,22 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
   const corp = req.body as Record<string, unknown>
 
   const programare = await tranzactie(async (ex: Executor) => {
-    const client_id = (await unu<{ id: string }>(
-      ex, `SELECT id FROM client WHERE id = $1`, [corp['client_id']], 'Clientul',
-    )).id
+    /*
+      Arhivarea este, în aplicația asta, înlocuitorul ștergerii: o fișă cu
+      istoric nu se șterge, se scoate din listă. Dacă tot se putea programa pe
+      ea, arhivarea nu însemna nimic — fișa dispărea din căutare, dar continua
+      să adune ședințe pe care nimeni nu le mai vedea.
+    */
+    const clientul = await unu<{ id: string; arhivat_la: Date | null }>(
+      ex, `SELECT id, arhivat_la FROM client WHERE id = $1`, [corp['client_id']], 'Clientul',
+    )
+    if (clientul.arhivat_la !== null) {
+      throw eroareValidare(
+        'Clientul este arhivat; dezarhivează-l înainte de a-i face o programare.',
+        'client_id',
+      )
+    }
+    const client_id = clientul.id
     const articol = await serviciulCerut(ex, corp['articol_id'])
     const executant = await executantulCerut(ex, corp['executant_id'])
 
@@ -282,8 +295,21 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
       date['pret'] = verificaPret(numarCerut(date['pret'], 'pret', 'Prețul'), 'pret')
     }
 
-    const dupaIncepe = String(date['incepe_la'] ?? inainte.incepe_la)
-    const dupaTermina = String(date['se_termina_la'] ?? inainte.se_termina_la)
+    /*
+      Momentele venite din baza de date sunt obiecte `Date`, nu text: `pg`
+      convertește singur `timestamptz`. `String(unDate)` dă forma englezească
+      („Tue Jun 01 2027 10:00:00 GMT+0000 (Coordinated Universal Time)”), pe
+      care PostgreSQL nu o poate citi înapoi în `tstzrange`.
+
+      Fără conversia de mai jos, orice modificare care NU trimite ambele
+      momente — o notă, un preț, alt client — cădea cu 500, pentru că valoarea
+      nechimbată se întorcea la bază în forma greșită. Și verificarea
+      suprapunerii se pierdea odată cu ea: 500 în loc de 409.
+    */
+    const caText = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v))
+
+    const dupaIncepe = caText(date['incepe_la'] ?? inainte.incepe_la)
+    const dupaTermina = caText(date['se_termina_la'] ?? inainte.se_termina_la)
     verificaIntervalProgramare(dupaIncepe, dupaTermina)
     // Se exclude pe sine: altfel o reprogramare cu cinci minute mai târziu s-ar
     // suprapune cu propria variantă veche.
@@ -348,6 +374,22 @@ router.patch('/:id/stare', ruta(async (req: AuthRequest, res: Response) => {
     )
 
     if (inainte.stare !== stare) {
+      /*
+        O ședință încasată nu se poate anula.
+
+        Altfel banii rămân agățați de o ședință care „nu a avut loc”: bonul o
+        arată plătită, calendarul o arată anulată, și nu există nici rută de
+        ștergere a bonului, nici noțiune de restituire prin care cineva să pună
+        cele două de acord. Corectura corectă este să se scoată ședința de pe
+        bon — atunci redevine de plată — și abia apoi să se anuleze.
+      */
+      if (stare === 'anulat' && inainte.achitata) {
+        throw eroareValidare(
+          'Ședința este deja încasată; scoate-o mai întâi de pe bon, apoi anuleaz-o.',
+          'stare',
+        )
+      }
+
       // Reactivarea unei programări anulate o readuce sub constrângerea de
       // suprapunere — între timp, locul putea fi ocupat de altcineva.
       if (inainte.stare === 'anulat') {

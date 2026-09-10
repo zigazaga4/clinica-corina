@@ -13,7 +13,7 @@
  * altul cu cel convenit — și abia raportul de la sfârșit de lună o arată.
  */
 
-import { totalLinie } from './bani.js'
+import { sumaTotal, totalLinie } from './bani.js'
 import type { Executor } from './db.js'
 import { unu } from './db.js'
 import { eroareConflict, eroareValidare } from './erori.js'
@@ -21,6 +21,9 @@ import { punctImplicit, vanzareDetaliu } from './proiectii.js'
 import { scrieJurnal } from './jurnal.js'
 import { textOptional, verificaCantitate, verificaPret } from './validare.js'
 import type { Articol, DateLinieVanzare, Programare, VanzareDetaliu } from '../types/database.js'
+
+/** Maximul coloanei generate `total_linie numeric(12,2)`: 10 cifre înainte de virgulă. */
+const LIMITA_TOTAL_LINIE = 9_999_999_999.99
 
 interface LiniePregatita {
   articol_id: string
@@ -43,10 +46,35 @@ export async function pregatesteLinie(
     ex, `SELECT * FROM articol WHERE id = $1`, [linie.articol_id], 'Articolul',
   )
   const cantitate = verificaCantitate(Number(linie.cantitate))
+  /*
+    `== null` prinde și `undefined`, și `null`.
+
+    Cu `=== undefined`, un formular care trimite câmpul de preț gol ca `null`
+    nu cădea pe prețul din nomenclator, ci ajungea la `Number(null)`, adică
+    zero: marfa pleca pe gratis, cu bon de 201 și total 0. Lipsa prețului
+    înseamnă „ia-l din nomenclator”, indiferent cum a fost scrisă.
+  */
   const pret_unitar = verificaPret(
-    linie.pret_unitar === undefined ? articol.pret_lista : Number(linie.pret_unitar),
+    linie.pret_unitar == null ? articol.pret_lista : Number(linie.pret_unitar),
     'pret_unitar',
   )
+
+  /*
+    Produsul se verifică separat de factorii lui.
+
+    `total_linie` este coloană generată, `numeric(12,2)`. Fiecare factor poate
+    încăpea în limita lui — 1000 de bucăți, 99.999.999,99 lei — și totuși
+    produsul să nu încapă. Verificat doar pe factori, cazul acesta trecea de
+    validare și cădea abia în bază, cu 500 și fără să spună care câmp e de vină:
+    niciunul singur nu era.
+  */
+  const total = totalLinie(cantitate, pret_unitar)
+  if (total > LIMITA_TOTAL_LINIE) {
+    throw eroareValidare(
+      `Totalul liniei (${total}) depășește maximul acceptat de ${LIMITA_TOTAL_LINIE}.`,
+      'cantitate',
+    )
+  }
 
   return {
     articol_id: articol.id,
@@ -129,8 +157,16 @@ export async function inregistreazaIncasare(
       efectuat_la: date.efectuat_la,
       programari_incasate: liniiSedinte.length,
       linii_produse: liniiProduse.length,
-      total: [...liniiSedinte, ...liniiProduse]
-        .reduce((s, l) => s + totalLinie(l.cantitate, l.pret_unitar), 0),
+      /*
+        `sumaTotal`, nu `reduce`: adunarea directă a zecimalelor lasă urma
+        virgulei mobile. Două ședințe de 0,10 și 0,20 lei ajungeau în jurnal ca
+        0.30000000000000004, în timp ce răspunsul către interfață arăta 0,30 —
+        adică tocmai registrul care ar trebui să fie de încredere spunea altceva
+        decât bonul. Toate celelalte totaluri trec deja pe aici.
+      */
+      total: sumaTotal(
+        [...liniiSedinte, ...liniiProduse].map((l) => totalLinie(l.cantitate, l.pret_unitar)),
+      ),
     },
     adresa_ip: date.adresa_ip ?? null,
   })
@@ -184,4 +220,65 @@ export async function programariDeStins(
   }
 
   return rows
+}
+
+/**
+ * Aceleași trei reguli, pentru liniile scrise direct pe un bon.
+ *
+ * `programariDeStins` apăra doar `POST /vanzari/incasare`. Dar o linie de bon
+ * poate purta ea însăși un `programare_id`, iar pe acel drum nu verifica nimeni
+ * nimic: se putea trece ședința altui client, neîntâmplată încă, pe o factură
+ * de un leu, iar ea rămânea „achitată”. Banii nu dispăreau dintr-un cont — ei
+ * dispăreau din lista de încasat, care e mai rău, fiindcă nimeni nu se uită
+ * după ce nu mai apare.
+ *
+ * Singura apărare rămasă era `vanzare_linie_programare_uk`, care oprește a doua
+ * plată a aceleiași ședințe, dar nu spune nimic despre a cui este.
+ *
+ * La modificarea unui bon, propriile lui linii nu contează drept „deja
+ * încasat”: altfel rescrierea unui bon și-ar bloca singură ședințele.
+ */
+export async function verificaSedinteleLiniilor(
+  ex: Executor,
+  client_id: string,
+  linii: readonly DateLinieVanzare[],
+  vanzareCurenta: string | null = null,
+): Promise<void> {
+  const ids = linii
+    .map((l) => l.programare_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  if (ids.length === 0) return
+
+  if (new Set(ids).size !== ids.length) {
+    throw eroareValidare('Aceeași ședință apare de două ori pe bon.', 'linii')
+  }
+
+  const { rows } = await ex.query<Programare & { achitata: boolean }>(
+    `SELECT p.*, EXISTS (
+       SELECT 1 FROM vanzare_linie vl
+       WHERE vl.programare_id = p.id AND ($2::uuid IS NULL OR vl.vanzare_id <> $2)
+     ) AS achitata
+     FROM programare p WHERE p.id = ANY($1)
+     ORDER BY p.incepe_la
+     FOR UPDATE OF p`,
+    [ids, vanzareCurenta],
+  )
+
+  if (rows.length !== new Set(ids).size) {
+    throw eroareValidare('Una dintre ședințe nu mai există.', 'linii')
+  }
+  for (const p of rows) {
+    if (p.client_id !== client_id) {
+      throw eroareValidare('Una dintre ședințe aparține altui client.', 'linii')
+    }
+    if (p.stare !== 'onorat') {
+      throw eroareValidare('Se pot încasa doar ședințele marcate ca onorate.', 'linii')
+    }
+    if (p.achitata) {
+      throw eroareConflict('Una dintre ședințe este deja încasată.', {
+        camp: 'linii',
+        detalii: { programare_id: p.id },
+      })
+    }
+  }
 }

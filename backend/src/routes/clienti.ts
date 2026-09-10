@@ -25,10 +25,11 @@ import {
   impacheteaza,
   paginareDin,
   textDin,
+  tiparLike,
 } from '../lib/filtre.js'
 import { adresaCererii, diferenta, instantaneu, scrieJurnal } from '../lib/jurnal.js'
 import { DIN_CLIENTI, programariDetaliu, vanzariDetaliu } from '../lib/proiectii.js'
-import { ceruteText, textOptional } from '../lib/validare.js'
+import { ceruteText, esteMomentIso, textOptional } from '../lib/validare.js'
 import { requireAuth, requireRole, AuthRequest, cont } from '../middleware/auth.js'
 import type {
   Client,
@@ -72,14 +73,29 @@ function pregateste(corp: Record<string, unknown>, laCreare: boolean): Record<st
   if (laCreare || date['nume'] !== undefined) {
     date['nume'] = ceruteText(date['nume'], 'nume', 'Numele clientului')
   }
+  const etichete: Record<string, string> = {
+    telefon: 'Telefonul',
+    email: 'Adresa de e-mail',
+    adresa: 'Adresa',
+    data_nasterii: 'Data nașterii',
+  }
   for (const camp of ['telefon', 'email', 'adresa', 'data_nasterii'] as const) {
-    if (date[camp] !== undefined) date[camp] = textOptional(date[camp])
+    if (date[camp] !== undefined) date[camp] = textOptional(date[camp], camp, etichete[camp])
   }
 
   const nasterea = date['data_nasterii']
   if (typeof nasterea === 'string') {
-    const zi = new Date(nasterea)
-    if (Number.isNaN(zi.getTime()) || zi > new Date()) {
+    /*
+      Forma se cere înaintea calendarului.
+
+      `new Date("maine")` nu întoarce „dată invalidă”, ci o dată oarecare din
+      2001 — trecută, deci acceptată aici și refuzată abia de coloana `date`, cu
+      500. Verificată întâi forma ISO, greșeala rămâne a formularului.
+    */
+    if (!esteMomentIso(nasterea)) {
+      throw eroareValidare('Data nașterii nu este o dată validă.', 'data_nasterii')
+    }
+    if (new Date(nasterea) > new Date()) {
       throw eroareValidare('Data nașterii trebuie să fie o dată din trecut.', 'data_nasterii')
     }
   }
@@ -100,7 +116,9 @@ router.get('/', ruta(async (req: AuthRequest, res: Response) => {
 
   const q = textDin(req.query['q'])
   if (q) {
-    const tipar = unde.marcaj(`%${q}%`)
+    // `%` și `_` tastate în căutare sunt semne, nu jokeri: fără `tiparLike`,
+    // un `q=%` întorcea toată tabela ca și cum aceea ar fi fost potrivirea.
+    const tipar = unde.marcaj(`%${tiparLike(q)}%`)
     /*
       Trei căi de căutare, pentru că recepția tastează ce are la îndemână.
 
@@ -122,8 +140,17 @@ router.get('/', ruta(async (req: AuthRequest, res: Response) => {
 
   const coloana = SORTARI[String(req.query['sortare'] ?? 'nume')] ?? 'nume'
   const directie = req.query['directie'] === 'desc' ? 'DESC' : 'ASC'
-  // Clienții fără nicio vizită se așază la coadă, indiferent de direcție.
-  const ordine = `ORDER BY ${coloana} ${directie} NULLS LAST, nume ASC`
+  /*
+    Clienții fără nicio vizită se așază la coadă, indiferent de direcție.
+
+    `id` la urmă nu este un moft: fără o coloană UNICĂ în ORDER BY, rândurile cu
+    același nume nu au între ele o ordine stabilă, iar PostgreSQL nu promite că
+    o repetă de la o interogare la alta. Paginarea le taie apoi cu LIMIT/OFFSET
+    în interogări DIFERITE: șase omonime plimbate câte una pe pagină ieșeau
+    cinci, una dintre ele de două ori, iar una nicăieri. Nimeni nu ar fi bănuit
+    sortarea — s-ar fi spus că fișa lipsește din bază.
+  */
+  const ordine = `ORDER BY ${coloana} ${directie} NULLS LAST, nume ASC, id ASC`
 
   // Copiate înainte de a adăuga marcajele de LIMIT/OFFSET: numărătoarea
   // folosește aceleași filtre, dar nu și paginarea.

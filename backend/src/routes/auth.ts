@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import argon2 from 'argon2'
 import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
@@ -21,6 +22,139 @@ const ZILE_SESIUNE = 7
 
 /** Doar SHA-256 al tokenului ajunge în bază: o copie a ei nu impersonează pe nimeni. */
 const amprenta = (token: string) => crypto.createHash('sha256').update(token).digest('hex')
+
+// ---------------------------------------------------------------------------
+// Limitarea încercărilor de autentificare
+// ---------------------------------------------------------------------------
+
+/*
+  Douăzeci de parole greșite la rând pe contul de administrator treceau toate,
+  fiecare într-o treime de secundă, fără ca nimic să încetinească. Argon2 face
+  ghicitul scump, dar nu îl oprește; o singură parolă slabă a cuiva din clinică
+  este de ajuns dacă atacatorul are voie să încerce la nesfârșit.
+
+  Numărătoarea se ține pe PERECHEA adresă + cont, nu pe una dintre ele:
+
+  — Doar pe adresă e prea gros. Toată clinica iese în internet printr-o singură
+    adresă publică (NAT), deci limita ar fi împărțită de zece oameni: ori atât
+    de largă încât un atac încape lejer sub ea, ori recepția rămâne pe dinafară
+    într-o dimineață în care trei persoane și-au greșit parola de două ori.
+
+  — Doar pe cont e o cădere de serviciu oferită pe tavă. Oricine, de oriunde,
+    ar ține contul de administrator încuiat la nesfârșit trimițând câteva parole
+    greșite la fiecare fereastră — fix pe dos față de ce vrem.
+
+  Pe pereche, cel care ghicește are nevoie de o adresă nouă la fiecare pachet de
+  încercări, iar clinica nu poate fi încuiată de afară: un atac de pe internet
+  își consumă propria găleată, cea a adresei clinicii rămâne întreagă. Și
+  înăuntru, colega care greșește parola nu blochează pe nimeni altcineva —
+  fiecare cont are găleata lui.
+
+  Al doilea limitator, mai larg, ține minte doar adresa. Fără el, cel care
+  încearcă o singură parolă („parola123”) pe o listă lungă de adrese de e-mail
+  ar avea găleată nouă la fiecare rând și n-ar atinge niciodată vreo limită.
+
+  Ce rămâne descoperit, conștient: un atac împrăștiat pe multe adrese IP,
+  împotriva unui singur cont. Contra lui ar trebui blocat contul indiferent de
+  unde vine cererea — adică exact butonul de încuiat clinica, pus la îndemâna
+  oricui de pe internet. Alegem să lăsăm aici apărarea pe seama Argon2 și a
+  parolelor: douăsprezece încercări la zece minute de pe fiecare adresă înseamnă
+  că ar trebui mii de adrese, luni la rând, pentru un dicționar de mărime
+  serioasă. Ușa pe care o poate trânti un străin ar fi costat mai mult.
+
+  Nimic din toate acestea nu blochează pe nimeni definitiv: fereastra expiră
+  singură, fără intervenția administratorului. Găleata stă în memoria
+  procesului, deci se golește și la repornire; dacă pm2 ajunge vreodată să
+  ruleze serverul în mai multe copii (`cluster`), fiecare copie va număra
+  separat și limitele efective se înmulțesc cu numărul lor — atunci e nevoie de
+  un store comun (Redis), nu de alte cifre aici.
+*/
+const FEREASTRA_MS = 10 * 60_000
+
+/** Câte încercări EȘUATE tolerăm într-o fereastră, pe fiecare dimensiune. */
+const LIMITA_CONT = 12
+const LIMITA_ADRESA = 60
+
+/** Construiește un limitator peste cheia dată — vezi cheile de mai jos. */
+function limitator(limita: number, cheie: (req: Request) => string) {
+  return rateLimit({
+    windowMs: FEREASTRA_MS,
+    limit: limita,
+
+    /*
+      Se numără DOAR ce a eșuat. O zi de lucru normală înseamnă zeci de
+      autentificări reușite — ele nu trebuie să apropie pe nimeni de limită,
+      altfel protecția s-ar întoarce împotriva clinicii tocmai în zilele
+      aglomerate.
+    */
+    skipSuccessfulRequests: true,
+
+    keyGenerator: cheie,
+
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+
+    /*
+      Răspunsul păstrează forma contractului — `{ mesaj }` — nu HTML-ul sau
+      `{ error }` cu care vine biblioteca. Interfața despachetează un singur
+      câmp; orice altceva ajunge la operatoare drept „Cererea a eșuat (429)”.
+      Compunerea se face aici, nu în `trateazaErori`, pentru că `EroareApi` nu
+      are cod pentru 429; `Retry-After` îl pune biblioteca.
+    */
+    handler: (_req: Request, res: Response) => {
+      res.status(429).json({
+        mesaj: 'Prea multe încercări eșuate. Așteaptă câteva minute și încearcă din nou.',
+      })
+    },
+  })
+}
+
+/*
+  Cheile numărătorilor.
+
+  `ipKeyGenerator` normalizează IPv6 la subrețea: fără el, cine are un /64 —
+  adică orice abonat obișnuit — capătă o găleată nouă la fiecare cerere, doar
+  schimbând ultimele cifre ale adresei.
+*/
+const cheieAdresa = (req: Request): string => ipKeyGenerator(req.ip ?? '')
+
+/** Adresa de e-mail din corpul cererii, normalizată ca la căutarea din bază. */
+const contulCerut = (req: Request): string => {
+  const email = (req.body as LoginRequest | undefined)?.email
+  return typeof email === 'string' ? email.trim().toLowerCase() : ''
+}
+
+const cheieCont = (req: Request): string => `${cheieAdresa(req)}|${contulCerut(req)}`
+
+// La reînnoire nu există e-mail; amprenta jetonului ține locul contului, ca o
+// fereastră rămasă deschisă cu un jeton mort să nu consume găleata întregii
+// clinici. Amprenta, nu jetonul: cheile stau în memorie și ajung în depanare.
+const cheieJeton = (req: Request): string => {
+  const jeton = (req.body as { refresh_token?: string } | undefined)?.refresh_token
+  return `${cheieAdresa(req)}|${typeof jeton === 'string' && jeton ? amprenta(jeton) : ''}`
+}
+
+const limitaAutentificareAdresa = limitator(LIMITA_ADRESA, cheieAdresa)
+const limitaAutentificareCont = limitator(LIMITA_CONT, cheieCont)
+
+const limitaReinnoireAdresa = limitator(LIMITA_ADRESA, cheieAdresa)
+const limitaReinnoireJeton = limitator(LIMITA_CONT, cheieJeton)
+
+/*
+  Hash-ul de umplutură pentru adresele care nu există în bază.
+
+  Se calculează O SINGURĂ DATĂ, la pornire. Varianta dinainte îl calcula la
+  fiecare cerere — „hash + verify” — adică dublul muncii de pe drumul unui cont
+  existent, care face doar „verify”. Diferența, sute de milisecunde, se măsoară
+  din afară cu un cronometru și spunea exact ce ascundea mesajul: dacă adresa
+  este sau nu un cont. Parametrii sunt cei impliciți ai bibliotecii, aceiași cu
+  care se scriu parolele reale, ca cele două drumuri să coste la fel.
+*/
+const hashFantoma = argon2.hash(crypto.randomBytes(32).toString('hex'))
+// Promisiunea pornește la import, înainte să o aștepte cineva: fără `catch`, o
+// eventuală eroare ar apărea drept respingere netratată, la pornire, fără
+// legătură vizibilă cu locul acesta.
+hashFantoma.catch(() => undefined)
 
 /**
  * Emite un access token și spune când expiră.
@@ -54,8 +188,8 @@ const SELECT_CONT = `SELECT id, nume, email, rol, activ, ultima_autentificare,
                             creat_la, actualizat_la
                      FROM utilizator`
 
-/** POST /auth/login — public */
-router.post('/login', ruta(async (req: Request, res: Response) => {
+/** POST /auth/login — public, cu limitare a încercărilor eșuate */
+router.post('/login', limitaAutentificareAdresa, limitaAutentificareCont, ruta(async (req: Request, res: Response) => {
   const corp = req.body as LoginRequest
   const email = typeof corp.email === 'string' ? corp.email.trim() : ''
   // Interfața trimite `parola`; pagina de test livrată cu serverul, `password`.
@@ -78,19 +212,52 @@ router.post('/login', ruta(async (req: Request, res: Response) => {
 
     Mesaje diferite transformă formularul într-un instrument de aflat ce conturi
     există: încerci adrese până una răspunde altfel. Verificarea Argon2 se face
-    și când contul lipsește, cu un hash de unică folosință, ca durata
+    și când contul lipsește, pe hash-ul-fantomă de mai sus, ca durata
     răspunsului să nu spună nici ea ce a ascuns mesajul.
   */
   const potrivita = utilizator
     ? await argon2.verify(utilizator.parola_hash, parola).catch(() => false)
-    : await argon2.verify(await argon2.hash('—'), 'nimic').catch(() => false)
+    : await hashFantoma.then((h) => argon2.verify(h, parola)).catch(() => false)
 
   if (!utilizator || !potrivita) {
     throw eroareValidare('E-mail sau parolă incorecte.', 'parola')
   }
+
+  /*
+    Contul dezactivat își păstrează mesajul limpede, dar îl primește DOAR cine a
+    dovedit deja că știe parola.
+
+    Ordinea nu este întâmplătoare și nu trebuie „curățată” mutând verificarea
+    lui `activ` mai sus, lângă căutarea din bază: un 403 dat înaintea parolei ar
+    răspunde altfel la o adresă reală decât la una inventată, iar cine trece o
+    listă de adrese prin formular ar afla din chiar mesajele noastre care dintre
+    ele sunt conturi. Conturile dezactivate sunt cea mai bună pradă din listă —
+    foști angajați, pe care nu-i mai supraveghează nimeni și ale căror parole nu
+    se mai schimbă.
+
+    Cum stă acum, cel care vede 403 știa deja parola, deci nu a aflat nimic nou.
+    Iar omul dezactivat pe bune — cazul obișnuit, de departe cel mai frecvent —
+    nu rămâne să-și încerce parola de zece ori crezând că a greșit-o: i se spune
+    din prima să sune la administrator. A șterge mesajul l-ar trimite exact în
+    bucla de încercări pe care o oprește limitatorul de mai sus, cu un blocaj
+    la capăt și un telefon nervos la firmă.
+  */
   if (!utilizator.activ) {
     throw eroareInterzis('Acest cont este dezactivat. Contactează administratorul.')
   }
+
+  /*
+    Parola bună șterge încercările greșite de dinainte, pe cont.
+
+    Cine a nimerit parola a dovedit că este contul lui; a-l lăsa cu trei
+    încercări consumate până la capătul ferestrei nu apără de nimic, dar îl
+    poate opri la a patra tastare greșită de peste zece minute — în plină zi de
+    lucru, la o operatoare care oricum se grăbește. Numărătoarea pe adresă NU se
+    șterge: dacă s-ar șterge, cineva cu un singur cont valid ar putea reseta la
+    nesfârșit contorul care există tocmai ca să prindă încercarea unei parole pe
+    o listă lungă de adrese.
+  */
+  limitaAutentificareCont.resetKey(cheieCont(req))
 
   const refresh_token = crypto.randomBytes(48).toString('hex')
   const expira = new Date(Date.now() + ZILE_SESIUNE * 24 * 60 * 60 * 1000)
@@ -136,7 +303,7 @@ router.post('/login', ruta(async (req: Request, res: Response) => {
  * celorlalte, iar utilizatorul ar fi dat afară din ele fără motiv. Sesiunea are
  * oricum termen, iar delogarea și resetarea parolei o revocă imediat.
  */
-router.post('/refresh', ruta(async (req: Request, res: Response) => {
+router.post('/refresh', limitaReinnoireAdresa, limitaReinnoireJeton, ruta(async (req: Request, res: Response) => {
   const refresh_token = (req.body as { refresh_token?: string }).refresh_token
   if (!refresh_token) throw eroareNeautentificat()
 

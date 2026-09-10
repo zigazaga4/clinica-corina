@@ -30,14 +30,42 @@ export function CadruAplicatie() {
   if (!utilizator) return null
 
   return (
-    <div className="flex h-full flex-col lg:flex-row">
+    <div className="flex h-ecran flex-col lg:flex-row">
       <BaraLaterala elemente={elemente} />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/*
+        `min-h-0` nu este ornament — el este cel care ține cadrul în ecran.
+
+        Un element de flex primește implicit `min-height: auto`, adică „nu te
+        micșora sub conținutul tău”. Coloana aceasta moștenea regula și, cu o
+        listă de 61 de fișe, creștea la 3600 de pixeli în loc să se oprească la
+        844: depășea cadrul, `main` primea toată acea înălțime ca spațiu liber,
+        iar `overflow-y: auto` nu mai avea ce tăia. Nimic nu derula înăuntru —
+        se mișca documentul întreg, ducând cu el și bara de file. De acolo venea
+        senzația că bara „nu stă jos”: nu se dezlipea de nicăieri, pleca în sus
+        odată cu pagina.
+
+        `min-w-0` era deja aici pentru exact aceeași regulă pe orizontală, la
+        trunchierea textelor. Îi lipsea perechea.
+      */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <AntetMobil />
         {esteModDemo && <PanglicaDemo />}
 
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        {/*
+          Derularea se întâmplă AICI, nu în document: cadrul are exact înălțimea
+          ferestrei, iar lista lungă se mișcă înăuntru, sub antet și deasupra
+          barei de file.
+
+          `overscroll-contain` oprește mișcarea la capătul listei în loc să o
+          predea paginii de dedesubt — pe telefon, tragerea peste ultima
+          programare ar clătina altfel tot cadrul. Are însă o condiție: `main`
+          chiar trebuie să fie ceva ce derulează. Cât timp coloana de deasupra
+          creștea nemărginit (v. `min-h-0`), `main` nu avea nimic de derulat,
+          iar „contain” tăia și singura mișcare rămasă — a documentului. Ecranul
+          îngheța complet. Cele două linii se țin una pe alta; nu se separă.
+        */}
+        <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <Outlet />
         </main>
 
@@ -120,7 +148,9 @@ function AntetMobil() {
     <header
       className={cn(
         'flex items-center justify-between gap-3 border-b border-line bg-surface px-4 py-2.5',
-        'pt-sigur lg:hidden',
+        // `sticky` din același motiv ca la bara de jos, și de la aceeași margine
+        // opusă: antetul și bara de file se pierd sau rămân împreună.
+        'sticky top-0 z-20 pt-sigur lg:hidden',
       )}
     >
       <div className="flex min-w-0 items-center gap-2.5">
@@ -152,7 +182,26 @@ function BaraJos({
   return (
     <>
       <nav
-        className="grid shrink-0 border-t border-line bg-surface pb-sigur lg:hidden"
+        /*
+          `sticky bottom-0` peste așezarea în coloană.
+
+          Când cadrul are într-adevăr înălțimea ferestrei, bara este ultimul
+          element al coloanei și stă jos oricum; `sticky` nu face nimic. Când
+          ceva scapă acea înălțime — tastatura care urcă, o măsurătoare de
+          viewport care nu se potrivește cu ce se vede — documentul începe să se
+          deruleze, iar bara pleacă în sus împreună cu el. `sticky` o lipește
+          înapoi de marginea de jos, fără să o scoată din flux: rămâne cu locul
+          ei rezervat, deci nu acoperă ultimul rând din listă, cum ar face
+          `fixed`.
+
+          `z-20`, nu mai sus: bara trebuie să treacă peste conținutul paginii —
+          peste coloana de ore din grila zilei, care e tot pe 20 și pierde la
+          ordinea din document — dar să rămână SUB listele care se deschid
+          (`z-30`). O bară pe 30 ar fi acoperit ultimele rânduri ale unui
+          selector deschis în josul ecranului, adică exact acolo unde degetul
+          îl deschide.
+        */
+        className="sticky bottom-0 z-20 grid shrink-0 border-t border-line bg-surface pb-sigur lg:hidden"
         // Numărul de coloane depinde de rol, deci nu poate fi o clasă Tailwind
         // statică — acelea se generează la compilare, nu la rulare.
         style={{ gridTemplateColumns: `repeat(${principale.length + 1}, minmax(0, 1fr))` }}

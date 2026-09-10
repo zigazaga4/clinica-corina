@@ -7,6 +7,23 @@ build/
 frontend/src-tauri/target/
 frontend/src-tauri/gen/schemas/
 
+# Pachetele gata de instalat: se produc din cod, nu se păstrează în istorie.
+# Un APK are 37 MB și se schimbă la fiecare compilare; depozitul l-ar purta pe
+# fiecare dintre ele, pentru totdeauna.
+*.apk
+*.idsig
+
+# Proiectul Xcode generat.
+#
+# `gen/android` SE URCĂ, fiindcă `MainActivity.kt` conține puntea scrisă de mână
+# care duce marginile de sistem în CSS — se pierde la o regenerare, deci nu are
+# de unde fi refăcută. `gen/apple` nu are nicio modificare proprie: îl reface
+# `tauri ios init` oricând, iar aici ar aduce doar cache-uri de compilare.
+frontend/src-tauri/gen/apple/
+
+# Copii de siguranță făcute în trecere
+*.bak
+
 # Secrete și configurări locale — NU se urcă niciodată
 .env
 .env.local

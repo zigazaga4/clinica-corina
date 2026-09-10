@@ -54,8 +54,20 @@ export const eroareNeautentificat = (mesaj = 'Sesiune expirată. Autentifică-te
 export const eroareInterzis = (mesaj = 'Nu ai dreptul să efectuezi această operațiune.') =>
   new EroareApi('interzis', mesaj)
 
+/**
+ * Participiul se acordă cu substantivul primit, nu cu „înregistrarea”.
+ *
+ * Aceeași regulă ca pe server (`backend/src/lib/erori.ts`), și trebuie să
+ * rămână aceeași: modul demonstrativ și cel legat la server afișează aceleași
+ * ecrane, iar un mesaj scris altfel în cele două ar apărea ca diferență de
+ * comportament acolo unde nu există niciuna. Articolul hotărât spune genul:
+ * „-ul” și „-le” sunt masculin sau neutru, restul feminin.
+ */
+const acordulLuiGasit = (ce: string): string =>
+  /(ul|le)$/i.test(ce.trim().split(/\s+/)[0] ?? '') ? 'găsit' : 'găsită'
+
 export const eroareNegasit = (ce = 'Înregistrarea') =>
-  new EroareApi('negasit', `${ce} nu a fost găsită.`)
+  new EroareApi('negasit', `${ce} nu a fost ${acordulLuiGasit(ce)}.`)
 
 export const eroareConflict = (mesaj: string, detalii?: Record<string, unknown>) =>
   new EroareApi('conflict', mesaj, detalii ? { detalii } : undefined)
