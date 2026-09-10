@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clinica — Test UI</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
+    --accent: #6c63ff; --accent2: #4ecdc4; --danger: #e74c6c;
+    --text: #e2e4f0; --muted: #7b7f9e; --success: #2ecc71;
+  }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 20px; font-weight: 700; }
+  h2 { font-size: 15px; font-weight: 600; color: var(--accent2); margin-bottom: 12px; }
+
+  #app { display: flex; height: 100vh; }
+  #sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 20px 0; flex-shrink: 0; }
+  #sidebar h1 { padding: 0 20px 20px; border-bottom: 1px solid var(--border); }
+  nav { flex: 1; padding: 12px 0; }
+  nav button { display: block; width: 100%; text-align: left; padding: 10px 20px;
+    background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; transition: all .15s; }
+  nav button:hover, nav button.active { background: rgba(108,99,255,.15); color: var(--text); }
+  nav button.active { border-left: 3px solid var(--accent); }
+  #user-bar { padding: 16px 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  #user-bar span { display: block; color: var(--text); font-weight: 600; }
+  #logout-btn { margin-top: 8px; background: none; border: 1px solid var(--border); color: var(--muted);
+    padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  #logout-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  #main { flex: 1; overflow-y: auto; padding: 28px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  #login-screen { display: flex; align-items: center; justify-content: center; height: 100vh; background: var(--bg); }
+  .login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 36px; width: 360px; }
+  .login-box h1 { margin-bottom: 6px; }
+  .login-box p { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+
+  .form-group { margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  input, select, textarea { width: 100%; padding: 9px 12px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 70px; }
+
+  .btn { padding: 9px 18px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px;
+    font-weight: 600; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+  .btn-success { background: var(--success); color: #fff; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 8px 12px; color: var(--muted); font-size: 12px;
+    border-bottom: 1px solid var(--border); font-weight: 500; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-green  { background: rgba(46,204,113,.15);  color: var(--success); }
+  .badge-blue   { background: rgba(108,99,255,.15);  color: var(--accent); }
+  .badge-yellow { background: rgba(241,196,15,.15);  color: #f1c40f; }
+  .badge-red    { background: rgba(231,76,60,.15);   color: var(--danger); }
+
+  .row { display: flex; gap: 12px; }
+  .row .form-group { flex: 1; }
+  .search-bar { display: flex; gap: 10px; margin-bottom: 18px; }
+  .search-bar input { flex: 1; }
+  .alert { padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px; }
+  .alert-error   { background: rgba(231,76,60,.15);  border: 1px solid var(--danger); color: var(--danger); }
+  .alert-success { background: rgba(46,204,113,.15); border: 1px solid var(--success); color: var(--success); }
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+  .stat .val { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .stat .lbl { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .empty { color: var(--muted); text-align: center; padding: 32px; }
+  .progress-bar { background: var(--border); border-radius: 4px; height: 4px; width: 80px; margin-top: 4px; }
+  .progress-fill { background: var(--accent); border-radius: 4px; height: 4px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>🏥 Clinica</h1>
+    <p>Autentificare panel administrare</p>
+    <div id="login-error"></div>
+    <div class="form-group"><label>Email</label>
+      <input id="l-email" type="email" value="admin@clinica.local" autocomplete="email"/></div>
+    <div class="form-group"><label>Parolă</label>
+      <input id="l-pass" type="password" value="Admin2026!" autocomplete="current-password"/></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="login()">Autentificare</button>
+    <p style="margin-top:14px;color:var(--muted);font-size:12px;line-height:1.6">
+      admin@clinica.local / Admin2026!<br>
+      irina@clinica.local / Irina2026!<br>
+      anda@clinica.local / Anda2026!
+    </p>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none">
+  <div id="sidebar">
+    <h1>🏥 Clinica</h1>
+    <nav>
+      <button class="active" data-panel="dashboard"  onclick="showPanel(this)">📊 Dashboard</button>
+      <button data-panel="clienti"    onclick="showPanel(this)">👥 Pacienți</button>
+      <button data-panel="programari" onclick="showPanel(this)">📅 Programări</button>
+      <button data-panel="abonamente" onclick="showPanel(this)">📋 Abonamente</button>
+      <button data-panel="servicii"   onclick="showPanel(this)">💆 Servicii</button>
+    </nav>
+    <div id="user-bar">
+      <span id="user-name">—</span>
+      <small id="user-role" style="color:var(--muted)"></small>
+      <button id="logout-btn" onclick="logout()">Deconectare</button>
+    </div>
+  </div>
+
+  <div id="main">
+
+    <!-- DASHBOARD -->
+    <div class="panel active" id="panel-dashboard">
+      <h2 style="font-size:18px;color:var(--text);margin-bottom:20px">Dashboard</h2>
+      <div class="stat-row" id="stats">
+        <div class="stat"><div class="val">…</div><div class="lbl">Pacienți activi</div></div>
+        <div class="stat"><div class="val">…</div><div class="lbl">Programări viitoare</div></div>
+        <div class="stat"><div class="val">…</div><div class="lbl">Abonamente active</div></div>
+        <div class="stat"><div class="val">…</div><div class="lbl">Servicii</div></div>
+      </div>
+      <div class="card">
+        <h2>Agenda — programări viitoare</h2>
+        <div id="agenda-table"><div class="empty">Se încarcă…</div></div>
+      </div>
+    </div>
+
+    <!-- PACIENȚI -->
+    <div class="panel" id="panel-clienti">
+      <div class="section-header">
+        <h2 style="font-size:18px;color:var(--text)">Pacienți</h2>
+        <button class="btn btn-primary btn-sm" onclick="openAddClientForm()">+ Pacient nou</button>
+      </div>
+      <div class="search-bar">
+        <input id="search-q" placeholder="Caută după nume, prenume, telefon…" oninput="loadClienti()"/>
+      </div>
+      <div class="card" id="add-client-form" style="display:none;margin-bottom:16px">
+        <h2>Pacient nou</h2>
+        <div class="row">
+          <div class="form-group"><label>Nume *</label><input id="c-nume" placeholder="Ionescu"/></div>
+          <div class="form-group"><label>Prenume *</label><input id="c-prenume" placeholder="Maria"/></div>
+        </div>
+        <div class="row">
+          <div class="form-group"><label>Telefon</label><input id="c-telefon" placeholder="07xx xxx xxx"/></div>
+          <div class="form-group"><label>Email</label><input id="c-email" type="email"/></div>
+        </div>
+        <div class="row">
+          <div class="form-group"><label>Data nașterii</label><input id="c-nastere" type="date"/></div>
+          <div class="form-group"><label>Adresă</label><input id="c-adresa"/></div>
+        </div>
+        <div id="add-client-error"></div>
+        <button class="btn btn-primary" onclick="addClient()">Salvează</button>
+        <button class="btn btn-secondary" style="margin-left:8px" onclick="toggleForm('add-client-form')">Anulează</button>
+      </div>
+      <div class="card">
+        <div id="clienti-table"><div class="empty">Se încarcă…</div></div>
+      </div>
+    </div>
+
+    <!-- PROGRAMĂRI -->
+    <div class="panel" id="panel-programari">
+      <div class="section-header">
+        <h2 style="font-size:18px;color:var(--text)">Programări</h2>
+        <button class="btn btn-primary btn-sm" onclick="prepareProgForm()">+ Programare nouă</button>
+      </div>
+      <div class="card" id="add-prog-form" style="display:none;margin-bottom:16px">
+        <h2>Programare nouă</h2>
+        <div class="row">
+          <div class="form-group"><label>Pacient *</label><select id="p-client"></select></div>
+          <div class="form-group"><label>Serviciu *</label><select id="p-articol"></select></div>
+        </div>
+        <div class="row">
+          <div class="form-group"><label>Terapeut *</label>
+            <select id="p-executant">
+              <option value="">— selectați —</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Punct de lucru *</label>
+            <select id="p-punct">
+              <option value="">— selectați —</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="form-group"><label>Începe la *</label><input id="p-incepe" type="datetime-local"/></div>
+          <div class="form-group"><label>Se termină la *</label><input id="p-termina" type="datetime-local"/></div>
+        </div>
+        <div class="form-group"><label>Notă</label><textarea id="p-nota" rows="2"></textarea></div>
+        <div id="add-prog-error"></div>
+        <button class="btn btn-primary" onclick="addProgramare()">Salvează</button>
+        <button class="btn btn-secondary" style="margin-left:8px" onclick="toggleForm('add-prog-form')">Anulează</button>
+      </div>
+      <div class="card">
+        <div id="programari-table"><div class="empty">Se încarcă…</div></div>
+      </div>
+    </div>
+
+    <!-- ABONAMENTE -->
+    <div class="panel" id="panel-abonamente">
+      <div class="section-header">
+        <h2 style="font-size:18px;color:var(--text)">Abonamente active</h2>
+        <button class="btn btn-primary btn-sm" onclick="prepareAbForm()">+ Abonament nou</button>
+      </div>
+      <div class="card" id="add-ab-form" style="display:none;margin-bottom:16px">
+        <h2>Abonament nou</h2>
+        <div class="row">
+          <div class="form-group"><label>Pacient *</label><select id="ab-client"></select></div>
+          <div class="form-group"><label>Serviciu *</label><select id="ab-articol"></select></div>
+        </div>
+        <div class="row">
+          <div class="form-group"><label>Nr. ședințe *</label>
+            <select id="ab-sedinte"><option value="6">6 ședințe</option><option value="8">8 ședințe</option></select>
+          </div>
+          <div class="form-group"><label>Preț total (RON) *</label>
+            <input id="ab-pret" type="number" min="0" step="0.01" placeholder="0.00"/>
+          </div>
+        </div>
+        <div class="form-group"><label>Valabil până la</label><input id="ab-valabil" type="date"/></div>
+        <div id="add-ab-error"></div>
+        <button class="btn btn-primary" onclick="addAbonament()">Salvează</button>
+        <button class="btn btn-secondary" style="margin-left:8px" onclick="toggleForm('add-ab-form')">Anulează</button>
+      </div>
+      <div class="card">
+        <div id="abonamente-table"><div class="empty">Se încarcă…</div></div>
+      </div>
+    </div>
+
+    <!-- SERVICII -->
+    <div class="panel" id="panel-servicii">
+      <div class="section-header">
+        <h2 style="font-size:18px;color:var(--text);margin-bottom:0">Servicii & Produse</h2>
+        <button class="btn btn-primary btn-sm" onclick="openServiceForm()">+ Serviciu nou</button>
+      </div>
+      <div class="card" id="service-form" style="display:none;margin-bottom:16px">
+        <h2 id="service-form-title">Serviciu nou</h2>
+        <input type="hidden" id="s-id"/>
+        <div class="row">
+          <div class="form-group"><label>Denumire *</label><input id="s-denumire" placeholder="ex: Epilare axile"/></div>
+          <div class="form-group"><label>Tip *</label>
+            <select id="s-tip">
+              <option value="serviciu">Serviciu</option>
+              <option value="produs">Produs</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="form-group"><label>Durată (minute)</label><input id="s-durata" type="number" min="1" placeholder="30"/></div>
+          <div class="form-group"><label>Preț listă (RON)</label><input id="s-pret" type="number" min="0" step="0.01" placeholder="0.00"/></div>
+        </div>
+        <div id="service-form-error"></div>
+        <button class="btn btn-primary" onclick="saveService()">Salvează</button>
+        <button class="btn btn-secondary" style="margin-left:8px" onclick="toggleForm('service-form')">Anulează</button>
+      </div>
+      <div class="card">
+        <div id="servicii-table"><div class="empty">Se încarcă…</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// API uses relative paths — works from any host (localhost, internet, etc.)
+const API = ''
+let token = null
+let currentUser = null
+let cache = { utilizatori: [], puncteLucru: [] }
+
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } }
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token
+  if (body)  opts.body = JSON.stringify(body)
+  const r = await fetch(API + path, opts)
+  const data = await r.json()
+  if (r.status === 401) {
+    token = null; currentUser = null
+    document.getElementById('app').style.display = 'none'
+    document.getElementById('login-screen').style.display = 'flex'
+    document.getElementById('login-error').innerHTML =
+      '<div class="alert alert-error">Sesiunea a expirat. Autentificați-vă din nou.</div>'
+    throw new Error('Sesiunea a expirat')
+  }
+  if (!r.ok) throw new Error(data.error || r.statusText)
+  return data
+}
+
+// ── Auth ─────────────────────────────────────────────────────
+async function login() {
+  const email = document.getElementById('l-email').value.trim()
+  const pass  = document.getElementById('l-pass').value
+  try {
+    const r = await api('POST', '/auth/login', { email, password: pass })
+    token = r.access_token
+    currentUser = r.utilizator
+    document.getElementById('user-name').textContent = currentUser.nume
+    document.getElementById('user-role').textContent = currentUser.rol
+    document.getElementById('login-screen').style.display = 'none'
+    document.getElementById('app').style.display = 'flex'
+    await loadRefData()
+    loadDashboard()
+  } catch(e) {
+    document.getElementById('login-error').innerHTML =
+      `<div class="alert alert-error">${e.message}</div>`
+  }
+}
+
+async function logout() {
+  try { await api('POST', '/auth/logout') } catch {}
+  token = null; currentUser = null
+  document.getElementById('app').style.display = 'none'
+  document.getElementById('login-screen').style.display = 'flex'
+}
+
+// Preload lists used in multiple forms
+async function loadRefData() {
+  try {
+    const [u, p] = await Promise.all([
+      fetch('/utilizatori-ref', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.ok ? r.json() : []),
+      fetch('/puncte-lucru-ref', { headers: { Authorization: 'Bearer ' + token } }).then(r => r.ok ? r.json() : []),
+    ])
+    cache.utilizatori  = u || []
+    cache.puncteLucru  = p || []
+  } catch {}
+}
+
+// ── Navigation ───────────────────────────────────────────────
+function showPanel(btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'))
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'))
+  const name = btn.dataset.panel
+  document.getElementById('panel-' + name).classList.add('active')
+  btn.classList.add('active')
+  const loaders = { dashboard: loadDashboard, clienti: loadClienti,
+    programari: loadProgramari, abonamente: loadAbonamente, servicii: loadServicii }
+  loaders[name]?.()
+}
+
+function toggleForm(id) {
+  const el = document.getElementById(id)
+  el.style.display = el.style.display === 'none' ? 'block' : 'none'
+}
+
+// ── Dashboard ────────────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    // Today at midnight local time, expressed as ISO for the API
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+    const de_la = todayStart.toISOString()
+
+    const [clienti, abonamente, servicii, agenda] = await Promise.all([
+      api('GET', '/clienti?limit=1'),
+      api('GET', '/abonamente?stare=activ'),
+      api('GET', '/articole?tip=serviciu&activ=true'),
+      api('GET', '/programari?de_la=' + de_la),
+    ])
+    const viitoare = agenda.filter(p => p.stare === 'programat').length
+    document.getElementById('stats').innerHTML = `
+      <div class="stat"><div class="val">${clienti.total ?? 0}</div><div class="lbl">Pacienți activi</div></div>
+      <div class="stat"><div class="val">${agenda.length}</div><div class="lbl">Programări azi & viitor</div></div>
+      <div class="stat"><div class="val">${abonamente.length}</div><div class="lbl">Abonamente active</div></div>
+      <div class="stat"><div class="val">${servicii.length}</div><div class="lbl">Servicii</div></div>`
+    if (!agenda.length) {
+      document.getElementById('agenda-table').innerHTML = '<div class="empty">Nicio programare pentru azi sau viitor</div>'
+      return
+    }
+    document.getElementById('agenda-table').innerHTML = `
+      <table><thead><tr>
+        <th>Pacient</th><th>Serviciu</th><th>Terapeut</th><th>Interval</th><th>Stare</th>
+      </tr></thead><tbody>
+        ${agenda.map(p => `<tr>
+          <td><strong>${p.client.prenume} ${p.client.nume}</strong>
+            ${p.client.telefon ? `<br><small style="color:var(--muted)">${p.client.telefon}</small>` : ''}</td>
+          <td>${p.articol.denumire}</td>
+          <td>${p.executant.nume}</td>
+          <td>${fmtDate(p.incepe_la)}</td>
+          <td>${badge(p.stare)}</td>
+        </tr>`).join('')}
+      </tbody></table>`
+  } catch(e) { console.error(e) }
+}
+
+// ── Pacienți ─────────────────────────────────────────────────
+async function loadClienti() {
+  const q = document.getElementById('search-q')?.value || ''
+  try {
+    const r = await api('GET', `/clienti?q=${encodeURIComponent(q)}&limit=50`)
+    if (!r.data?.length) {
+      document.getElementById('clienti-table').innerHTML = '<div class="empty">Niciun pacient găsit</div>'
+      return
+    }
+    document.getElementById('clienti-table').innerHTML = `
+      <table><thead><tr>
+        <th>Nume</th><th>Telefon</th><th>Email</th><th>Data nașterii</th><th>Consimțământ</th>
+      </tr></thead><tbody>
+        ${r.data.map(c => `<tr>
+          <td><strong>${c.prenume} ${c.nume}</strong></td>
+          <td>${c.telefon || '—'}</td>
+          <td>${c.email || '—'}</td>
+          <td>${fmtDateOnly(c.data_nasterii)}</td>
+          <td>${c.consimtamant_semnat
+            ? '<span class="badge badge-green">Da</span>'
+            : '<span class="badge badge-red">Nu</span>'}</td>
+        </tr>`).join('')}
+      </tbody></table>
+      <div style="margin-top:12px;color:var(--muted);font-size:12px">Total: ${r.total} pacienți</div>`
+  } catch(e) { console.error(e) }
+}
+
+function openAddClientForm() {
+  document.getElementById('c-nastere').max = new Date().toISOString().slice(0, 10)
+  toggleForm('add-client-form')
+}
+
+async function addClient() {
+  const body = {
+    nume:          document.getElementById('c-nume').value.trim(),
+    prenume:       document.getElementById('c-prenume').value.trim(),
+    telefon:       document.getElementById('c-telefon').value.trim() || undefined,
+    email:         document.getElementById('c-email').value.trim()   || undefined,
+    adresa:        document.getElementById('c-adresa').value.trim()  || undefined,
+    data_nasterii: document.getElementById('c-nastere').value        || undefined,
+  }
+  if (!body.nume || !body.prenume) {
+    document.getElementById('add-client-error').innerHTML =
+      '<div class="alert alert-error">Numele și prenumele sunt obligatorii</div>'
+    return
+  }
+  if (body.data_nasterii && new Date(body.data_nasterii) > new Date()) {
+    document.getElementById('add-client-error').innerHTML =
+      '<div class="alert alert-error">Data nașterii nu poate fi în viitor</div>'
+    return
+  }
+  try {
+    await api('POST', '/clienti', body)
+    toggleForm('add-client-form')
+    ;['c-nume','c-prenume','c-telefon','c-email','c-adresa','c-nastere']
+      .forEach(id => document.getElementById(id).value = '')
+    loadClienti()
+  } catch(e) {
+    document.getElementById('add-client-error').innerHTML =
+      `<div class="alert alert-error">${e.message}</div>`
+  }
+}
+
+// ── Programări ───────────────────────────────────────────────
+async function loadProgramari() {
+  try {
+    const r = await api('GET', '/programari')
+    if (!r.length) {
+      document.getElementById('programari-table').innerHTML = '<div class="empty">Nicio programare</div>'
+      return
+    }
+    document.getElementById('programari-table').innerHTML = `
+      <table><thead><tr>
+        <th>Pacient</th><th>Serviciu</th><th>Terapeut</th><th>Loc</th><th>Interval</th><th>Stare</th><th></th>
+      </tr></thead><tbody>
+        ${r.map(p => `<tr>
+          <td>${p.client.prenume} ${p.client.nume}</td>
+          <td>${p.articol.denumire}</td>
+          <td>${p.executant.nume}</td>
+          <td>${p.punct_lucru.denumire}</td>
+          <td>${fmtDate(p.incepe_la)}</td>
+          <td>${badge(p.stare)}</td>
+          <td style="white-space:nowrap">
+            ${p.stare === 'programat' ? `
+              <button class="btn btn-success btn-sm" onclick="changeStare('${p.id}','onorat')">✓ Onorat</button>
+              <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="changeStare('${p.id}','anulat')">✗ Anulat</button>
+            ` : ''}
+          </td>
+        </tr>`).join('')}
+      </tbody></table>`
+  } catch(e) { console.error(e) }
+}
+
+async function changeStare(id, stare) {
+  try { await api('PATCH', `/programari/${id}/stare`, { stare }); loadProgramari() }
+  catch(e) { alert(e.message) }
+}
+
+let _articoleForProg = []
+
+function updateEndTime() {
+  const serviceId = document.getElementById('p-articol').value
+  const startVal  = document.getElementById('p-incepe').value
+  if (!serviceId || !startVal) return
+  const service = _articoleForProg.find(a => a.id === serviceId)
+  if (!service || !service.durata_minute) return
+  const start = new Date(startVal)
+  if (isNaN(start.getTime())) return
+  document.getElementById('p-termina').value = toLocal(new Date(start.getTime() + service.durata_minute * 60000))
+}
+
+async function prepareProgForm() {
+  toggleForm('add-prog-form')
+  const [clienti, articole, utilizatori, puncteLucru] = await Promise.all([
+    api('GET', '/clienti?limit=200'),
+    api('GET', '/articole?tip=serviciu&activ=true'),
+    api('GET', '/utilizatori-ref'),
+    api('GET', '/puncte-lucru-ref'),
+  ])
+  _articoleForProg = articole
+  optiuni('p-client',    (clienti.data||[]).map(c => ({ v: c.id, l: `${c.prenume} ${c.nume}` })), '— pacient —')
+  optiuni('p-articol',   articole.map(a => ({ v: a.id, l: `${a.denumire} (${a.durata_minute} min)` })), '— serviciu —')
+  optiuni('p-executant', utilizatori.map(u => ({ v: u.id, l: `${u.nume} (${u.rol})` })), '— terapeut —')
+  optiuni('p-punct',     puncteLucru.map(p => ({ v: p.id, l: p.denumire })), '— locație —')
+
+  // Auto-fill end time when service or start time changes
+  document.getElementById('p-articol').onchange = updateEndTime
+  document.getElementById('p-incepe').onchange  = updateEndTime
+
+  const now = new Date(); now.setMinutes(0, 0, 0)
+  document.getElementById('p-incepe').value  = toLocal(now)
+  document.getElementById('p-termina').value = toLocal(new Date(now.getTime() + 60 * 60 * 1000))
+}
+
+async function addProgramare() {
+  const incepe   = new Date(document.getElementById('p-incepe').value)
+  const termina  = new Date(document.getElementById('p-termina').value)
+  const errEl    = document.getElementById('add-prog-error')
+
+  if (!document.getElementById('p-client').value || !document.getElementById('p-executant').value || !document.getElementById('p-punct').value) {
+    errEl.innerHTML = '<div class="alert alert-error">Pacientul, terapeutul și locul sunt obligatorii</div>'; return
+  }
+  if (isNaN(incepe.getTime()) || isNaN(termina.getTime())) {
+    errEl.innerHTML = '<div class="alert alert-error">Intervalul orar este invalid</div>'; return
+  }
+  if (termina <= incepe) {
+    errEl.innerHTML = '<div class="alert alert-error">Ora de sfârșit trebuie să fie după ora de început</div>'; return
+  }
+
+  const body = {
+    client_id:      document.getElementById('p-client').value,
+    articol_id:     document.getElementById('p-articol').value,
+    executant_id:   document.getElementById('p-executant').value,
+    punct_lucru_id: document.getElementById('p-punct').value,
+    incepe_la:      incepe.toISOString(),
+    se_termina_la:  termina.toISOString(),
+    nota:           document.getElementById('p-nota').value || undefined,
+  }
+  try {
+    await api('POST', '/programari', body)
+    toggleForm('add-prog-form')
+    loadProgramari()
+  } catch(e) {
+    errEl.innerHTML = `<div class="alert alert-error">${e.message}</div>`
+  }
+}
+
+// ── Abonamente ───────────────────────────────────────────────
+async function loadAbonamente() {
+  try {
+    const r = await api('GET', '/abonamente?stare=activ')
+    if (!r.length) {
+      document.getElementById('abonamente-table').innerHTML = '<div class="empty">Niciun abonament activ</div>'
+      return
+    }
+    document.getElementById('abonamente-table').innerHTML = `
+      <table><thead><tr>
+        <th>Pacient</th><th>Serviciu</th><th>Ședințe</th><th>Plată (RON)</th><th>Rest</th><th>Stare</th><th></th>
+      </tr></thead><tbody>
+        ${r.map(a => {
+          const pct = Math.round(a.sedinte_folosite / a.numar_sedinte * 100)
+          const rest = (a.pret_total - a.suma_platita).toFixed(2)
+          return `<tr>
+            <td><strong>${a.client.prenume} ${a.client.nume}</strong>
+              ${a.client.telefon ? `<br><small style="color:var(--muted)">${a.client.telefon}</small>` : ''}</td>
+            <td>${a.articol.denumire}</td>
+            <td>
+              <strong>${a.sedinte_folosite}/${a.numar_sedinte}</strong>
+              <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+            </td>
+            <td>${a.suma_platita} / ${a.pret_total}</td>
+            <td style="color:${rest > 0 ? 'var(--danger)' : 'var(--success)'}">${rest}</td>
+            <td>${badge(a.stare)}</td>
+            <td>
+              <button class="btn btn-primary btn-sm" onclick="markSedinta('${a.id}')">✓ Ședință</button>
+            </td>
+          </tr>`
+        }).join('')}
+      </tbody></table>`
+  } catch(e) { console.error(e) }
+}
+
+async function markSedinta(id) {
+  if (!confirm('Marchezi o ședință ca efectuată pentru acest abonament?')) return
+  try { await api('POST', `/abonamente/${id}/sedinta`, {}); loadAbonamente() }
+  catch(e) { alert(e.message) }
+}
+
+async function prepareAbForm() {
+  toggleForm('add-ab-form')
+  const [clienti, articole] = await Promise.all([
+    api('GET', '/clienti?limit=200'),
+    api('GET', '/articole?tip=serviciu&activ=true'),
+  ])
+  optiuni('ab-client',  (clienti.data||[]).map(c => ({ v: c.id, l: `${c.prenume} ${c.nume}` })), '— pacient —')
+  optiuni('ab-articol', articole.map(a => ({ v: a.id, l: a.denumire })), '— serviciu —')
+}
+
+async function addAbonament() {
+  const clientId = document.getElementById('ab-client').value
+  const articolId = document.getElementById('ab-articol').value
+  const sedinte = parseInt(document.getElementById('ab-sedinte').value)
+  const pret = parseFloat(document.getElementById('ab-pret').value)
+  const valabil = document.getElementById('ab-valabil').value
+
+  if (!clientId || !articolId || !pret) {
+    document.getElementById('add-ab-error').innerHTML =
+      '<div class="alert alert-error">Pacientul, serviciul și prețul sunt obligatorii</div>'
+    return
+  }
+
+  // Get the first punct_lucru
+  let punctId = cache.puncteLucru[0]?.id
+  if (!punctId) {
+    // Fetch directly from API
+    try {
+      const pl = await api('GET', '/articole') // workaround — punct_lucru route coming soon
+    } catch {}
+  }
+  if (!punctId) {
+    document.getElementById('add-ab-error').innerHTML =
+      '<div class="alert alert-error">Nu s-a găsit un punct de lucru. Adăugați ruta /puncte-lucru în backend.</div>'
+    return
+  }
+
+  try {
+    await api('POST', '/abonamente', {
+      client_id: clientId, articol_id: articolId,
+      punct_lucru_id: punctId, numar_sedinte: sedinte,
+      pret_total: pret, valabil_pana_la: valabil || undefined,
+    })
+    toggleForm('add-ab-form')
+    loadAbonamente()
+  } catch(e) {
+    document.getElementById('add-ab-error').innerHTML =
+      `<div class="alert alert-error">${e.message}</div>`
+  }
+}
+
+// ── Servicii ─────────────────────────────────────────────────
+let _serviciiCache = []
+
+async function loadServicii() {
+  try {
+    const r = await api('GET', '/articole')   // all, no filter
+    _serviciiCache = r
+    document.getElementById('servicii-table').innerHTML = `
+      <table><thead><tr>
+        <th>Denumire</th><th>Tip</th><th>Durată</th><th>Preț listă</th><th>Activ</th><th></th>
+      </tr></thead><tbody>
+        ${r.map(a => `<tr style="${a.activ ? '' : 'opacity:.55'}">
+          <td><strong>${a.denumire}</strong></td>
+          <td><span class="badge ${a.tip === 'serviciu' ? 'badge-blue' : 'badge-yellow'}">${a.tip}</span></td>
+          <td>${a.durata_minute ? a.durata_minute + ' min' : '—'}</td>
+          <td>${a.pret_lista > 0 ? a.pret_lista + ' RON' : '<span style="color:var(--muted)">Nesetat</span>'}</td>
+          <td>${a.activ ? '<span class="badge badge-green">Da</span>' : '<span class="badge badge-red">Nu</span>'}</td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-secondary btn-sm" onclick='openServiceForm(${JSON.stringify(a)})'>✏ Edit</button>
+            <button class="btn btn-sm" style="margin-left:4px;background:${a.activ ? 'rgba(231,76,60,.2)' : 'rgba(46,204,113,.2)'};color:${a.activ ? 'var(--danger)' : 'var(--success)'};"
+              onclick="toggleServiceActiv('${a.id}',${a.activ})">${a.activ ? 'Dezactivează' : 'Activează'}</button>
+            <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteService('${a.id}','${a.denumire.replace(/'/g,'\\x27')}')">🗑</button>
+          </td>
+        </tr>`).join('')}
+      </tbody></table>`
+  } catch(e) { console.error(e) }
+}
+
+function openServiceForm(service) {
+  document.getElementById('service-form-title').textContent = service ? 'Editare serviciu' : 'Serviciu nou'
+  document.getElementById('s-id').value          = service?.id || ''
+  document.getElementById('s-denumire').value    = service?.denumire || ''
+  document.getElementById('s-tip').value         = service?.tip || 'serviciu'
+  document.getElementById('s-durata').value      = service?.durata_minute || ''
+  document.getElementById('s-pret').value        = service?.pret_lista != null ? service.pret_lista : ''
+  document.getElementById('service-form-error').innerHTML = ''
+  document.getElementById('service-form').style.display = 'block'
+  document.getElementById('service-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+}
+
+async function saveService() {
+  const id  = document.getElementById('s-id').value
+  const den = document.getElementById('s-denumire').value.trim()
+  if (!den) {
+    document.getElementById('service-form-error').innerHTML =
+      '<div class="alert alert-error">Denumirea este obligatorie</div>'; return
+  }
+  const body = {
+    denumire:      den,
+    tip:           document.getElementById('s-tip').value,
+    durata_minute: parseInt(document.getElementById('s-durata').value) || null,
+    pret_lista:    parseFloat(document.getElementById('s-pret').value) || 0,
+  }
+  try {
+    if (id) {
+      await api('PATCH', `/articole/${id}`, body)
+    } else {
+      await api('POST', '/articole', { ...body, activ: true })
+    }
+    document.getElementById('service-form').style.display = 'none'
+    loadServicii()
+  } catch(e) {
+    document.getElementById('service-form-error').innerHTML =
+      `<div class="alert alert-error">${e.message}</div>`
+  }
+}
+
+async function toggleServiceActiv(id, current) {
+  try {
+    await api('PATCH', `/articole/${id}`, { activ: !current })
+    loadServicii()
+  } catch(e) { alert(e.message) }
+}
+
+async function deleteService(id, name) {
+  if (!confirm(`Ștergi definitiv serviciul "${name}"?\nDacă este folosit în programări, va fi dezactivat în schimb.`)) return
+  try {
+    await api('DELETE', `/articole/${id}`)
+    loadServicii()
+  } catch(e) {
+    if (e.message.includes('Dezactivați')) {
+      if (confirm(e.message + '\n\nDezactivezi acum?')) toggleServiceActiv(id, true)
+    } else { alert(e.message) }
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────
+function optiuni(selectId, items, placeholder) {
+  document.getElementById(selectId).innerHTML =
+    `<option value="">${placeholder}</option>` +
+    items.map(i => `<option value="${i.v}">${i.l}</option>`).join('')
+}
+
+function fmtDateOnly(val) {
+  if (!val) return '—'
+  // val is YYYY-MM-DD from pg date type parser; slice guards against any ISO variant
+  return String(val).slice(0, 10)
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso)
+  return d.toLocaleDateString('ro-RO') + ' ' +
+         d.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })
+}
+
+function toLocal(d) {
+  return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
+
+function badge(stare) {
+  const cls = { programat: 'badge-blue', onorat: 'badge-green', anulat: 'badge-red',
+    neprezentat: 'badge-yellow', activ: 'badge-green', epuizat: 'badge-yellow', expirat: 'badge-red' }
+  return `<span class="badge ${cls[stare] || 'badge-blue'}">${stare}</span>`
+}
+
+document.getElementById('l-pass').addEventListener('keydown', e => { if (e.key === 'Enter') login() })
+</script>
+</body>
+</html>

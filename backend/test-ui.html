@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clinica — Test UI</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
+    --accent: #6c63ff; --accent2: #4ecdc4; --danger: #e74c6c;
+    --text: #e2e4f0; --muted: #7b7f9e; --success: #2ecc71;
+  }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 20px; font-weight: 700; }
+  h2 { font-size: 15px; font-weight: 600; color: var(--accent2); margin-bottom: 12px; }
+
+  /* Layout */
+  #app { display: flex; height: 100vh; }
+  #sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 20px 0; flex-shrink: 0; }
+  #sidebar h1 { padding: 0 20px 20px; border-bottom: 1px solid var(--border); }
+  nav { flex: 1; padding: 12px 0; }
+  nav button { display: block; width: 100%; text-align: left; padding: 10px 20px;
+    background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px;
+    transition: all .15s; }
+  nav button:hover, nav button.active { background: rgba(108,99,255,.15); color: var(--text); }
+  nav button.active { border-left: 3px solid var(--accent); }
+  #user-bar { padding: 16px 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  #user-bar span { display: block; color: var(--text); font-weight: 600; }
+  #logout-btn { margin-top: 8px; background: none; border: 1px solid var(--border); color: var(--muted);
+    padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  #logout-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  #main { flex: 1; overflow-y: auto; padding: 28px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* Login */
+  #login-screen { display: flex; align-items: center; justify-content: center; height: 100vh;
+    background: var(--bg); }
+  .login-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 36px; width: 360px; }
+  .login-box h1 { margin-bottom: 6px; }
+  .login-box p { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+
+  /* Form */
+  .form-group { margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  input, select, textarea { width: 100%; padding: 9px 12px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 70px; }
+
+  /* Buttons */
+  .btn { padding: 9px 18px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px;
+    font-weight: 600; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+  .btn-success { background: var(--success); color: #fff; }
+
+  /* Cards / tables */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 8px 12px; color: var(--muted); font-size: 12px;
+    border-bottom: 1px solid var(--border); font-weight: 500; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-green  { background: rgba(46,204,113,.15); color: var(--success); }
+  .badge-blue   { background: rgba(108,99,255,.15); color: var(--accent); }
+  .badge-yellow { background: rgba(241,196,15,.15); color: #f1c40f; }
+  .badge-red    { background: rgba(231,76,60,.15);  color: var(--danger); }
+
+  .row { display: flex; gap: 12px; }
+  .row .form-group { flex: 1; }
+  .search-bar { display: flex; gap: 10px; margin-bottom: 18px; }
+  .search-bar input { flex: 1; }
+
+  .alert { padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px; }
+  .alert-error { background: rgba(231,76,60,.15); border: 1px solid var(--danger); color: var(--danger); }
+  .alert-success { background: rgba(46,204,113,.15); border: 1px solid var(--success); color: var(--success); }
+
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+  .stat .val { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .stat .lbl { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .empty { color: var(--muted); text-align: center; padding: 32px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>Clinica</h1>
+    <p>Autentificare panel test</p>
+    <div id="login-error"></div>
+    <div class="form-group"><label>Email</label>
+      <input id="l-email" type="email" value="admin@clinica.local" /></div>
+    <div class="form-group"><label>Parolă</label>
+      <input id="l-pass" type="password" value="Admin2026!" /></div>
+    <button class="btn btn-primary" style="width:100%" onclick="login()">Autentificare</button>
+    <p style="margin-top:14px;color:var(--muted);font-size:12px">
+      Conturi test: admin@clinica.local / Admin2026!<br>
+      irina@clinica.local / Irina2026! &nbsp;|&nbsp; anda@clinica.local / Anda2026!
+    </p>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none">
+  <div id="sidebar">
+    <h1>🏥 Clinica</h1>
+    <nav>
+      <button class="active" onclick="showPanel('dashboard')">📊 Dashboard</button>
+      <button onclick="showPanel('clienti')">👥 Pacienți</button>
+      <button onclick="showPanel('programari')">📅 Programări</button>
+      <button onclick="showPanel('abonamente')">📋 Abonamente</button>
+      <button onclick="showPanel('servicii')">💆 Servicii</button>
+    </nav>
+    <div id="user-bar">
+      <span id="user-name">—</span>
+      <small id="user-role"></small>
+      <button id="logout-btn" onclick="logout()">Deconectare</button>
+    </div>
+  </div>
+  <div id="main">
+
+    <!-- DASHBOARD -->
+    <div class="panel active" id="panel-dashboard">
+      <h2 style="font-size:18px;color:var(--text);margin-bottom:20px">Dashboard</h2>
+      <div class="stat-row" id="stats"></div>
+      <div class="card">
+        <h2>Agenda Terapeuți (programări viitoare)</h2>
+        <div id="agenda-table"><div class="empty">Se încarcă...</div></div>
+      </div>
+    </div>
+
+    <!-- PACIENȚI -->
+    <div class="panel" id="panel-clienti">
+      <div class="section-header">
+        <h2 style="font-size:18px;color:var(--text)">Pacienți</h2>
+        <button class="btn btn-primary btn-sm" onclick="showAddClient()">+ Pacient nou</button>
+      </div>
+      <div class="search-bar">
+        <input id="search-q" placeholder="Caută după nume, prenume, telefon..." oninput="loadClienti()"/>
+      </div>
+      <div class="card" id="add-client-form" style="display:none;margin-bottom:16px">
+        <h2>Pacient nou</h2>
+        <div class="row">
+          <div class="form-group"><label>Nume *</label><input id="c-nume" placeholder="Ionescu"/></div>
+          <div class="form-group"><label>Prenume *</label><input id="c-prenume" placeholder="Maria"/></div>
+        </div>
+        <div class="row">
+          <div class="form-group"><label>Telefon</label><input id="c-telefon" placeholder="07xx xxx xxx"/></div>
+          <div class="form-group"><label>Email</label><input id="c-email" type="email"/></div>
+        </div>
+        <div class="row">
+          <div class="form-group"><label>Data nașterii</label><input id="c-nastere" type="date"/></div>
+          <div class="form-group"><label>Adresă</label><input id="c-adresa"/></div>
+        </div>
+        <div id="add-client-error"></div>
+        <button class="btn btn-primary" onclick="addClient()">Salvează</button>
+        <button class="btn btn-secondary" style="margin-left:8px" onclick="document.getElementById('add-client-form').style.display='none'">Anulează</button>
+      </div>
+      <div class="card">
+        <div id="clienti-table"><div class="empty">Se încarcă...</div></div>
+      </div>
+    </div>
+
+    <!-- PROGRAMĂRI -->
+    <div class="panel" id="panel-programari">
+      <div class="section-header">
+        <h2 style="font-size:18px;color:var(--text)">Programări</h2>
+        <button class="btn btn-primary btn-sm" onclick="showAddProgramare()">+ Programare nouă</button>
+      </div>
+      <div class="card" id="add-prog-form" style="display:none;margin-bottom:16px">
+        <h2>Programare nouă</h2>
+        <div class="row">
+          <div class="form-group"><label>Pacient *</label><select id="p-client"><option value="">— selectați —</option></select></div>
+          <div class="form-group"><label>Serviciu *</label><select id="p-articol"><option value="">— selectați —</option></select></div>
+        </div>
+        <div class="row">
+          <div class="form-group"><label>Terapeut *</label><select id="p-executant"><option value="">— selectați —</option></select></div>
+          <div class="form-group"><label>Punct de lucru *</label><select id="p-punct"><option value="">— selectați —</option></select></div>
+        </div>
+        <div class="row">
+          <div class="form-group"><label>Începe la *</label><input id="p-incepe" type="datetime-local"/></div>
+          <div class="form-group"><label>Se termină la *</label><input id="p-termina" type="datetime-local"/></div>
+        </div>
+        <div class="form-group"><label>Notă</label><textarea id="p-nota" rows="2"></textarea></div>
+        <div id="add-prog-error"></div>
+        <button class="btn btn-primary" onclick="addProgramare()">Salvează</button>
+        <button class="btn btn-secondary" style="margin-left:8px" onclick="document.getElementById('add-prog-form').style.display='none'">Anulează</button>
+      </div>
+      <div class="card">
+        <div id="programari-table"><div class="empty">Se încarcă...</div></div>
+      </div>
+    </div>
+
+    <!-- ABONAMENTE -->
+    <div class="panel" id="panel-abonamente">
+      <div class="section-header">
+        <h2 style="font-size:18px;color:var(--text)">Abonamente active</h2>
+        <button class="btn btn-primary btn-sm" onclick="showAddAbonament()">+ Abonament nou</button>
+      </div>
+      <div class="card" id="add-ab-form" style="display:none;margin-bottom:16px">
+        <h2>Abonament nou</h2>
+        <div class="row">
+          <div class="form-group"><label>Pacient *</label><select id="ab-client"><option value="">— selectați —</option></select></div>
+          <div class="form-group"><label>Serviciu *</label><select id="ab-articol"><option value="">— selectați —</option></select></div>
+        </div>
+        <div class="row">
+          <div class="form-group"><label>Nr. ședințe *</label>
+            <select id="ab-sedinte"><option value="6">6 ședințe</option><option value="8">8 ședințe</option></select></div>
+          <div class="form-group"><label>Preț total (RON) *</label><input id="ab-pret" type="number" min="0" step="0.01" placeholder="0.00"/></div>
+        </div>
+        <div class="form-group"><label>Valabil până la</label><input id="ab-valabil" type="date"/></div>
+        <div id="add-ab-error"></div>
+        <button class="btn btn-primary" onclick="addAbonament()">Salvează</button>
+        <button class="btn btn-secondary" style="margin-left:8px" onclick="document.getElementById('add-ab-form').style.display='none'">Anulează</button>
+      </div>
+      <div class="card">
+        <div id="abonamente-table"><div class="empty">Se încarcă...</div></div>
+      </div>
+    </div>
+
+    <!-- SERVICII -->
+    <div class="panel" id="panel-servicii">
+      <h2 style="font-size:18px;color:var(--text);margin-bottom:20px">Servicii & Produse</h2>
+      <div class="card">
+        <div id="servicii-table"><div class="empty">Se încarcă...</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:3000'
+let token = null
+let currentUser = null
+
+// ── Auth ─────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } }
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token
+  if (body)  opts.body = JSON.stringify(body)
+  const r = await fetch(API + path, opts)
+  const data = await r.json()
+  if (!r.ok) throw new Error(data.error || 'API error')
+  return data
+}
+
+async function login() {
+  const email = document.getElementById('l-email').value
+  const pass  = document.getElementById('l-pass').value
+  try {
+    const r = await api('POST', '/auth/login', { email, password: pass })
+    token = r.access_token
+    currentUser = r.utilizator
+    document.getElementById('user-name').textContent = currentUser.nume
+    document.getElementById('user-role').textContent = currentUser.rol
+    document.getElementById('login-screen').style.display = 'none'
+    document.getElementById('app').style.display = 'flex'
+    loadDashboard()
+  } catch(e) {
+    document.getElementById('login-error').innerHTML =
+      `<div class="alert alert-error">${e.message}</div>`
+  }
+}
+
+async function logout() {
+  try { await api('POST', '/auth/logout') } catch {}
+  token = null; currentUser = null
+  document.getElementById('app').style.display = 'none'
+  document.getElementById('login-screen').style.display = 'flex'
+}
+
+// ── Navigation ───────────────────────────────────────────────
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'))
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'))
+  document.getElementById('panel-' + name).classList.add('active')
+  event.target.classList.add('active')
+  if (name === 'dashboard')   loadDashboard()
+  if (name === 'clienti')     loadClienti()
+  if (name === 'programari')  loadProgramari()
+  if (name === 'abonamente')  loadAbonamente()
+  if (name === 'servicii')    loadServicii()
+}
+
+// ── Dashboard ────────────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const [clienti, programari, abonamente, servicii] = await Promise.all([
+      api('GET', '/clienti?limit=1'),
+      api('GET', '/programari?stare=programat'),
+      api('GET', '/abonamente?stare=activ'),
+      api('GET', '/articole?tip=serviciu&activ=true'),
+    ])
+    document.getElementById('stats').innerHTML = `
+      <div class="stat"><div class="val">${clienti.total ?? 0}</div><div class="lbl">Pacienți activi</div></div>
+      <div class="stat"><div class="val">${programari.length}</div><div class="lbl">Programări viitoare</div></div>
+      <div class="stat"><div class="val">${abonamente.length}</div><div class="lbl">Abonamente active</div></div>
+      <div class="stat"><div class="val">${servicii.length}</div><div class="lbl">Servicii</div></div>
+    `
+    if (!programari.length) {
+      document.getElementById('agenda-table').innerHTML = '<div class="empty">Nicio programare viitoare</div>'
+      return
+    }
+    document.getElementById('agenda-table').innerHTML = `
+      <table><thead><tr>
+        <th>Pacient</th><th>Serviciu</th><th>Terapeut</th><th>Începe la</th><th>Stare</th>
+      </tr></thead><tbody>
+        ${programari.map(p => `<tr>
+          <td>${p.client.prenume} ${p.client.nume}<br><small style="color:var(--muted)">${p.client.telefon||''}</small></td>
+          <td>${p.articol.denumire}</td>
+          <td>${p.executant.nume}</td>
+          <td>${fmtDate(p.incepe_la)}</td>
+          <td>${badge(p.stare)}</td>
+        </tr>`).join('')}
+      </tbody></table>`
+  } catch(e) { console.error(e) }
+}
+
+// ── Pacienți ─────────────────────────────────────────────────
+async function loadClienti() {
+  const q = document.getElementById('search-q')?.value || ''
+  try {
+    const r = await api('GET', `/clienti?q=${encodeURIComponent(q)}&limit=50`)
+    if (!r.data?.length) {
+      document.getElementById('clienti-table').innerHTML = '<div class="empty">Niciun pacient găsit</div>'
+      return
+    }
+    document.getElementById('clienti-table').innerHTML = `
+      <table><thead><tr>
+        <th>Nume</th><th>Telefon</th><th>Email</th><th>Data nașterii</th><th>Consimțământ</th>
+      </tr></thead><tbody>
+        ${r.data.map(c => `<tr>
+          <td><strong>${c.prenume} ${c.nume}</strong></td>
+          <td>${c.telefon || '—'}</td>
+          <td>${c.email || '—'}</td>
+          <td>${c.data_nasterii ? c.data_nasterii : '—'}</td>
+          <td>${c.consimtamant_semnat ? '<span class="badge badge-green">Da</span>' : '<span class="badge badge-red">Nu</span>'}</td>
+        </tr>`).join('')}
+      </tbody></table>
+      <div style="margin-top:12px;color:var(--muted);font-size:12px">Total: ${r.total} pacienți</div>`
+  } catch(e) { console.error(e) }
+}
+
+function showAddClient() {
+  document.getElementById('add-client-form').style.display = 'block'
+}
+
+async function addClient() {
+  const body = {
+    nume:    document.getElementById('c-nume').value.trim(),
+    prenume: document.getElementById('c-prenume').value.trim(),
+    telefon: document.getElementById('c-telefon').value.trim() || undefined,
+    email:   document.getElementById('c-email').value.trim() || undefined,
+    adresa:  document.getElementById('c-adresa').value.trim() || undefined,
+    data_nasterii: document.getElementById('c-nastere').value || undefined,
+  }
+  if (!body.nume || !body.prenume) {
+    document.getElementById('add-client-error').innerHTML =
+      '<div class="alert alert-error">Numele și prenumele sunt obligatorii</div>'
+    return
+  }
+  try {
+    await api('POST', '/clienti', body)
+    document.getElementById('add-client-form').style.display = 'none'
+    ;['c-nume','c-prenume','c-telefon','c-email','c-adresa','c-nastere'].forEach(id =>
+      document.getElementById(id).value = '')
+    loadClienti()
+  } catch(e) {
+    document.getElementById('add-client-error').innerHTML =
+      `<div class="alert alert-error">${e.message}</div>`
+  }
+}
+
+// ── Programări ───────────────────────────────────────────────
+async function loadProgramari() {
+  try {
+    const r = await api('GET', '/programari')
+    if (!r.length) {
+      document.getElementById('programari-table').innerHTML = '<div class="empty">Nicio programare</div>'
+      return
+    }
+    document.getElementById('programari-table').innerHTML = `
+      <table><thead><tr>
+        <th>Pacient</th><th>Serviciu</th><th>Terapeut</th><th>Loc</th><th>Interval</th><th>Stare</th><th></th>
+      </tr></thead><tbody>
+        ${r.map(p => `<tr>
+          <td>${p.client.prenume} ${p.client.nume}</td>
+          <td>${p.articol.denumire}</td>
+          <td>${p.executant.nume}</td>
+          <td>${p.punct_lucru.denumire}</td>
+          <td>${fmtDate(p.incepe_la)}</td>
+          <td>${badge(p.stare)}</td>
+          <td>
+            ${p.stare==='programat'?`<button class="btn btn-success btn-sm" onclick="changeStare('${p.id}','onorat')">✓ Onorat</button>
+            <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="changeStare('${p.id}','anulat')">✗ Anulat</button>`:''}
+          </td>
+        </tr>`).join('')}
+      </tbody></table>`
+  } catch(e) { console.error(e) }
+}
+
+async function changeStare(id, stare) {
+  try { await api('PATCH', `/programari/${id}/stare`, { stare }); loadProgramari() }
+  catch(e) { alert(e.message) }
+}
+
+async function showAddProgramare() {
+  document.getElementById('add-prog-form').style.display = 'block'
+  const [clienti, articole, utilizatori, puncte] = await Promise.all([
+    api('GET', '/clienti?limit=100'),
+    api('GET', '/articole?tip=serviciu&activ=true'),
+    api('GET', '/clienti?limit=1'),  // we only have the routes we built
+    api('GET', '/articole?tip=serviciu'),
+  ])
+  // Populate clients
+  const cSel = document.getElementById('p-client')
+  cSel.innerHTML = '<option value="">— selectați pacientul —</option>' +
+    (clienti.data||[]).map(c => `<option value="${c.id}">${c.prenume} ${c.nume}</option>`).join('')
+  // Populate services
+  const aSel = document.getElementById('p-articol')
+  aSel.innerHTML = '<option value="">— selectați serviciul —</option>' +
+    articole.map(a => `<option value="${a.id}">${a.denumire} (${a.durata_minute} min)</option>`).join('')
+  // Set default time
+  const now = new Date(); now.setMinutes(0,0,0)
+  const end = new Date(now); end.setHours(end.getHours()+1)
+  document.getElementById('p-incepe').value = toLocal(now)
+  document.getElementById('p-termina').value = toLocal(end)
+  // Therapists — we need to call utilizator; use articole as proxy for now
+  // For the demo we'll hardcode from seed data
+  document.getElementById('p-executant').innerHTML =
+    '<option value="">— selectați terapeutul —</option>'
+  // Load therapists via a workaround: get utilizator list if admin
+  try {
+    // This endpoint isn't built yet; skip silently
+  } catch {}
+  document.getElementById('p-punct').innerHTML =
+    '<option value="">— selectați locația —</option>'
+}
+
+async function addProgramare() {
+  const body = {
+    client_id:      document.getElementById('p-client').value,
+    articol_id:     document.getElementById('p-articol').value,
+    executant_id:   document.getElementById('p-executant').value,
+    punct_lucru_id: document.getElementById('p-punct').value,
+    incepe_la:      document.getElementById('p-incepe').value,
+    se_termina_la:  document.getElementById('p-termina').value,
+    nota:           document.getElementById('p-nota').value || undefined,
+  }
+  try {
+    await api('POST', '/programari', body)
+    document.getElementById('add-prog-form').style.display = 'none'
+    loadProgramari()
+  } catch(e) {
+    document.getElementById('add-prog-error').innerHTML =
+      `<div class="alert alert-error">${e.message}</div>`
+  }
+}
+
+// ── Abonamente ───────────────────────────────────────────────
+async function loadAbonamente() {
+  try {
+    const r = await api('GET', '/abonamente?stare=activ')
+    if (!r.length) {
+      document.getElementById('abonamente-table').innerHTML = '<div class="empty">Niciun abonament activ</div>'
+      return
+    }
+    document.getElementById('abonamente-table').innerHTML = `
+      <table><thead><tr>
+        <th>Pacient</th><th>Serviciu</th><th>Ședințe</th><th>Plată</th><th>Rest plată</th><th>Stare</th><th></th>
+      </tr></thead><tbody>
+        ${r.map(a => `<tr>
+          <td><strong>${a.client.prenume} ${a.client.nume}</strong><br>
+            <small style="color:var(--muted)">${a.client.telefon||''}</small></td>
+          <td>${a.articol.denumire}</td>
+          <td>
+            <strong>${a.sedinte_folosite}/${a.numar_sedinte}</strong>
+            <div style="background:var(--border);border-radius:4px;height:4px;margin-top:4px;width:80px">
+              <div style="background:var(--accent);border-radius:4px;height:4px;width:${Math.round(a.sedinte_folosite/a.numar_sedinte*100)}%"></div>
+            </div>
+          </td>
+          <td>${a.suma_platita} / ${a.pret_total} RON</td>
+          <td style="color:${(a.pret_total-a.suma_platita)>0?'var(--danger)':'var(--success)'}">
+            ${(a.pret_total-a.suma_platita).toFixed(2)} RON</td>
+          <td>${badge(a.stare)}</td>
+          <td>
+            <button class="btn btn-primary btn-sm" onclick="markSedinta('${a.id}')">✓ Ședință</button>
+          </td>
+        </tr>`).join('')}
+      </tbody></table>`
+  } catch(e) { console.error(e) }
+}
+
+async function markSedinta(id) {
+  if (!confirm('Marchezi o ședință folosită pentru acest abonament?')) return
+  try { await api('POST', `/abonamente/${id}/sedinta`, {}); loadAbonamente() }
+  catch(e) { alert(e.message) }
+}
+
+async function showAddAbonament() {
+  document.getElementById('add-ab-form').style.display = 'block'
+  const [clienti, articole] = await Promise.all([
+    api('GET', '/clienti?limit=100'),
+    api('GET', '/articole?tip=serviciu&activ=true'),
+  ])
+  document.getElementById('ab-client').innerHTML = '<option value="">— selectați pacientul —</option>' +
+    (clienti.data||[]).map(c => `<option value="${c.id}">${c.prenume} ${c.nume}</option>`).join('')
+  document.getElementById('ab-articol').innerHTML = '<option value="">— selectați serviciul —</option>' +
+    articole.map(a => `<option value="${a.id}">${a.denumire}</option>`).join('')
+}
+
+async function addAbonament() {
+  // Need punct_lucru_id — get the first one
+  let punctId = ''
+  try {
+    const articole = await api('GET', '/articole') // workaround; fetch punct_lucru via another route
+    // Hardcode: fetch from API directly
+    const resp = await fetch(API + '/articole', { headers: { Authorization: 'Bearer ' + token } })
+    // Get punct_lucru from the hidden /clienti call
+  } catch {}
+
+  // Direct fetch for punct_lucru (not exposed yet, use supabase proxy workaround)
+  const pResp = await fetch('https://zpgwiojcocdnzwnkduyq.supabase.co/rest/v1/punct_lucru?select=id,denumire&activ=eq.true',
+    { headers: { apikey: 'sb_publishable_BA0Opuc0ivcwh4bm5IhWNg_rmo43TbM', Authorization: 'Bearer sb_publishable_BA0Opuc0ivcwh4bm5IhWNg_rmo43TbM' } })
+  // RLS will block this — get from dashboard state instead
+  // For now alert user
+  alert('Adăugarea abonamentelor prin UI necesită ruta /puncte-lucru. Folosiți API-ul direct sau adăugați ruta.')
+}
+
+// ── Servicii ─────────────────────────────────────────────────
+async function loadServicii() {
+  try {
+    const r = await api('GET', '/articole')
+    document.getElementById('servicii-table').innerHTML = `
+      <table><thead><tr>
+        <th>Denumire</th><th>Tip</th><th>Durată</th><th>Preț listă</th><th>Activ</th>
+      </tr></thead><tbody>
+        ${r.map(a => `<tr>
+          <td><strong>${a.denumire}</strong></td>
+          <td><span class="badge ${a.tip==='serviciu'?'badge-blue':'badge-yellow'}">${a.tip}</span></td>
+          <td>${a.durata_minute ? a.durata_minute + ' min' : '—'}</td>
+          <td>${a.pret_lista > 0 ? a.pret_lista + ' RON' : '<span style="color:var(--muted)">Nesetat</span>'}</td>
+          <td>${a.activ ? '<span class="badge badge-green">Da</span>' : '<span class="badge badge-red">Nu</span>'}</td>
+        </tr>`).join('')}
+      </tbody></table>`
+  } catch(e) { console.error(e) }
+}
+
+// ── Helpers ──────────────────────────────────────────────────
+function fmtDate(iso) {
+  const d = new Date(iso)
+  return d.toLocaleDateString('ro-RO') + ' ' + d.toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'})
+}
+function toLocal(d) {
+  return new Date(d - d.getTimezoneOffset()*60000).toISOString().slice(0,16)
+}
+function badge(stare) {
+  const map = { programat:'badge-blue', onorat:'badge-green', anulat:'badge-red',
+                neprezentat:'badge-yellow', activ:'badge-green', epuizat:'badge-yellow',
+                anulat2:'badge-red', expirat:'badge-red' }
+  return `<span class="badge ${map[stare]||'badge-blue'}">${stare}</span>`
+}
+
+// Enter key on login
+document.getElementById('l-pass').addEventListener('keydown', e => { if(e.key==='Enter') login() })
+</script>
+</body>
+</html>

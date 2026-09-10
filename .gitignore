@@ -1,0 +1,33 @@
+# Dependențe
+node_modules/
+
+# Rezultate de compilare
+dist/
+build/
+frontend/src-tauri/target/
+frontend/src-tauri/gen/schemas/
+
+# Secrete și configurări locale — NU se urcă niciodată
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Jurnale
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# Sistem de operare
+.DS_Store
+Thumbs.db
+
+# Editoare
+.vscode/
+.idea/
+*.swp
+
+# Temporare
+*.tmp
+.cache/
+coverage/

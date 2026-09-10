@@ -1,0 +1,317 @@
+import { useMemo, useState } from 'react'
+import { Plus, Receipt, Wallet } from 'lucide-react'
+import type { FiltruVanzari } from '@/api/contract'
+import { mesajEroare } from '@/api/errors'
+import { useVanzari } from '@/app/queries'
+import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
+import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
+import type { Uuid, VanzareDetaliu } from '@/domain/types'
+import {
+  endOfDay,
+  formateazaData,
+  formateazaDataOra,
+  formateazaOra,
+  laData,
+  laTimestamptz,
+  startOfDay,
+} from '@/lib/dates'
+import { formateazaBani, sumaTotal } from '@/lib/money'
+import { plural } from '@/lib/text'
+import {
+  Buton,
+  Card,
+  CelulaDubla,
+  Input,
+  Paginare,
+  StareGoala,
+  Statistica,
+  Tabel,
+  type Coloana,
+} from '@/ui'
+import { DetaliuVanzare } from './DetaliuVanzare'
+import { FormularVanzare } from './FormularVanzare'
+
+/**
+ * Jurnalul încasărilor (art. 3.1.C — „ce s-a încasat, de la cine, când, de către cine”).
+ *
+ * Lista răspunde la o singură întrebare practică: cât s-a încasat, pe ce filtru.
+ * De aceea rezumatul de sus și tabelul citesc ACELEAȘI filtre; un total calculat
+ * peste altceva decât rândurile afișate ar fi imposibil de verificat la casă.
+ */
+
+const PE_PAGINA = 25
+
+/**
+ * §7 nu prevede un endpoint de agregare, deci totalul se însumează din rânduri.
+ * Peste această limită suma devine parțială și o spunem explicit, în loc să
+ * afișăm o cifră mai mică decât realitatea fără nicio avertizare.
+ */
+const LIMITA_REZUMAT = 500
+
+interface StareFiltre {
+  client_id: Uuid | null
+  operator_id: Uuid | null
+  articol_id: Uuid | null
+  /** Zile „YYYY-MM-DD”, cum le dă `<input type="date">`. */
+  de_la: string
+  pana_la: string
+}
+
+const FILTRE_GOALE: StareFiltre = {
+  client_id: null,
+  operator_id: null,
+  articol_id: null,
+  de_la: '',
+  pana_la: '',
+}
+
+export function PaginaVanzari() {
+  const [filtre, setFiltre] = useState<StareFiltre>(FILTRE_GOALE)
+  const [pagina, setPagina] = useState(1)
+  const [formular, setFormular] = useState<{ vanzare?: VanzareDetaliu } | null>(null)
+  const [vanzareDeschisa, setVanzareDeschisa] = useState<VanzareDetaliu | null>(null)
+
+  const filtruBaza = useMemo<FiltruVanzari>(
+    () => ({
+      ...(filtre.client_id ? { client_id: filtre.client_id } : {}),
+      ...(filtre.operator_id ? { operator_id: filtre.operator_id } : {}),
+      ...(filtre.articol_id ? { articol_id: filtre.articol_id } : {}),
+      ...(filtre.de_la ? { de_la: laTimestamptz(startOfDay(laData(filtre.de_la))) } : {}),
+      // Capătul de sus acoperă ziua ÎNTREAGĂ, până la 23:59:59.999. Cu miezul
+      // nopții ca limită, tot ce s-a încasat după-amiaza în ultima zi aleasă ar
+      // lipsi din listă — și nimeni nu ar bănui de ce nu se potrivesc totalurile.
+      ...(filtre.pana_la ? { pana_la: laTimestamptz(endOfDay(laData(filtre.pana_la))) } : {}),
+    }),
+    [filtre],
+  )
+
+  const lista = useVanzari({ ...filtruBaza, pagina, pe_pagina: PE_PAGINA })
+  // A doua interogare, fără paginare, ține rezumatul: pagina curentă ar da
+  // totalul a 25 de încasări, nu al filtrului.
+  const rezumat = useVanzari({ ...filtruBaza, pagina: 1, pe_pagina: LIMITA_REZUMAT })
+
+  const randuri = lista.data?.randuri ?? []
+  const numar = lista.data?.total ?? 0
+  const randuriRezumat = rezumat.data?.randuri ?? []
+  const total = sumaTotal(randuriRezumat.map((v) => v.total))
+  const rezumatPartial = (rezumat.data?.total ?? 0) > randuriRezumat.length
+
+  const areFiltre = useMemo(
+    () => Object.values(filtre).some((valoare) => valoare !== null && valoare !== ''),
+    [filtre],
+  )
+
+  const schimba = <C extends keyof StareFiltre>(camp: C, valoare: StareFiltre[C]) => {
+    setFiltre((precedente) => ({ ...precedente, [camp]: valoare }))
+    // Orice filtru nou repornește de la prima pagină: altfel lista rămâne pe
+    // pagina 7 a unui rezultat care între timp are două.
+    setPagina(1)
+  }
+
+  const goleste = () => {
+    setFiltre(FILTRE_GOALE)
+    setPagina(1)
+  }
+
+  const coloane: Coloana<VanzareDetaliu>[] = [
+    {
+      cheie: 'data',
+      antet: 'Data',
+      className: 'w-36 whitespace-nowrap',
+      celula: (v) => (
+        <CelulaDubla principal={formateazaData(v.efectuat_la)} secundar={formateazaOra(v.efectuat_la)} />
+      ),
+    },
+    {
+      cheie: 'client',
+      antet: 'Client',
+      celula: (v) => <span className="font-medium text-ink">{v.client_nume}</span>,
+    },
+    {
+      cheie: 'articole',
+      antet: 'Ce acoperă',
+      celula: (v) => <span className="text-ink-soft">{descrieLinii(v)}</span>,
+    },
+    {
+      cheie: 'operator',
+      antet: 'Operator',
+      // Locul rămas liber de coloana punctului de lucru îl ia operatorul: pe
+      // ecranele medii era ascuns degeaba.
+      ascunsaSub: 'lg',
+      celula: (v) => <span className="text-ink-soft">{v.operator_nume}</span>,
+    },
+    {
+      cheie: 'total',
+      antet: 'Total',
+      laDreapta: true,
+      className: 'w-32 font-medium whitespace-nowrap tabular-nums',
+      celula: (v) => formateazaBani(v.total),
+    },
+  ]
+
+  return (
+    <Pagina>
+      <AntetPagina
+        titlu="Încasări"
+        descriere="Banii intrați: ședințele achitate și produsele vândute, cu clientul, momentul și operatorul lor."
+        actiuni={
+          <Buton varianta="primar" onClick={() => setFormular({})}>
+            <Plus className="size-4" />
+            Încasare nouă
+          </Buton>
+        }
+      />
+
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:max-w-lg">
+        <Statistica
+          eticheta="Încasări"
+          valoare={numar}
+          pictograma={<Receipt className="size-4" />}
+          detaliu={areFiltre ? 'pe filtrele alese' : 'în total'}
+        />
+        <Statistica
+          eticheta="Încasat"
+          valoare={formateazaBani(total)}
+          pictograma={<Wallet className="size-4" />}
+          detaliu={rezumatPartial ? `primele ${LIMITA_REZUMAT} încasări` : undefined}
+        />
+      </div>
+
+      <BaraFiltre>
+        <SelectorClient
+          valoare={filtre.client_id}
+          onSchimba={(id) => schimba('client_id', id)}
+          cuGolire
+          placeholder="Toți clienții"
+          className="w-56"
+        />
+        <Input
+          type="date"
+          eticheta="De la"
+          value={filtre.de_la}
+          onChange={(e) => schimba('de_la', e.target.value)}
+          containerClassName="w-40"
+        />
+        <Input
+          type="date"
+          eticheta="Până la"
+          value={filtre.pana_la}
+          onChange={(e) => schimba('pana_la', e.target.value)}
+          containerClassName="w-40"
+        />
+        <SelectorUtilizator
+          valoare={filtre.operator_id}
+          onSchimba={(id) => schimba('operator_id', id)}
+          eticheta="Operator"
+          cuGolire
+          placeholder="Toți operatorii"
+          className="w-48"
+        />
+        <SelectorArticol
+          valoare={filtre.articol_id}
+          onSchimba={(id) => schimba('articol_id', id)}
+          eticheta="Articol"
+          cuGolire
+          placeholder="Toate articolele"
+          className="w-52"
+        />
+        {areFiltre && (
+          <Buton varianta="discret" onClick={goleste} className="mt-6">
+            Golește filtrele
+          </Buton>
+        )}
+      </BaraFiltre>
+
+      <Card className="overflow-hidden">
+        <Tabel
+          coloane={coloane}
+          randuri={randuri}
+          cheieRand={(v) => v.id}
+          onRandClick={setVanzareDeschisa}
+          incarca={lista.isFetching}
+          eroare={lista.isError ? mesajEroare(lista.error) : null}
+          onReincearca={() => void lista.refetch()}
+          randMobil={(v) => (
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-ink">{v.client_nume}</p>
+                <p className="truncate text-[13px] text-ink-soft">{descrieLinii(v)}</p>
+                <p className="mt-0.5 truncate text-[12px] text-ink-faint">
+                  {formateazaDataOra(v.efectuat_la)} · {v.operator_nume}
+                </p>
+              </div>
+              <span className="shrink-0 text-sm font-semibold text-ink tabular-nums">
+                {formateazaBani(v.total)}
+              </span>
+            </div>
+          )}
+          stareGoala={
+            areFiltre ? (
+              <StareGoala
+                pictograma={<Receipt className="size-5" />}
+                titlu="Nicio încasare pe filtrele alese"
+                descriere="Datele există, dar niciuna nu se potrivește cu filtrele curente. Lărgește intervalul sau golește filtrele."
+                actiune={{ eticheta: 'Golește filtrele', onClick: goleste }}
+              />
+            ) : (
+              <StareGoala
+                pictograma={<Receipt className="size-5" />}
+                titlu="Nicio încasare înregistrată"
+                descriere="Aici ajung banii intrați: ședințele achitate din programare și produsele vândute la recepție."
+                actiune={{ eticheta: 'Încasare nouă', onClick: () => setFormular({}) }}
+              />
+            )
+          }
+        />
+        <Paginare
+          pagina={lista.data?.pagina ?? pagina}
+          pePagina={lista.data?.pe_pagina ?? PE_PAGINA}
+          total={numar}
+          onSchimba={setPagina}
+        />
+      </Card>
+
+      {vanzareDeschisa && (
+        <DetaliuVanzare
+          vanzare={vanzareDeschisa}
+          onInchide={() => setVanzareDeschisa(null)}
+          onModifica={(v) => {
+            setVanzareDeschisa(null)
+            setFormular({ vanzare: v })
+          }}
+        />
+      )}
+
+      {/*
+        Formularul se montează doar cât este deschis, iar cheia îl reface la
+        trecerea de la o încasare la alta: starea liniilor pornește curată, fără
+        un efect care să o resincronizeze la fiecare deschidere.
+      */}
+      {formular && (
+        <FormularVanzare
+          key={formular.vanzare?.id ?? 'noua'}
+          vanzare={formular.vanzare}
+          onInchide={() => setFormular(null)}
+        />
+      )}
+    </Pagina>
+  )
+}
+
+/**
+ * „1 ședință și 2 produse” — ce a acoperit plata, într-o singură celulă.
+ *
+ * Denumirile articolelor nu încap pe un rând de tabel, iar ce se verifică la
+ * casă este altceva: dacă banii au stins ședințe sau au plătit marfă. Linia cu
+ * `programare_id` este o ședință; restul sunt produse vândute la recepție.
+ */
+function descrieLinii(vanzare: VanzareDetaliu): string {
+  const sedinte = vanzare.linii.filter((l) => l.programare_id !== null).length
+  const produse = vanzare.linii.length - sedinte
+
+  const parti: string[] = []
+  if (sedinte > 0) parti.push(`${sedinte} ${plural(sedinte, 'ședință', 'ședințe')}`)
+  if (produse > 0) parti.push(`${produse} ${plural(produse, 'produs', 'produse')}`)
+
+  return parti.length > 0 ? parti.join(' și ') : '—'
+}

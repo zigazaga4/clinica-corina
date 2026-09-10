@@ -1,0 +1,286 @@
+@import 'tailwindcss';
+
+/*
+  Tema aplicației.
+
+  Culorile sunt definite ca jetoane SEMANTICE (`surface`, `line`, `ink`), nu ca
+  nuanțe concrete (`slate-200`). Componentele scriu `bg-surface`, nu
+  `bg-white dark:bg-slate-900`, iar tema întunecată se obține schimbând
+  variabilele într-un singur loc. Fără asta, fiecare componentă ar purta
+  perechea ei de culori și modul întunecat ar fi o vânătoare prin tot codul.
+*/
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Suprafețe, de la fundal spre elementele ridicate. */
+  --color-canvas: oklch(0.985 0.003 320);
+  --color-surface: oklch(1 0 0);
+  --color-elevated: oklch(1 0 0);
+  --color-muted: oklch(0.968 0.005 320);
+  --color-line: oklch(0.912 0.006 320);
+  --color-line-strong: oklch(0.845 0.008 320);
+
+  /* Text, de la cel mai apăsat la cel mai discret. */
+  --color-ink: oklch(0.235 0.012 315);
+  --color-ink-soft: oklch(0.505 0.012 315);
+  --color-ink-faint: oklch(0.645 0.011 315);
+  --color-ink-invers: oklch(1 0 0);
+
+  /* Accentul: un roz-vinaceu potrivit unei clinici de înfrumusețare. */
+  --color-primary-50: oklch(0.972 0.014 350);
+  --color-primary-100: oklch(0.941 0.030 350);
+  --color-primary-200: oklch(0.885 0.060 350);
+  --color-primary-300: oklch(0.803 0.104 350);
+  --color-primary-400: oklch(0.708 0.147 352);
+  --color-primary-500: oklch(0.628 0.174 355);
+  --color-primary-600: oklch(0.556 0.170 358);
+  --color-primary-700: oklch(0.482 0.148 359);
+  --color-primary-800: oklch(0.418 0.121 359);
+  --color-primary-900: oklch(0.368 0.099 358);
+  --color-primary-950: oklch(0.245 0.070 357);
+
+  /* Stări. Verde/chihlimbar/roșu, calibrate pe aceeași luminozitate. */
+  --color-success: oklch(0.585 0.135 152);
+  --color-success-soft: oklch(0.945 0.038 152);
+  --color-warning: oklch(0.665 0.142 70);
+  --color-warning-soft: oklch(0.955 0.045 80);
+  --color-danger: oklch(0.578 0.192 26);
+  --color-danger-soft: oklch(0.948 0.035 25);
+  --color-info: oklch(0.585 0.135 250);
+  --color-info-soft: oklch(0.948 0.032 250);
+
+  --radius-camp: 0.625rem;
+  --umbra-card: 0 1px 2px oklch(0.235 0.012 315 / 0.05);
+  --umbra-ridicat:
+    0 10px 30px -12px oklch(0.235 0.012 315 / 0.28),
+    0 4px 10px -6px oklch(0.235 0.012 315 / 0.12);
+}
+
+.dark {
+  --color-canvas: oklch(0.178 0.010 315);
+  --color-surface: oklch(0.222 0.012 315);
+  --color-elevated: oklch(0.262 0.013 315);
+  --color-muted: oklch(0.268 0.012 315);
+  --color-line: oklch(0.318 0.013 315);
+  --color-line-strong: oklch(0.402 0.015 315);
+
+  --color-ink: oklch(0.962 0.004 315);
+  --color-ink-soft: oklch(0.742 0.011 315);
+  --color-ink-faint: oklch(0.605 0.012 315);
+  --color-ink-invers: oklch(0.178 0.010 315);
+
+  /* Accentul se deschide pe fundal închis: nuanța de zi ar fi ilizibilă. */
+  --color-primary-50: oklch(0.262 0.058 355);
+  --color-primary-100: oklch(0.312 0.076 355);
+  --color-primary-200: oklch(0.382 0.098 355);
+  --color-primary-300: oklch(0.462 0.122 356);
+  --color-primary-400: oklch(0.562 0.152 357);
+  --color-primary-500: oklch(0.662 0.166 356);
+  --color-primary-600: oklch(0.732 0.148 354);
+  --color-primary-700: oklch(0.802 0.112 352);
+  --color-primary-800: oklch(0.868 0.076 351);
+  --color-primary-900: oklch(0.918 0.046 350);
+  --color-primary-950: oklch(0.962 0.022 350);
+
+  --color-success: oklch(0.712 0.142 152);
+  --color-success-soft: oklch(0.302 0.052 152);
+  --color-warning: oklch(0.782 0.132 78);
+  --color-warning-soft: oklch(0.322 0.052 70);
+  --color-danger: oklch(0.688 0.172 25);
+  --color-danger-soft: oklch(0.318 0.070 25);
+  --color-info: oklch(0.712 0.122 250);
+  --color-info-soft: oklch(0.302 0.058 250);
+
+  --umbra-card: 0 1px 2px oklch(0 0 0 / 0.35);
+  --umbra-ridicat:
+    0 10px 30px -12px oklch(0 0 0 / 0.6),
+    0 4px 10px -6px oklch(0 0 0 / 0.4);
+}
+
+/*
+  `@theme inline` publică variabilele de mai sus către Tailwind, care generează
+  din ele `bg-surface`, `text-ink-soft`, `border-line` ș.a.m.d. `inline` este
+  esențial: fără el, utilitarele ar îngheța valoarea din `:root` și nu s-ar mai
+  schimba la comutarea pe `.dark`.
+*/
+@theme inline {
+  --color-canvas: var(--color-canvas);
+  --color-surface: var(--color-surface);
+  --color-elevated: var(--color-elevated);
+  --color-muted: var(--color-muted);
+  --color-line: var(--color-line);
+  --color-line-strong: var(--color-line-strong);
+
+  --color-ink: var(--color-ink);
+  --color-ink-soft: var(--color-ink-soft);
+  --color-ink-faint: var(--color-ink-faint);
+  --color-ink-invers: var(--color-ink-invers);
+
+  --color-primary-50: var(--color-primary-50);
+  --color-primary-100: var(--color-primary-100);
+  --color-primary-200: var(--color-primary-200);
+  --color-primary-300: var(--color-primary-300);
+  --color-primary-400: var(--color-primary-400);
+  --color-primary-500: var(--color-primary-500);
+  --color-primary-600: var(--color-primary-600);
+  --color-primary-700: var(--color-primary-700);
+  --color-primary-800: var(--color-primary-800);
+  --color-primary-900: var(--color-primary-900);
+  --color-primary-950: var(--color-primary-950);
+
+  --color-success: var(--color-success);
+  --color-success-soft: var(--color-success-soft);
+  --color-warning: var(--color-warning);
+  --color-warning-soft: var(--color-warning-soft);
+  --color-danger: var(--color-danger);
+  --color-danger-soft: var(--color-danger-soft);
+  --color-info: var(--color-info);
+  --color-info-soft: var(--color-info-soft);
+
+  --shadow-card: var(--umbra-card);
+  --shadow-ridicat: var(--umbra-ridicat);
+
+  --font-sans:
+    'Inter', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* Tauri pe Windows evidențiază atingerea; într-o aplicație desktop e zgomot. */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /*
+    Inelul de focalizare este vizibil peste tot: aplicația se folosește de la
+    recepție, cu tastatura, între două telefoane. Nu se scoate niciodată — se
+    ascunde doar pentru mouse, unde nu ajută.
+  */
+  :focus-visible {
+    outline: 2px solid var(--color-primary-500);
+    outline-offset: 2px;
+  }
+
+  /* Selecția textului în accentul temei. */
+  ::selection {
+    background-color: var(--color-primary-200);
+    color: var(--color-primary-950);
+  }
+
+  /* Bare de derulare discrete, în locul celor implicite din webview. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-line-strong);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-ink-faint);
+  }
+
+  /* Câmpurile de dată din WebKit afișează indicatorul negru; îl aliniem la temă. */
+  .dark input[type='date']::-webkit-calendar-picker-indicator,
+  .dark input[type='datetime-local']::-webkit-calendar-picker-indicator,
+  .dark input[type='time']::-webkit-calendar-picker-indicator {
+    filter: invert(1) opacity(0.65);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /*
+    Zonele sigure de pe iOS: bara de gesturi de jos și decupajul de sus.
+    Fără ele, bara de navigație a aplicației ajunge sub bara de gesturi și
+    devine imposibil de atins.
+  */
+  .pt-sigur {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-sigur {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .h-sigur-jos {
+    height: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Ascunde bara de derulare, păstrând derularea (file orizontale). */
+  .fara-bara::-webkit-scrollbar {
+    display: none;
+  }
+  .fara-bara {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  /* Zonă de atingere de minimum 44px, cerința Apple pentru controale. */
+  .tinta-atingere {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /*
+    Intrarea ferestrelor modale. Pe telefon urcă de jos, ca o foaie; pe desktop
+    apare pe loc, cu o creștere abia perceptibilă. Ambele sunt anulate de
+    regula `prefers-reduced-motion` din stratul de bază.
+  */
+  .anim-intrare-foaie {
+    animation: urca-foaie 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .anim-intrare-modala {
+    animation: apare-modala 160ms ease-out;
+  }
+}
+
+@keyframes urca-foaie {
+  from {
+    transform: translateY(12%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes apare-modala {
+  from {
+    transform: scale(0.97);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
