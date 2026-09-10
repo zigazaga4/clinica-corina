@@ -388,7 +388,22 @@ describe('prețul ședinței și încasarea', () => {
 
   beforeEach(async () => {
     const utilizator = await autentificaCa(ADMIN)
-    const client = gaseste(magazin.client, (c) => c.arhivat_la === null, 'clienți activi')
+    /*
+      Fișă PROASPĂTĂ, nu prima din datele demo.
+
+      Acolo o parte dintre clienți au deja un preț negociat pentru serviciul
+      ales, iar o programare nouă îl moștenește — pe bună dreptate, asta este
+      chiar regula verificată mai jos. Dar atunci „prețul se completează din
+      nomenclator” ajungea să măsoare sămânța, nu regula: aștepta 220 și
+      primea 198.
+
+      Care fișă cade prima depinde de ziua în care rulează testul, fiindcă
+      datele demo se așază în jurul zilei de azi. De aceea trecea marți și
+      pica miercuri — genul de eșec care se pune pe seama ultimei modificări,
+      oricare ar fi ea. Aceeași grijă era deja luată mai jos, la „nu împrumută
+      prețul negociat altui client”; îi lipsea perechea de aici.
+    */
+    const client = await api.clienti.create({ nume: 'Client Fără Istoric' })
     const serviciu = gaseste(
       magazin.articol,
       (a) => a.tip === 'serviciu' && a.activ,

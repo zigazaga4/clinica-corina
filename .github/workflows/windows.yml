@@ -1,0 +1,68 @@
+# Instalatorul pentru Windows, construit de GitHub.
+#
+# Tauri nu poate fi compilat pentru Windows de pe un Mac: are nevoie de
+# editorul de legături MSVC, de SDK-ul Windows și de WebView2, iar
+# instalatoarele (.msi prin WiX, .exe prin NSIS) sunt ele însele programe
+# Windows. Deci compilarea se face pe o mașină Windows — aici, una a GitHub,
+# ca să nu trebuiască instalat nimic pe calculatorul nimănui.
+#
+# Rezultatul se ia din fila „Actions”, de la rularea dorită, secțiunea
+# „Artifacts”.
+
+name: Aplicația pentru Windows
+
+on:
+  push:
+    branches: [main]
+    # Modificările care nu ating aplicația nu merită 15 minute de compilare.
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/windows.yml'
+  workflow_dispatch:
+
+jobs:
+  construieste:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Partea de Rust durează un sfert de oră la prima rulare. Păstrată,
+      # următoarele pornesc de unde s-a rămas.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri
+
+      - name: Dependențele interfeței
+        working-directory: frontend
+        run: npm ci
+
+      - name: Verificări
+        working-directory: frontend
+        run: npm test
+
+      - name: Compilare
+        working-directory: frontend
+        env:
+          # Adresa serverului intră în pachet la compilare. Fără ea,
+          # aplicația pornește pe date demonstrative, ținute în memorie —
+          # arată la fel și nu salvează nimic, ceea ce e mai rău decât o
+          # eroare, fiindcă nu se vede.
+          VITE_API_URL: https://clinica.srv1409671.hstgr.cloud
+        run: npm run tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GestiuneClinica-Windows
+          if-no-files-found: error
+          path: |
+            frontend/src-tauri/target/release/bundle/msi/*.msi
+            frontend/src-tauri/target/release/bundle/nsis/*-setup.exe
