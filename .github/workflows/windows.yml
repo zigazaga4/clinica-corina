@@ -1,24 +1,49 @@
-# Instalatorul pentru Windows, construit de GitHub.
+# Aplicația de Windows: se compilează la fiecare modificare, se publică doar
+# când ceri tu.
 #
 # Tauri nu poate fi compilat pentru Windows de pe un Mac: are nevoie de
 # editorul de legături MSVC, de SDK-ul Windows și de WebView2, iar
-# instalatoarele (.msi prin WiX, .exe prin NSIS) sunt ele însele programe
-# Windows. Deci compilarea se face pe o mașină Windows — aici, una a GitHub,
-# ca să nu trebuiască instalat nimic pe calculatorul nimănui.
+# instalatoarele sunt ele însele programe Windows. Deci compilarea se face pe o
+# mașină Windows — aici, una a GitHub, ca să nu trebuiască instalat nimic pe
+# calculatorul nimănui.
 #
-# Rezultatul se ia din fila „Actions”, de la rularea dorită, secțiunea
-# „Artifacts”.
+# DOUĂ FELURI DE RULARE:
+#
+#   1. La fiecare urcare de cod — compilează și testează. Rezultatul se ia din
+#      fila „Actions”, secțiunea „Artifacts”. Nimeni nu e deranjat.
+#
+#   2. Apăsând „Run workflow” și scriind un număr de versiune — face tot ce e
+#      mai sus, apoi PUBLICĂ. De atunci, orice calculator care are aplicația
+#      deschisă se blochează în cel mult un sfert de oră și cere actualizarea.
+#      Nu se poate lucra până nu e instalată. Deci se apasă când asta se dorește
+#      cu adevărat.
 
 name: Aplicația pentru Windows
 
 on:
   push:
     branches: [main]
-    # Modificările care nu ating aplicația nu merită 15 minute de compilare.
+    # Modificările care nu ating aplicația nu merită un sfert de oră de
+    # compilare.
     paths:
       - 'frontend/**'
       - '.github/workflows/windows.yml'
+      - '.github/scripts/**'
   workflow_dispatch:
+    inputs:
+      versiune:
+        description: 'Versiunea publicată, de forma 0.2.0. Trebuie să fie mai mare decât cea de acum, altfel nimeni nu o primește.'
+        required: true
+        type: string
+      note:
+        description: 'Ce s-a schimbat. Se arată în fereastra care cere actualizarea.'
+        required: false
+        type: string
+
+# Necesare ca pasul final să poată scrie noul număr de versiune înapoi în
+# depozit.
+permissions:
+  contents: write
 
 jobs:
   construieste:
@@ -45,6 +70,18 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # După `npm ci`, nu înainte: altfel `package.json` și fișierul de blocare
+      # nu s-ar mai potrivi și instalarea ar refuza să pornească.
+      # Textele scrise de om ajung la scripturi prin variabile de mediu, nu
+      # lipite direct în comandă: lipite, un ghilimel pus din greșeală ar rupe
+      # comanda, iar unul pus intenționat ar putea executa altceva.
+      - name: Numărul versiunii
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          V: ${{ inputs.versiune }}
+        run: node .github/scripts/versiune.mjs "$V"
+
       - name: Verificări
         working-directory: frontend
         run: npm test
@@ -52,17 +89,74 @@ jobs:
       - name: Compilare
         working-directory: frontend
         env:
-          # Adresa serverului intră în pachet la compilare. Fără ea,
-          # aplicația pornește pe date demonstrative, ținute în memorie —
-          # arată la fel și nu salvează nimic, ceea ce e mai rău decât o
-          # eroare, fiindcă nu se vede.
+          # Adresa serverului intră în pachet la compilare. Fără ea, aplicația
+          # pornește pe date demonstrative, ținute în memorie — arată la fel și
+          # nu salvează nimic, ceea ce e mai rău decât o eroare, fiindcă nu se
+          # vede.
           VITE_API_URL: https://clinica.srv1409671.hstgr.cloud
+          # Cheia cu care se semnează pachetul de actualizare. Perechea ei
+          # publică stă în `tauri.conf.json`; fără potrivirea lor, aplicația
+          # instalată refuză orice actualizare.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build
 
+      # Se păstrează doar instalatorul NSIS, nu și cel MSI, deși Tauri le face
+      # pe amândouă. Actualizarea automată poate înlocui un singur fel de
+      # instalare; dacă cineva ar porni de la MSI, o actualizare NSIS s-ar
+      # așeza alături în loc să o înlocuiască, și ar rămâne cu două programe.
       - uses: actions/upload-artifact@v4
         with:
           name: GestiuneClinica-Windows
           if-no-files-found: error
-          path: |
-            frontend/src-tauri/target/release/bundle/msi/*.msi
-            frontend/src-tauri/target/release/bundle/nsis/*-setup.exe
+          path: frontend/src-tauri/target/release/bundle/nsis/*-setup.exe
+
+      - name: Pregătește publicarea
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          V: ${{ inputs.versiune }}
+          NOTE: ${{ inputs.note }}
+        run: node .github/scripts/manifest.mjs "$V" "${NOTE:-}"
+
+      - name: Publică
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          # Depozitul cu instalatoarele este public, ca aplicația să le poată
+          # lua fără parolă. Codul rămâne aici, privat.
+          GH_TOKEN: ${{ secrets.TOKEN_ACTUALIZARI }}
+          V: ${{ inputs.versiune }}
+          NOTE: ${{ inputs.note }}
+        run: |
+          set -euo pipefail
+          cd frontend/src-tauri/target/release/bundle/nsis
+          gh release create "v$V" \
+            --repo zigazaga4/clinica-actualizari \
+            --title "Gestiune Clinică $V" \
+            --notes "${NOTE:-Îmbunătățiri și corectări.}" \
+            "GestiuneClinica_${V}_x64-setup.exe" \
+            latest.json
+
+      # Abia acum, după ce publicarea a reușit: depozitul nu trebuie să pretindă
+      # o versiune care nu a ajuns nicăieri.
+      - name: Notează versiunea în depozit
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          V: ${{ inputs.versiune }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/package.json frontend/package-lock.json \
+                  frontend/src-tauri/tauri.conf.json \
+                  frontend/src-tauri/Cargo.toml frontend/src-tauri/Cargo.lock
+          # „[skip ci]” oprește compilarea pe care ar declanșa-o chiar acest
+          # commit — versiunea tocmai a fost compilată, nu are rost a doua oară.
+          git commit -m "Versiunea $V [skip ci]"
+          git tag "v$V"
+          # Înapoi pe ramura de pe care s-a pornit, nu pe „main” scris de mână:
+          # o rulare pornită din greșeală de pe altă ramură nu trebuie să
+          # rescrie ramura principală cu conținutul ei.
+          git push origin "HEAD:$GITHUB_REF_NAME" --tags

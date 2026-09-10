@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "actualizare",
+  "description": "Îi dă interfeței voie să întrebe dacă a apărut o versiune nouă, să o descarce, să o instaleze și să repornească aplicația. Nimic din toate acestea nu se poate face fără permisiune explicită.",
+  "platforms": ["windows", "macOS", "linux"],
+  "windows": ["main"],
+  "permissions": ["updater:default", "process:allow-restart"]
+}

@@ -9,6 +9,16 @@ pub fn run() {
             .build(),
         )?;
       }
+
+      // Verificarea versiunii și repornirea după instalare. Doar pe
+      // calculator: pe telefon nu există așa ceva, iar modulele nici nu se
+      // compilează acolo.
+      #[cfg(desktop)]
+      {
+        app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+        app.handle().plugin(tauri_plugin_process::init())?;
+      }
+
       Ok(())
     })
     .run(tauri::generate_context!())

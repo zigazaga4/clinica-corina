@@ -3,6 +3,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { esteEroareApi } from '@/api/errors'
 import { FurnizorAutentificare } from '@/app/auth'
 import { FurnizorTema } from '@/app/theme'
+import { PoartaActualizare } from '@/components/EcranActualizare'
 import { Rute } from '@/routes'
 import { FurnizorNotificari } from '@/ui'
 
@@ -40,13 +41,20 @@ export function App() {
   return (
     <QueryClientProvider client={clientInterogari}>
       <FurnizorTema>
-        <FurnizorNotificari>
-          <BrowserRouter>
-            <FurnizorAutentificare>
-              <Rute />
-            </FurnizorAutentificare>
-          </BrowserRouter>
-        </FurnizorNotificari>
+        {/*
+          Poarta stă înăuntrul temei, ca ecranul de actualizare să fie și el
+          deschis sau întunecat după preferința utilizatorului, dar în afara
+          restului: când cere o actualizare, tot ce urmează dispare din pagină.
+        */}
+        <PoartaActualizare>
+          <FurnizorNotificari>
+            <BrowserRouter>
+              <FurnizorAutentificare>
+                <Rute />
+              </FurnizorAutentificare>
+            </BrowserRouter>
+          </FurnizorNotificari>
+        </PoartaActualizare>
       </FurnizorTema>
     </QueryClientProvider>
   )
