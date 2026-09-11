@@ -8,14 +8,20 @@ import { Modala } from './Modal'
   Testul pare mărunt — se uită la niște nume de clase — dar păzește o greșeală
   care nu se vede nici în JSX, nici în jsdom: varianta `open:` a lui Tailwind se
   compilează cu un `:is([open], …)` pe lângă clasă, deci cântărește mai mult
-  decât `sm:`. Scrisă ca `open:justify-end`, regula de telefon învingea regula
-  de calculator la ORICE lățime, fiindcă media query-urile nu adaugă
-  specificitate și nici ordinea din fișier nu mai conta. Fereastra stătea lipită
-  de marginea de jos și pe un monitor de 27".
+  decât `sm:`. Cu prefixul acela pus pe așezarea de jos, regula de telefon
+  învingea regula de calculator la ORICE lățime, fiindcă media query-urile nu
+  adaugă specificitate și nici ordinea din fișier nu mai conta. Fereastra stătea
+  lipită de marginea de jos și pe un monitor de 27".
 
   jsdom nu calculează specificitate și nici nu încarcă CSS-ul compilat, deci
   singurul loc în care greșeala se poate prinde automat este chiar lista de
   clase. De aceea se verifică textul lor.
+
+  ATENȚIE la ce se scrie mai jos: Tailwind citește TOATE fișierele sursă,
+  inclusiv probele și comentariile lor, și generează utilitar pentru orice
+  seamănă a nume de clasă. Un exemplu scris întreg într-un comentariu readuce
+  în CSS exact regula pe care am scos-o. De aceea numele greșit nu apare
+  nicăieri aici ca text continuu.
 */
 
 function deschide() {
