@@ -96,6 +96,12 @@ CREATE TABLE IF NOT EXISTS utilizator (
 -- majuscule sunt același om și ar face autentificarea ambiguă.
 CREATE UNIQUE INDEX IF NOT EXISTS utilizator_email_uk ON utilizator (lower(email));
 
+-- Numele este și el o cheie de autentificare: în aplicație se intră cu „Irina”,
+-- nu cu o adresă (v. `routes/auth.ts`, POST /login). Două conturi cu același
+-- nume ar face întrebarea „cine e Irina?” ambiguă, iar cine s-ar fi conectat
+-- ar fi depins de ordinea rândurilor din tabelă.
+CREATE UNIQUE INDEX IF NOT EXISTS utilizator_nume_uk ON utilizator (lower(btrim(nume)));
+
 DROP TRIGGER IF EXISTS utilizator_actualizat_la ON utilizator;
 CREATE TRIGGER utilizator_actualizat_la BEFORE UPDATE ON utilizator
   FOR EACH ROW EXECUTE FUNCTION set_actualizat_la();

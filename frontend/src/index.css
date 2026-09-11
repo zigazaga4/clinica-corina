@@ -50,6 +50,26 @@
   --color-info: oklch(0.585 0.135 250);
   --color-info-soft: oklch(0.948 0.032 250);
 
+  /*
+    Culorile persoanelor din calendar.
+
+    Nu sunt stări, ci identități: „a cui este programarea”, citit dintr-o
+    privire, fără să se citească numele. De aceea sunt un set separat de
+    `success`/`danger` — o programare a Irinei rămâne a Irinei și când e
+    anulată, iar cele două informații trebuie să se poată vedea în același timp.
+
+    Nuanțele sunt depărtate una de alta pe roata culorilor (violet, turcoaz,
+    portocaliu, roz, verde, albastru) ca să rămână deosebite și pe un ecran de
+    telefon ținut în lumină, și pentru cine distinge greu roșul de verde —
+    perechile vecine diferă și ca luminozitate, nu doar ca nuanță.
+  */
+  --color-persoana-1: oklch(0.556 0.170 300);
+  --color-persoana-2: oklch(0.588 0.115 195);
+  --color-persoana-3: oklch(0.652 0.145 55);
+  --color-persoana-4: oklch(0.602 0.175 350);
+  --color-persoana-5: oklch(0.578 0.135 140);
+  --color-persoana-6: oklch(0.552 0.155 262);
+
   --radius-camp: 0.625rem;
   --umbra-card: 0 1px 2px oklch(0.235 0.012 315 / 0.05);
   --umbra-ridicat:
@@ -105,6 +125,14 @@
   --color-info: oklch(0.712 0.122 250);
   --color-info-soft: oklch(0.302 0.058 250);
 
+  /* Pe fundal închis nuanțele de zi se sting; se deschid, păstrând ordinea. */
+  --color-persoana-1: oklch(0.722 0.155 300);
+  --color-persoana-2: oklch(0.745 0.105 195);
+  --color-persoana-3: oklch(0.788 0.135 60);
+  --color-persoana-4: oklch(0.742 0.155 350);
+  --color-persoana-5: oklch(0.742 0.125 142);
+  --color-persoana-6: oklch(0.722 0.135 262);
+
   --umbra-card: 0 1px 2px oklch(0 0 0 / 0.35);
   --umbra-ridicat:
     0 10px 30px -12px oklch(0 0 0 / 0.6),
@@ -150,6 +178,13 @@
   --color-danger-soft: var(--color-danger-soft);
   --color-info: var(--color-info);
   --color-info-soft: var(--color-info-soft);
+
+  --color-persoana-1: var(--color-persoana-1);
+  --color-persoana-2: var(--color-persoana-2);
+  --color-persoana-3: var(--color-persoana-3);
+  --color-persoana-4: var(--color-persoana-4);
+  --color-persoana-5: var(--color-persoana-5);
+  --color-persoana-6: var(--color-persoana-6);
 
   --shadow-card: var(--umbra-card);
   --shadow-ridicat: var(--umbra-ridicat);

@@ -3,6 +3,7 @@ import type { ProgramareDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { isToday, laData } from '@/lib/dates'
 import { ChipProgramare } from './CardProgramare'
+import { useCuloarePersoana } from './culoriExecutanti'
 import {
   INALTIME_GRILA,
   MINUTE_VIZIBILE,
@@ -85,22 +86,7 @@ export function GrilaOre({
               key={coloana.id}
               className="min-w-40 flex-1 border-l border-line"
             >
-              <div
-                className={cn(
-                  'flex h-11 flex-col justify-center border-b border-line bg-surface px-2',
-                  antetLipicios && 'sticky top-0 z-10',
-                  coloana.zi && isToday(coloana.zi) && 'bg-primary-50',
-                )}
-              >
-                <span className="truncate text-[13px] font-medium text-ink">
-                  {coloana.eticheta}
-                </span>
-                {coloana.subeticheta && (
-                  <span className="truncate text-[11px] text-ink-faint">
-                    {coloana.subeticheta}
-                  </span>
-                )}
-              </div>
+              <AntetColoana coloana={coloana} lipicios={antetLipicios} />
 
               <ColoanaProgramari
                 programari={coloana.programari}
@@ -165,6 +151,46 @@ function ColoanaProgramari({
 }
 
 /** Linia roșie a momentului curent. */
+/**
+ * Antetul unei coloane.
+ *
+ * Trăiește separat fiindcă are nevoie de un hook, iar hook-urile nu se pot
+ * chema dintr-un `.map()`.
+ *
+ * `coloana.id` este ori un cont (vederea pe zi, o coloană per persoană), ori o
+ * dată calendaristică (vederea pe săptămână). Căutarea culorii merge pe același
+ * drum în ambele cazuri: pentru o dată nu găsește nimic, întoarce `null`, iar
+ * antetul rămâne exact cum era. Nu este nevoie de nicio ramificație.
+ */
+function AntetColoana({ coloana, lipicios }: { coloana: ColoanaGrila; lipicios: boolean }) {
+  const culoare = useCuloarePersoana(coloana.id)
+
+  return (
+    <div
+      className={cn(
+        'flex h-11 flex-col justify-center border-b border-line bg-surface px-2',
+        lipicios && 'sticky top-0 z-10',
+        coloana.zi && isToday(coloana.zi) && 'bg-primary-50',
+      )}
+    >
+      <span
+        className={cn(
+          'flex items-center gap-1.5 truncate text-[13px] font-medium',
+          culoare ? culoare.text : 'text-ink',
+        )}
+      >
+        {culoare && (
+          <span className={cn('size-2 shrink-0 rounded-full', culoare.fundal)} aria-hidden />
+        )}
+        <span className="truncate">{coloana.eticheta}</span>
+      </span>
+      {coloana.subeticheta && (
+        <span className="truncate pl-3.5 text-[11px] text-ink-faint">{coloana.subeticheta}</span>
+      )}
+    </div>
+  )
+}
+
 function LinieAcum() {
   const acum = new Date()
   const minute = acum.getHours() * 60 + acum.getMinutes() - ORA_INCEPUT * 60

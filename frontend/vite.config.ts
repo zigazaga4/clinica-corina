@@ -9,6 +9,16 @@ const host = process.env.TAURI_DEV_HOST
 export default defineConfig({
   plugins: [react(), tailwindcss()],
 
+  /*
+    Unde stă aplicația în adresă.
+
+    Instalată, se servește din rădăcina propriului container, deci `/`. Pe web
+    stă sub `/app`, fiindcă în rădăcina domeniului răspunde API-ul și rutele se
+    numesc la fel: `/clienti`, `/programari`, `/vanzari`. Valoarea ajunge și în
+    `import.meta.env.BASE_URL`, de unde o ia `BrowserRouter`.
+  */
+  base: process.env.BAZA_WEB || '/',
+
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

@@ -130,6 +130,10 @@ const mesajeConstrangeri: Record<string, { mesaj: string; camp?: string }> = {
     mesaj: 'Există deja un cont cu această adresă de e-mail.',
     camp: 'email',
   },
+  utilizator_nume_uk: {
+    mesaj: 'Există deja un cont cu acest nume. Autentificarea se face după nume, deci două conturi nu pot purta același nume.',
+    camp: 'nume',
+  },
   punct_lucru_denumire_key: {
     mesaj: 'Există deja un punct de lucru cu această denumire.',
     camp: 'denumire',

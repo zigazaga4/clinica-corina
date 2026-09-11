@@ -7,6 +7,31 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <meta name="color-scheme" content="light dark" />
+
+    <!--
+      Instalarea pe ecranul telefonului.
+
+      Adresele merg prin `%BASE_URL%`, nu scrise de la rădăcină: aplicația stă
+      sub `/app` pe web și în rădăcină când e instalată, iar aceleași fișiere
+      trebuie găsite în ambele cazuri. În manifest, la fel, adresele sunt
+      relative — se rezolvă față de el, oriunde ar fi așezat.
+
+      `black-translucent` lasă pagina să treacă pe sub bara de sus, iar
+      `viewport-fit=cover` de mai sus face ca `env(safe-area-inset-*)` să
+      întoarcă valori reale; marginile sunt deja tratate în `index.css`. Fără
+      perechea asta, aplicația pornită de pe ecranul principal ar fi avut o
+      bandă albă sus și butoanele de jos sub bara de gesturi.
+    -->
+    <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%favicon-32.png" />
+    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbf9fb" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#191619" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Clinică" />
+
     <title>Gestiune Clinică</title>
   </head>
   <body class="h-full overscroll-none">

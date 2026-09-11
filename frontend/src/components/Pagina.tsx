@@ -83,7 +83,20 @@ export function BaraFiltre({ children, className }: { children: ReactNode; class
   return (
     <div
       className={cn(
-        'fara-bara mb-3 flex items-center gap-2 overflow-x-auto',
+        /*
+          Filtrele se așază pe mai multe rânduri, nu pe unul singur derulabil.
+
+          Erau într-o bandă cu derulare orizontală și cu bara de derulare
+          ascunsă (`fara-bara`). Pe un ecran de telefon, două filtre de 208px
+          nu încap în 412px, așa că al doilea rămânea tăiat de marginea din
+          dreapta — fără nicio bară, fără nicio săgeată, fără niciun semn că
+          mai există ceva acolo. Arăta exact ca un ecran stricat, iar pe
+          calculator, unde nu se trage cu degetul, chiar era: filtrul tăiat nu
+          putea fi atins deloc.
+
+          Pe lat rămâne oricum un singur rând — au loc toate.
+        */
+        'mb-3 flex flex-wrap items-center gap-2',
         '[&>*]:shrink-0',
         className,
       )}

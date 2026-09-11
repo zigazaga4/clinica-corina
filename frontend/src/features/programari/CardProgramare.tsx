@@ -4,6 +4,12 @@ import { cn } from '@/lib/cn'
 import { formateazaInterval, formateazaOra } from '@/lib/dates'
 import { formateazaBani } from '@/lib/money'
 import { InsemnStareProgramare } from '@/components/insemne'
+import { useCuloarePersoana } from './culoriExecutanti'
+
+/** Primul cuvânt din nume — tot ce încape pe un chip de 30 de minute. */
+function prenume(nume: string): string {
+  return nume.trim().split(/\s+/)[0] ?? nume
+}
 
 /**
  * Reprezentarea unei programări.
@@ -55,15 +61,18 @@ export function ChipProgramare({
   style?: React.CSSProperties
 }) {
   const anulata = programare.stare === 'anulat'
+  const culoare = useCuloarePersoana(programare.executant_id)
 
   return (
     <button
       type="button"
       onClick={() => onClick(programare)}
-      title={`${formateazaInterval(programare.incepe_la, programare.se_termina_la)} · ${programare.client_nume} · ${programare.articol_denumire}`}
+      title={`${formateazaInterval(programare.incepe_la, programare.se_termina_la)} · ${programare.client_nume} · ${programare.articol_denumire} · ${programare.executant_nume}`}
       style={style}
       className={cn(
-        'flex w-full flex-col overflow-hidden rounded-md border px-1.5 py-1 text-left',
+        'relative flex w-full flex-col overflow-hidden rounded-md border py-1 pr-1.5 text-left',
+        // Banda ocupă 4px la stânga; textul începe după ea.
+        culoare ? 'pl-2.5' : 'pl-1.5',
         'transition-all hover:z-10 hover:shadow-(--umbra-card) focus-visible:z-10',
         fundal[programare.stare],
         // Programarea anulată rămâne vizibilă, dar tăiată: locul ei este liber,
@@ -72,12 +81,27 @@ export function ChipProgramare({
         className,
       )}
     >
+      {/*
+        Banda persoanei. Stă lipită de marginea din stânga, pe toată înălțimea,
+        fiindcă acolo o găsește ochiul când parcurge o coloană de ședințe — și
+        rămâne vizibilă chiar și pe chipurile de 20 de minute, unde din text nu
+        mai încape decât ora.
+      */}
+      {culoare && (
+        <span
+          aria-hidden
+          className={cn('absolute inset-y-0 left-0 w-1', culoare.fundal)}
+        />
+      )}
+
       <span className={cn('truncate text-[11px] leading-tight font-semibold', compact && 'text-[10px]')}>
         {formateazaOra(programare.incepe_la)} {programare.client_nume}
       </span>
       {!compact && (
         <span className="truncate text-[11px] leading-tight opacity-80">
           {programare.articol_denumire}
+          {' · '}
+          <span className="font-medium">{prenume(programare.executant_nume)}</span>
         </span>
       )}
     </button>
@@ -99,6 +123,7 @@ export function RandProgramare({
   cuExecutant?: boolean
 }) {
   const anulata = programare.stare === 'anulat'
+  const culoare = useCuloarePersoana(programare.executant_id)
 
   return (
     <button
@@ -128,9 +153,15 @@ export function RandProgramare({
         </span>
         <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-ink-faint">
           {cuExecutant && (
-            <span className="inline-flex items-center gap-1">
-              <User className="size-3" aria-hidden />
-              {programare.executant_nume}
+            // Punctul colorat repetă banda din calendar, ca aceeași persoană să
+            // fie aceeași culoare în ambele vederi.
+            <span className={cn('inline-flex items-center gap-1', culoare && culoare.text)}>
+              {culoare ? (
+                <span className={cn('size-2 shrink-0 rounded-full', culoare.fundal)} aria-hidden />
+              ) : (
+                <User className="size-3" aria-hidden />
+              )}
+              <span className="font-medium">{programare.executant_nume}</span>
             </span>
           )}
           {programare.client_telefon && (

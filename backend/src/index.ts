@@ -214,7 +214,88 @@ app.use((req, res, next) =>
     : corpJson(req, res, next),
 )
 
+/*
+  Adresa scurtă duce în aplicație.
+
+  În `public/` stă o pagină de probă pentru API, livrată odată cu serverul —
+  utilă la depanare, dar arată ca un instrument de programator, nu ca aplicația
+  clinicii. Cât timp ea răspundea în rădăcină, oricine tasta doar numele
+  domeniului o primea pe ea și credea că ASTA este aplicația.
+
+  Redirectarea este temporară (302), nu permanentă: un 301 se lipește în
+  memoria browserului pe termen nelimitat, iar dacă mâine aplicația se mută în
+  rădăcină, telefoanele care au apucat să-l rețină ar fi continuat să sară la
+  `/app` fără să mai întrebe serverul.
+*/
+app.get('/', (_req, res) => res.redirect(302, '/app/'))
+
+/*
+  Interfața pentru telefon, servită de același proces, sub `/app`.
+
+  De ce nu în rădăcină: rutele interfeței se numesc la fel ca rutele API-ului —
+  `/clienti`, `/programari`, `/vanzari`. Servită din rădăcină, o adresă precum
+  `/clienti/7` deschisă pe telefon ar fi nimerit în API și ar fi întors JSON în
+  loc de aplicație. Sub `/app` nu există nicio suprapunere, iar API-ul rămâne
+  exact unde îl caută aplicația de Windows deja instalată — nu se strică nimic
+  din ce merge azi.
+
+  Fișierele cu amprentă în nume (`index-a1b2c3.js`) nu se schimbă niciodată la
+  același nume, deci pot fi ținute în memoria telefonului un an. `index.html`
+  este singurul care trebuie recitit la fiecare pornire, altfel telefonul ar
+  rămâne pe o versiune veche a aplicației după o actualizare.
+*/
+const DOSAR_APP = path.join(process.cwd(), 'public', 'app')
+
+app.use('/app', express.static(DOSAR_APP, {
+  index: false,
+  maxAge: '1y',
+  setHeaders: (res, caleFisier) => {
+    if (caleFisier.endsWith('index.html') || caleFisier.endsWith('.webmanifest')) {
+      res.setHeader('Cache-Control', 'no-cache')
+    }
+  },
+}))
+
+/*
+  Orice adresă din interiorul aplicației întoarce aceeași pagină.
+
+  Navigarea se face în browser, fără să treacă pe la server, dar reîncărcarea
+  paginii (sau un semn de carte, sau pictograma de pe ecranul telefonului)
+  cere serverului chiar acea adresă. Fără linia asta, `/app/programari` ar fi
+  căzut în 404-ul de mai jos și omul ar fi văzut un JSON.
+
+  Cererile pentru fișiere care chiar lipsesc (au extensie) nu sunt acoperite:
+  acolo un 404 sincer este mai util decât o pagină HTML trimisă în locul unui
+  script, care s-ar fi stricat mai departe, mai greu de înțeles.
+*/
+app.get(/^\/app(\/.*)?$/, (req, res, next) => {
+  if (path.extname(req.path)) return next()
+
+  /*
+    Pagina asta NU se ține minte, niciodată.
+
+    Ea este singurul fișier cu nume fix din toată aplicația; restul poartă o
+    amprentă în nume (`index-a1b2c3.js`) și se schimbă odată cu ea. Dacă
+    telefonul ar păstra o copie veche a paginii, ar cere la nesfârșit
+    scripturile vechi — iar clinica ar rămâne pe o versiune de acum o
+    săptămână, fără ca cineva să înțeleagă de ce.
+
+    `no-cache` nu înseamnă „nu păstra”, ci „întreabă întâi”: copia rămâne pe
+    telefon, dar la fiecare pornire se verifică dacă s-a schimbat. Nu s-a
+    schimbat — serverul răspunde 304, gol, și pornirea e la fel de rapidă.
+    S-a schimbat — vine noua pagină, cu noile amprente, și aplicația se
+    reîmprospătează singură. `must-revalidate` taie și cazul în care un
+    intermediar ar servi o copie expirată fiindcă rețeaua e slabă.
+  */
+  res.setHeader('Cache-Control', 'no-cache, must-revalidate')
+  res.sendFile(path.join(DOSAR_APP, 'index.html'), (err) => {
+    if (err) next()
+  })
+})
+
 // Serve static files (test UI and future frontend build)
+// Se montează DUPĂ `/app`, ca regulile de mai sus — fără index, cu memorare
+// lungă pentru fișierele cu amprentă — să fie cele care hotărăsc acolo.
 app.use(express.static(path.join(process.cwd(), 'public')))
 
 /*

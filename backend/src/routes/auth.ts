@@ -196,14 +196,34 @@ router.post('/login', limitaAutentificareAdresa, limitaAutentificareCont, ruta(a
   const parola = corp.parola ?? corp.password
 
   if (!email || !parola) {
-    throw eroareValidare('Completează adresa de e-mail și parola.', 'email')
+    throw eroareValidare('Completează numele și parola.', 'email')
   }
 
+  /*
+    Se intră cu numele, nu cu adresa de e-mail.
+
+    La recepție lucrează două persoane care se știu pe nume, iar aplicația se
+    deschide de zeci de ori pe zi, inclusiv de pe telefon. „Irina” se scrie mai
+    repede și mai fără greșeală decât o adresă, mai ales pe o tastatură de
+    telefon, unde o literă ratată într-un „@clinica.ro” arată exact ca o parolă
+    greșită.
+
+    Adresa rămâne acceptată în paralel: conturile mai vechi au fost create cu
+    ea, jurnalul o poartă, iar cine o tastează din obișnuință nu trebuie să
+    primească un refuz. Potrivirea pe e-mail are întâietate în sortare, ca o
+    adresă scrisă întreagă să nu poată fi furată de un cont care se NUMEȘTE la
+    fel — iar indexul `utilizator_nume_uk` face ca numele să fie, la rândul
+    lui, unic; fără el „cine e Irina?” ar fi avut două răspunsuri.
+  */
   // Contul dezactivat se caută și el: altfel ar fi imposibil de deosebit de
   // unul inexistent, iar omul ar suna crezând că a greșit parola.
   const utilizator = await unuSauNimic<Utilizator>(
     pool,
-    `SELECT * FROM utilizator WHERE lower(email) = lower($1) LIMIT 1`,
+    `SELECT * FROM utilizator
+      WHERE lower(email) = lower($1)
+         OR lower(btrim(nume)) = lower(btrim($1))
+      ORDER BY (lower(email) = lower($1)) DESC
+      LIMIT 1`,
     [email],
   )
 
@@ -220,7 +240,7 @@ router.post('/login', limitaAutentificareAdresa, limitaAutentificareCont, ruta(a
     : await hashFantoma.then((h) => argon2.verify(h, parola)).catch(() => false)
 
   if (!utilizator || !potrivita) {
-    throw eroareValidare('E-mail sau parolă incorecte.', 'parola')
+    throw eroareValidare('Nume sau parolă incorecte.', 'parola')
   }
 
   /*

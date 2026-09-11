@@ -48,7 +48,13 @@ export function App() {
         */}
         <PoartaActualizare>
           <FurnizorNotificari>
-            <BrowserRouter>
+            {/*
+              Servită ca pagină web, aplicația stă sub `/app`, nu în rădăcina
+              domeniului — acolo răspunde API-ul, iar adrese precum `/clienti`
+              înseamnă altceva pentru el. `BASE_URL` vine din compilare, deci
+              aceeași sursă merge și instalată (unde rămâne `/`), și pe web.
+            */}
+            <BrowserRouter basename={import.meta.env.BASE_URL}>
               <FurnizorAutentificare>
                 <Rute />
               </FurnizorAutentificare>

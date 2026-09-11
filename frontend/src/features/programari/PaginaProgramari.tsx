@@ -31,6 +31,8 @@ import {
   IncarcarePagina,
   StareEroare,
 } from '@/ui'
+import { ButonCalendar, PanouCalendar } from './CalendarMic'
+import { FurnizorCulori, LegendaCulori } from './culoriExecutanti'
 import { DetaliuProgramare } from './DetaliuProgramare'
 import { FormularProgramare } from './FormularProgramare'
 import { GrilaLuna } from './GrilaLuna'
@@ -53,6 +55,7 @@ export function PaginaProgramari() {
 
   const [vedere, setVedere] = useState<VedereCalendar>('saptamana')
   const [ancora, setAncora] = useState(() => new Date())
+  const [calendarDeschis, setCalendarDeschis] = useState(false)
 
   const [executantId, setExecutantId] = useState<Uuid | null>(null)
   const [clientId, setClientId] = useState<Uuid | null>(null)
@@ -96,6 +99,9 @@ export function PaginaProgramari() {
   }
 
   return (
+    // Culorile persoanelor se împart o singură dată, sus, ca fiecare chip din
+    // calendar și fiecare rând din agendă să citească aceeași hartă.
+    <FurnizorCulori utilizatori={utilizatori}>
     <Pagina className="flex h-full flex-col">
       <AntetPagina
         titlu="Programări"
@@ -131,6 +137,19 @@ export function PaginaProgramari() {
           </Buton>
         </div>
 
+        {/*
+          Saltul direct într-o zi. Săgețile mută cu un pas — o zi, o săptămână,
+          o lună; pentru „15 octombrie” ar fi însemnat zeci de apăsări.
+          Alegerea unei zile comută și pe vederea pe zi, la fel ca apăsarea unei
+          zile din grila lunii: cine caută o dată anume vrea să o vadă întreagă.
+        */}
+        <ButonCalendar
+          valoare={ancora}
+          eticheta={formateazaZiScurta(ancora)}
+          deschis={calendarDeschis}
+          onComuta={() => setCalendarDeschis((d) => !d)}
+        />
+
         <GrupButoane eticheta="Vedere calendar" className="ml-auto">
           {(['zi', 'saptamana', 'luna'] as VedereCalendar[]).map((v) => (
             <ButonGrup key={v} activ={vedere === v} onClick={() => setVedere(v)}>
@@ -140,7 +159,24 @@ export function PaginaProgramari() {
         </GrupButoane>
       </div>
 
+      {calendarDeschis && (
+        <PanouCalendar
+          valoare={ancora}
+          onAlege={(zi) => {
+            setAncora(zi)
+            setVedere('zi')
+            setCalendarDeschis(false)
+          }}
+        />
+      )}
+
       <BaraFiltre>
+        {/*
+          Legenda culorilor este și filtrul rapid pe persoană: o apăsare arată
+          doar ședințele ei, încă una le aduce pe toate înapoi. Selectorul de
+          mai jos rămâne — el caută și printre conturile fără culoare.
+        */}
+        <LegendaCulori valoare={executantId} onSchimba={setExecutantId} />
         <SelectorUtilizator
           valoare={executantId}
           onSchimba={setExecutantId}
@@ -226,6 +262,7 @@ export function PaginaProgramari() {
         }}
       />
     </Pagina>
+    </FurnizorCulori>
   )
 }
 

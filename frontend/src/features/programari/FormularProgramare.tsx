@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   useArticole,
   useCreeazaProgramare,
@@ -18,7 +18,7 @@ import {
 } from '@/lib/dates'
 import { useEroriFormular } from '@/lib/formular'
 import { formateazaBani, parseNumar } from '@/lib/money'
-import { Buton, Input, Modala, Textarea, useNotificari } from '@/ui'
+import { Buton, Input, Modala, Select, Textarea, useNotificari } from '@/ui'
 
 type CampFormular =
   | 'client_id'
@@ -183,6 +183,56 @@ export function FormularProgramare({
       ? differenceInMinutes(new Date(seTerminaLa), new Date(incepeLa))
       : 0
 
+  /*
+    Ziua și ora se citesc din `incepeLa`, nu se țin separat.
+
+    O a doua copie a aceleiași informații ar fi trebuit ținută în pas cu prima
+    la fiecare schimbare, iar prima dată când cineva ar fi uitat să o facă,
+    formularul ar fi trimis altă oră decât cea de pe ecran. Forma este fixă —
+    `yyyy-MM-ddTHH:mm` (v. `laInputDatetime`) — deci tăierea este sigură.
+  */
+  const zi = incepeLa.slice(0, 10)
+  const ora = incepeLa.slice(11, 16)
+
+  const compune = (ziNoua: string, oraNoua: string) => `${ziNoua}T${oraNoua}`
+
+  /** Mută întreaga programare în altă zi, păstrând ora și durata. */
+  const schimbaZiua = (valoare: string) => {
+    if (valoare === '') return
+    schimbaInceputul(compune(valoare, ora || '09:00'))
+  }
+
+  /** Mută ora de început; durata merge după ea. */
+  const schimbaOra = (valoare: string) => {
+    schimbaInceputul(compune(zi, valoare))
+  }
+
+  /** Durata mută doar sfârșitul — începutul rămâne acolo unde a fost pus. */
+  const schimbaDurata = (minute: number) => {
+    if (incepeLa === '') return
+    setSeTerminaLa(laInputDatetime(addMinutes(new Date(incepeLa), minute)))
+  }
+
+  /*
+    Listele conțin ÎNTOTDEAUNA valoarea curentă, chiar dacă nu e rotundă.
+
+    O programare veche poate începe la 14:07 sau dura 37 de minute — puse în
+    bază înainte, sau mutate din altă parte. Fără rândul lor în listă,
+    deschiderea formularului ar fi arătat altă oră decât cea adevărată și ar fi
+    rescris-o în tăcere la prima salvare.
+  */
+  const oreDisponibile = useMemo(
+    () => (ora && !ORE_ROTUNDE.includes(ora) ? [...ORE_ROTUNDE, ora].sort() : ORE_ROTUNDE),
+    [ora],
+  )
+  const durateDisponibile = useMemo(
+    () =>
+      durata > 0 && !DURATE_UZUALE.includes(durata)
+        ? [...DURATE_UZUALE, durata].sort((a, b) => a - b)
+        : DURATE_UZUALE,
+    [durata],
+  )
+
   return (
     <Modala
       deschisa={deschisa}
@@ -252,23 +302,57 @@ export function FormularProgramare({
             className="text-right tabular-nums"
           />
 
+          {/*
+            Ziua, ora și durata — trei alegeri simple în loc de două câmpuri de
+            tip „dată și oră”.
+
+            Câmpul `datetime-local` arată bine, dar se schimbă prost: ora stă
+            într-o bucată separată a lui, care trebuie nimerită cu degetul
+            înainte de a putea fi modificată, iar pe telefon deschide o roată cu
+            cinci coloane. Recepția schimbă ora de zeci de ori pe zi și ziua
+            rareori — deci ora merită o listă în care se apasă o dată.
+
+            Sfârșitul nu se mai scrie deloc: se alege durata, iar ora de sfârșit
+            se calculează. Așa nu mai poate exista o programare care se termină
+            înainte să înceapă, iar durata — lucrul la care se gândește
+            operatoarea — nu mai trebuie socotită în minte.
+          */}
           <Input
-            eticheta="Începe la"
-            type="datetime-local"
+            eticheta="Ziua"
+            type="date"
             obligatoriu
-            value={incepeLa}
-            onChange={(e) => schimbaInceputul(e.target.value)}
+            value={zi}
+            onChange={(e) => schimbaZiua(e.target.value)}
             eroare={erori.peCamp.incepe_la ?? null}
           />
-          <Input
-            eticheta="Se termină la"
-            type="datetime-local"
+          <Select
+            eticheta="Ora"
             obligatoriu
-            value={seTerminaLa}
-            onChange={(e) => setSeTerminaLa(e.target.value)}
+            value={ora}
+            onChange={(e) => schimbaOra(e.target.value)}
+          >
+            {oreDisponibile.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            eticheta="Durata"
+            value={String(durata)}
+            onChange={(e) => schimbaDurata(Number(e.target.value))}
             eroare={erori.peCamp.se_termina_la ?? null}
-            ajutor={durata > 0 ? `Durată: ${formateazaDurata(durata)}` : undefined}
-          />
+            ajutor={
+              seTerminaLa !== '' ? `Se termină la ${seTerminaLa.slice(11, 16)}` : undefined
+            }
+          >
+            {durateDisponibile.map((d) => (
+              <option key={d} value={d}>
+                {formateazaDurata(d)}
+              </option>
+            ))}
+          </Select>
 
           <PeToataLatimea>
             <Textarea
@@ -290,6 +374,27 @@ export function FormularProgramare({
     </Modala>
   )
 }
+
+/*
+  Orele care se pot alege, din sfert în sfert.
+
+  Intervalul este mai larg decât grila calendarului (8–20, v. `constante.ts`):
+  se mai face o ședință la 7 dimineața sau la 9 seara, iar o listă care nu
+  permite asta ar trimite operatoarea înapoi la tastat. Sfertul de oră este
+  pasul la care se gândește o recepție; minutul exact nu i-a trebuit niciodată.
+*/
+const ORE_ROTUNDE: string[] = (() => {
+  const rezultat: string[] = []
+  for (let minut = 6 * 60; minut <= 22 * 60; minut += 15) {
+    const h = Math.floor(minut / 60)
+    const m = minut % 60
+    rezultat.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+  }
+  return rezultat
+})()
+
+/** Duratele obișnuite ale unei ședințe, în minute. */
+const DURATE_UZUALE = [15, 30, 45, 60, 75, 90, 105, 120, 150, 180, 240]
 
 /** Sumele intră în câmp cu virgulă zecimală, forma pe care o tastează recepția. */
 function laText(valoare: number): string {

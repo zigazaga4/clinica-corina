@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
-import { Eye, EyeOff, Lock, Mail } from 'lucide-react'
+import { Eye, EyeOff, Lock, User } from 'lucide-react'
 import { esteModDemo } from '@/api'
 import { mesajEroare } from '@/api/errors'
 import { PAROLA_DEMO } from '@/api/memory/seed'
@@ -70,18 +70,25 @@ export function PaginaAutentificare() {
 
         <Card className="p-5">
           <form onSubmit={trimite} className="flex flex-col gap-4" noValidate>
+            {/*
+              Se intră cu numele, nu cu adresa.
+
+              `type="text"`, nu `"email"`: pe telefon, tipul cerea tastatura cu
+              „@” și „.ro”, iar iOS refuza să pornească un cuvânt cu majusculă.
+              Serverul acceptă în continuare și adresa (v. POST /auth/login),
+              deci cine o tastează din obișnuință intră la fel de bine.
+            */}
             <Input
-              eticheta="E-mail"
-              type="email"
+              eticheta="Nume"
+              type="text"
               autoComplete="username"
-              inputMode="email"
-              autoCapitalize="none"
+              autoCapitalize="words"
               autoFocus
               obligatoriu
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              pictograma={<Mail className="size-4" />}
-              placeholder="nume@clinica.ro"
+              pictograma={<User className="size-4" />}
+              placeholder="Irina"
             />
 
             <Input

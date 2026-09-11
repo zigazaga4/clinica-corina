@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { useAutentificare } from '@/app/auth'
 import { CadruAplicatie } from '@/components/AppShell'
 import { PaginaAutentificare } from '@/features/auth/PaginaAutentificare'
@@ -131,13 +131,22 @@ function DoarAdministrator({ children }: { children: ReactNode }) {
 }
 
 function PaginaNegasita() {
+  /*
+    Navigare prin router, nu prin `window.location`.
+
+    O adresă scrisă de mână presupunea că aplicația stă în rădăcina
+    domeniului. Servită de pe web, aplicația stă sub `/app`, iar butonul ar fi
+    dus în afara ei — la API, care ar fi răspuns cu un JSON. `navigate`
+    adaugă singur prefixul, oriunde ar fi așezată aplicația.
+  */
+  const navigheaza = useNavigate()
   return (
     <Pagina>
       <StareGoala
         titlu="Pagina nu există"
         descriere="Adresa cerută nu corespunde niciunui ecran din aplicație."
       >
-        <Buton varianta="primar" onClick={() => window.location.assign('/programari')}>
+        <Buton varianta="primar" onClick={() => navigheaza('/programari')}>
           Mergi la programări
         </Buton>
       </StareGoala>

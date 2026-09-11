@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BanknoteArrowUp, Clock3, ShieldCheck } from 'lucide-react'
+import { esteDesktopNativ } from '@/app/platforma'
 import { useClient, useConsimtaminte, useSchimbaStareProgramare } from '@/app/queries'
 import { ModalaAcordGdpr } from '@/features/consimtamant/ModalaAcordGdpr'
 import type { ProgramareDetaliu } from '@/domain/types'
@@ -55,7 +56,22 @@ export function ModalaOnorare({
 
   const seVerifica = acorduri.isPending || clientul.isPending
   const areAcord = (acorduri.data?.total ?? 0) > 0
-  const cereAcord = deschisa && !seVerifica && !areAcord && !acordRezolvat
+  /*
+    Acordul se cere doar acolo unde poate fi semnat.
+
+    Semnătura se ia pe tableta signotec, legată prin USB de calculatorul din
+    recepție și ajunsă la noi printr-un serviciu care ascultă pe `localhost`.
+    De pe telefon nu există acel serviciu: fereastra ar fi căutat tableta vreo
+    douăsprezece secunde și ar fi sfârșit într-o eroare roșie, la fiecare
+    ședință închisă.
+
+    Condiția stă AICI, nu pe fereastra de mai jos: cât timp `cereAcord` este
+    adevărat, fereastra de încasare se ascunde singură (v. `deschisa` la
+    `ModalaAcordGdpr` / `Modala` de mai jos). Ascunsă doar semnarea, ecranul ar
+    fi rămas gol și fără niciun buton.
+  */
+  const cereAcord =
+    deschisa && esteDesktopNativ() && !seVerifica && !areAcord && !acordRezolvat
 
   const inCurs = schimbaStarea.isPending
   // Indicatorul de încărcare stă pe butonul apăsat, nu pe amândouă: variabilele
