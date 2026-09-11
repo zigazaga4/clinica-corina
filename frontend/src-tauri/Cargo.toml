@@ -1,6 +1,6 @@
 [package]
 name = "clinica-app"
-version = "0.1.1"
+version = "0.1.2"
 description = "Aplicatie interna de gestiune a clientilor unei clinici"
 authors = ["TZ INTELLIGENCE 28 SRL"]
 license = ""
@@ -23,6 +23,16 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
+
+# Salvarea acordurilor GDPR pe disc și deschiderea lor.
+#
+# Interfața trăiește într-o fereastră de browser, iar un browser nu are voie
+# să scrie fișiere unde vrea. Acordul semnat se ia de pe server ca șir de
+# octeți, deci cineva trebuie să-l așeze pe disc: `fs` scrie, `opener` îl
+# deschide apoi în cititorul obișnuit de PDF. Amândouă sunt îngrădite din
+# `capabilities/acorduri.json` la dosarul Documente — nicăieri altundeva.
+tauri-plugin-fs = "2"
+tauri-plugin-opener = "2"
 
 # Actualizarea automată există doar pe calculator. Pe telefon, magazinul de
 # aplicații (sau instalarea manuală a APK-ului) face aceeași treabă, iar

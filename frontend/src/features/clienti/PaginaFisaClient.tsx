@@ -15,6 +15,7 @@ import {
   useAdaugaNota,
   useArhiveazaClient,
   useClient,
+  useConsimtaminte,
   useIstoricClient,
   useNoteClient,
   useStergeClient,
@@ -59,6 +60,7 @@ import {
   useNotificari,
   type Fila,
 } from '@/ui'
+import { PanouAcorduri } from '../consimtamant/PanouAcorduri'
 import { FormularClient } from './FormularClient'
 import { ModalaIncasare } from './ModalaIncasare'
 
@@ -71,7 +73,7 @@ import { ModalaIncasare } from './ModalaIncasare'
  * scoatere din uz este arhivarea, care păstrează istoricul.
  */
 
-type FilaFisa = 'istoric' | 'note'
+type FilaFisa = 'istoric' | 'note' | 'acorduri'
 
 export function PaginaFisaClient() {
   const { id } = useParams<{ id: string }>()
@@ -84,6 +86,8 @@ export function PaginaFisaClient() {
   const { data: client, isPending, error, refetch } = useClient(clientId)
   const istoric = useIstoricClient(clientId)
   const note = useNoteClient(clientId)
+  // Doar pentru contorul de pe filă; PDF-urile nu se aduc aici.
+  const acorduri = useConsimtaminte(clientId ? { client_id: clientId } : {}, clientId !== null)
 
   // GET /utilizatori este rută de administrator (§7). Pentru ceilalți nu o
   // pornim — ar întoarce 403 doar ca să afle un nume, iar câmpul „creată de”
@@ -189,6 +193,7 @@ export function PaginaFisaClient() {
       contor: istoric.data === undefined ? undefined : cronologie.length,
     },
     { valoare: 'note', eticheta: 'Note', contor: note.data?.length },
+    { valoare: 'acorduri', eticheta: 'Acorduri GDPR', contor: acorduri.data?.total },
   ]
 
   return (
@@ -322,6 +327,8 @@ export function PaginaFisaClient() {
           <File file={file} activa={fila} onSchimba={setFila} className="px-2" />
           {fila === 'istoric' ? (
             <PanouIstoric clientId={client.id} />
+          ) : fila === 'acorduri' ? (
+            <PanouAcorduri clientId={client.id} />
           ) : (
             <PanouNote clientId={client.id} />
           )}
