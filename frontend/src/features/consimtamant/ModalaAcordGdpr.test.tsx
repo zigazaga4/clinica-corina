@@ -159,7 +159,10 @@ describe('semnătura culeasă', () => {
     const octeti = new Uint8Array(await fisier.arrayBuffer())
     expect(String.fromCharCode(...octeti.subarray(0, 5))).toBe('%PDF-')
     expect(octeti.length).toBe(acord.marime)
-  })
+    // Răbdarea testului, nu doar a lui `waitFor`: vitest oprește proba la 5s
+    // implicit, iar tipărirea a două fonturi subsetate trece de atât când
+    // suita rulează în paralel. Fără asta, proba pică din când în când.
+  }, 30_000)
 
   it('leagă acordul de ședința la care s-a semnat', async () => {
     const programari = await api.programari.list()
@@ -176,7 +179,7 @@ describe('semnătura culeasă', () => {
     const acorduri = await api.consimtaminte.list({ programare_id: programare.id })
     expect(acorduri.total).toBe(1)
     expect(acorduri.randuri[0]?.programare_id).toBe(programare.id)
-  })
+  }, 30_000)
 
   it('respinge o zgârietură, fără să păstreze nimic', async () => {
     // O atingere din greșeală nu este o semnătură; păstrată, ar fi arătat ca

@@ -112,7 +112,13 @@ export function Modala({
       }}
       className={cn(
         'm-0 max-h-none w-full max-w-none bg-transparent p-0 text-ink backdrop:bg-black/45',
-        'h-full open:flex open:flex-col open:justify-end',
+        // `open:` DOAR pentru `display`, care chiar trebuie să depindă de starea
+        // dialogului. Nu și pentru așezare: varianta `open:` se compilează cu un
+        // `:is([open], …)` în plus, deci cântărește mai greu decât `sm:`, iar
+        // regula de calculator nu învingea niciodată — fereastra rămânea lipită
+        // de marginea de jos pe orice lățime. Media query-urile nu adaugă
+        // specificitate, așa că ordinea în fișier nu o salva.
+        'h-full open:flex open:flex-col justify-end',
         'sm:items-center sm:justify-center sm:p-6',
         'backdrop:backdrop-blur-[2px]',
       )}
