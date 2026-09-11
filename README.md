@@ -97,10 +97,10 @@ unul la altul să nu ceară altă parolă. Toate au parola `parola123`:
 ## Verificarea
 
 ```bash
-cd frontend && npm test          # 86 de teste: interfață, reguli, formulare
+cd frontend && npm test          # 160 de teste: interfață, reguli, formulare
 cd frontend && npm run typecheck
 cd backend  && npm run test:db   # „văd baza? are schema și constrângerile?”
-cd backend  && npm run test:api  # 91 de verificări, întreg contractul HTTP
+cd backend  && npm run test:api  # 106 verificări, întreg contractul HTTP
 ```
 
 Iar legătura dintre ele, cu serverul pornit:

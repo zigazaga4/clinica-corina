@@ -1,12 +1,18 @@
 import { useMemo, useState } from 'react'
-import { useClienti, useArticole, useUtilizatori } from '@/app/queries'
+import {
+  useClienti,
+  useArticole,
+  useCreeazaArticol,
+  useCreeazaClient,
+  useUtilizatori,
+} from '@/app/queries'
 import { useAutentificare } from '@/app/auth'
 import { etichetaTipArticol, tonTipArticol } from '@/domain/labels'
 import type { TipArticol, Uuid } from '@/domain/types'
 import { useIntarziat } from '@/lib/hooks'
 import { formateazaDurata } from '@/lib/dates'
 import { formateazaBani } from '@/lib/money'
-import { Badge, Combobox, type OptiuneCombobox } from '@/ui'
+import { Badge, Combobox, useNotificari, type OptiuneCombobox } from '@/ui'
 
 /*
   Selectoarele de entități.
@@ -21,7 +27,15 @@ import { Badge, Combobox, type OptiuneCombobox } from '@/ui'
 
   Dacă fiecare formular ar chema `useClienti` direct, una dintre reguli ar lipsi
   undeva, iar eroarea ar apărea abia la salvare.
+
+  Clientul și articolul se pot și CREA din selector (`cuCreare`), cu numele
+  tastat în căutare. Rândul nou intră în listă și rămâne ales, iar restul
+  datelor se completează mai târziu, acolo unde le e locul: pe fișă, în
+  nomenclator.
 */
+
+/** Durata cu care pornește un serviciu făcut din selector, până o corectează cineva. */
+const DURATA_SERVICIU_IMPLICITA = 60
 
 interface ProprietatiComune {
   /**
@@ -39,6 +53,23 @@ interface ProprietatiComune {
   className?: string
 }
 
+/**
+ * Ce s-a creat chiar acum, ținut în selector până ajunge și în lista de pe
+ * server.
+ *
+ * `onSchimba(id)` pleacă imediat după creare, dar lista reîncărcată sosește
+ * cu o cerere mai târziu; fără rândul acesta, câmpul ar fi arătat o clipă
+ * substituentul în locul numelui tocmai adăugat — și recepția ar fi apăsat
+ * din nou.
+ */
+function cuRandulNou<V extends string>(
+  lista: OptiuneCombobox<V>[],
+  nou: OptiuneCombobox<V> | null,
+): OptiuneCombobox<V>[] {
+  if (!nou || lista.some((o) => o.valoare === nou.valoare)) return lista
+  return [nou, ...lista]
+}
+
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
@@ -48,13 +79,42 @@ export function SelectorClient({
   onSchimba,
   eticheta = 'Client',
   placeholder = 'Caută după nume sau telefon…',
+  cuCreare = false,
   ...comune
 }: ProprietatiComune & {
   valoare: Uuid | null
   onSchimba: (id: Uuid | null) => void
+  /**
+   * Permite crearea unei fișe noi doar cu numele, din textul căutat.
+   *
+   * Pentru formularul de programare: omul e la telefon și trebuie pus în
+   * calendar acum. Telefonul, adresa, data nașterii se completează pe fișă.
+   */
+  cuCreare?: boolean
 }) {
   const [cautare, setCautare] = useState('')
   const cautareIntarziata = useIntarziat(cautare, 250)
+  const [creatRecent, setCreatRecent] = useState<OptiuneCombobox<Uuid> | null>(null)
+
+  const creeaza = useCreeazaClient()
+  const notificari = useNotificari()
+
+  const creeazaClient = async (nume: string) => {
+    try {
+      const client = await creeaza.mutateAsync({ nume })
+      setCreatRecent({ valoare: client.id, eticheta: client.nume })
+      onSchimba(client.id)
+      notificari.succes(
+        'Client adăugat',
+        'Deocamdată doar numele. Telefonul și restul se completează pe fișa lui.',
+      )
+    } catch (err) {
+      notificari.eroare(
+        'Clientul nu a putut fi adăugat',
+        err instanceof Error ? err.message : undefined,
+      )
+    }
+  }
 
   // Căutarea merge pe server (`q`), nu în listă: clientela unei clinici crește
   // continuu, iar aducerea tuturor fișelor ca să filtrăm local ar fi o cerere
@@ -93,8 +153,8 @@ export function SelectorClient({
       }
     }
 
-    return lista
-  }, [data, dateSelectat, valoare])
+    return cuRandulNou(lista, creatRecent)
+  }, [data, dateSelectat, valoare, creatRecent])
 
   return (
     <Combobox
@@ -104,8 +164,14 @@ export function SelectorClient({
       eticheta={eticheta}
       placeholder={placeholder}
       onCautare={setCautare}
-      incarca={isFetching}
+      incarca={isFetching || creeaza.isPending}
       textFaraRezultate="Niciun client găsit"
+      {...(cuCreare
+        ? {
+            onCreare: (nume: string) => void creeazaClient(nume),
+            etichetaCreare: (nume: string) => `Client nou: „${nume}”`,
+          }
+        : {})}
       {...comune}
     />
   )
@@ -122,6 +188,7 @@ export function SelectorArticol({
   eticheta,
   placeholder = 'Alege…',
   doarActive = true,
+  cuCreare = false,
   ...comune
 }: ProprietatiComune & {
   valoare: Uuid | null
@@ -130,28 +197,75 @@ export function SelectorArticol({
   tip?: TipArticol
   /** Articolele scoase din ofertă rămân alese pe vânzările vechi, dar nu se pot adăuga. */
   doarActive?: boolean
+  /**
+   * Permite crearea unui articol nou din textul căutat.
+   *
+   * Cere `tip` — un articol fără tip nu se poate scrie în bază — și rol de
+   * administrator, fiindcă POST /articole îi este rezervat (§7). Pentru
+   * ceilalți, rândul de creare nu apare deloc: mai bine lipsă decât un buton
+   * care răspunde 403.
+   */
+  cuCreare?: boolean
 }) {
+  const { esteAdministrator } = useAutentificare()
   const { data, isPending } = useArticole({
     ...(tip ? { tip } : {}),
     ...(doarActive ? { activ: true } : {}),
   })
+  const [creatRecent, setCreatRecent] = useState<OptiuneCombobox<Uuid> | null>(null)
+
+  const creeaza = useCreeazaArticol()
+  const notificari = useNotificari()
+  const poateCrea = cuCreare && tip !== undefined && esteAdministrator
+
+  const creeazaArticol = async (denumire: string) => {
+    if (!tip) return
+    try {
+      // Preț de listă zero și durată standard: nomenclatorul primește rândul,
+      // iar valorile adevărate se pun acolo când sunt cunoscute. Prețul unei
+      // ședințe se scrie oricum pe programare, deci recepția nu este blocată.
+      const articol = await creeaza.mutateAsync({
+        tip,
+        denumire,
+        durata_minute: tip === 'serviciu' ? DURATA_SERVICIU_IMPLICITA : null,
+        pret_lista: 0,
+      })
+      setCreatRecent({
+        valoare: articol.id,
+        eticheta: articol.denumire,
+        descriere: descriereArticol(articol.tip, articol.durata_minute, articol.pret_lista),
+      })
+      onSchimba(articol.id)
+      notificari.succes(
+        `${etichetaTipArticol[tip]} adăugat`,
+        tip === 'serviciu'
+          ? `Cu ${formateazaDurata(DURATA_SERVICIU_IMPLICITA)} și preț de listă ${formateazaBani(0)} — se corectează în Nomenclator.`
+          : `Cu preț de listă ${formateazaBani(0)} — se corectează în Nomenclator.`,
+      )
+    } catch (err) {
+      notificari.eroare(
+        'Articolul nu a putut fi adăugat',
+        err instanceof Error ? err.message : undefined,
+      )
+    }
+  }
 
   const optiuni = useMemo<OptiuneCombobox<Uuid>[]>(
     () =>
-      (data ?? []).map((a) => ({
-        valoare: a.id,
-        eticheta: a.denumire,
-        descriere:
-          a.tip === 'serviciu'
-            ? `${formateazaDurata(a.durata_minute)} · ${formateazaBani(a.pret_lista)}`
-            : formateazaBani(a.pret_lista),
-        // Insemnul de tip apare doar în listele mixte; într-una filtrată pe tip
-        // ar repeta aceeași informație pe fiecare rând.
-        insemn: tip ? undefined : (
-          <Badge ton={tonTipArticol[a.tip]}>{etichetaTipArticol[a.tip]}</Badge>
-        ),
-      })),
-    [data, tip],
+      cuRandulNou(
+        (data ?? []).map((a) => ({
+          valoare: a.id,
+          eticheta: a.denumire,
+          descriere: descriereArticol(a.tip, a.durata_minute, a.pret_lista),
+          // Insemnul de tip apare doar în listele mixte; într-una filtrată pe tip
+          // ar repeta aceeași informație pe fiecare rând.
+          insemn: tip ? undefined : (
+            <Badge ton={tonTipArticol[a.tip]}>{etichetaTipArticol[a.tip]}</Badge>
+          ),
+        })),
+        creatRecent,
+      ),
+    [data, tip, creatRecent],
   )
 
   return (
@@ -161,11 +275,25 @@ export function SelectorArticol({
       onSchimba={onSchimba}
       eticheta={eticheta ?? (tip === 'serviciu' ? 'Serviciu' : 'Serviciu sau produs')}
       placeholder={placeholder}
-      incarca={isPending}
+      incarca={isPending || creeaza.isPending}
       textFaraRezultate="Niciun articol găsit"
+      {...(poateCrea
+        ? {
+            onCreare: (denumire: string) => void creeazaArticol(denumire),
+            etichetaCreare: (denumire: string) =>
+              `${etichetaTipArticol[tip]} nou: „${denumire}”`,
+          }
+        : {})}
       {...comune}
     />
   )
+}
+
+/** Al doilea rând al unui articol în listă: durata și prețul, sau doar prețul. */
+function descriereArticol(tip: TipArticol, durata_minute: number | null, pret_lista: number) {
+  return tip === 'serviciu'
+    ? `${formateazaDurata(durata_minute)} · ${formateazaBani(pret_lista)}`
+    : formateazaBani(pret_lista)
 }
 
 // ---------------------------------------------------------------------------
@@ -182,22 +310,29 @@ export function SelectorUtilizator({
   valoare: Uuid | null
   onSchimba: (id: Uuid | null) => void
 }) {
-  const { esteAdministrator } = useAutentificare()
+  const { esteAdministrator, utilizator } = useAutentificare()
 
   // GET /utilizatori este rută de administrator (§7). Pentru ceilalți nu o
   // pornim: ar întoarce 403 și ar umple ecranul cu o eroare inutilă. Numele
   // executanților le au oricum din programările hidratate.
   const { data, isPending } = useUtilizatori({ activ: true }, esteAdministrator)
 
-  const optiuni = useMemo<OptiuneCombobox<Uuid>[]>(
-    () =>
-      (data ?? []).map((u) => ({
-        valoare: u.id,
-        eticheta: u.nume,
-        descriere: u.email,
-      })),
-    [data],
-  )
+  /*
+    Un operator obișnuit se vede pe sine, și numai pe sine.
+
+    Nu poate cere lista conturilor, dar își cunoaște propriul cont — și e
+    singurul pe care are de ce să-l aleagă: programările și le face lui, iar
+    o notiță o pune fie pe numele lui, fie pe toată clinica. Fără rândul
+    acesta, câmpul afișa substituentul chiar și când valoarea era el însuși.
+  */
+  const optiuni = useMemo<OptiuneCombobox<Uuid>[]>(() => {
+    const conturi = esteAdministrator ? (data ?? []) : utilizator ? [utilizator] : []
+    return conturi.map((u) => ({
+      valoare: u.id,
+      eticheta: u.nume,
+      descriere: u.email,
+    }))
+  }, [data, esteAdministrator, utilizator])
 
   return (
     <Combobox
@@ -205,9 +340,10 @@ export function SelectorUtilizator({
       valoare={valoare}
       onSchimba={onSchimba}
       eticheta={eticheta}
-      placeholder={esteAdministrator ? placeholder : 'Disponibil administratorului'}
-      disabled={comune.disabled || !esteAdministrator}
-      incarca={isPending}
+      placeholder={placeholder}
+      // O interogare oprită rămâne „pending” la nesfârșit; fără condiție,
+      // operatorul ar vedea un indicator de încărcare care nu se termină.
+      incarca={esteAdministrator && isPending}
       textFaraRezultate="Niciun cont activ"
       {...comune}
     />

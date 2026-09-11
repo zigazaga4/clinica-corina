@@ -268,6 +268,51 @@ CREATE TRIGGER programare_actualizat_la BEFORE UPDATE ON programare
 
 
 -- ---------------------------------------------------------------------------
+-- notita — o însemnare în calendar, care NU este o programare
+-- ---------------------------------------------------------------------------
+
+/*
+  „Irina e în concediu”, „vine furnizorul la 15:00”, „curățenie sala 2”.
+  Ocupă un loc în calendar, dar nu are client, serviciu sau preț — și nu are
+  ce căuta în `programare`, unde toate acelea sunt obligatorii. Cu o tabelă
+  separată, recepția nu mai trebuie să inventeze un client „Concediu” și un
+  serviciu de zero lei ca să-și scrie ceva în agendă.
+
+  `executant_id` NULL înseamnă „pentru toată clinica”. Cu o persoană, notița
+  se așază în coloana ei, în culoarea ei.
+
+  Notița NU intră în `programare_fara_suprapunere`: este informativă, nu
+  blochează intervalul. „Furnizor la 15:00” peste o ședință de la 15:00 nu e o
+  greșeală, e exact ce vrea recepția să vadă. Dacă vreodată o notiță trebuie
+  să și blocheze — un concediu care să refuze programările — se adaugă atunci,
+  ca regulă explicită, nu se presupune acum.
+
+  Se poate ȘTERGE, spre deosebire de programări: nu e o ședință care a avut
+  loc și nu mișcă bani. Ștergerea rămâne totuși în jurnal.
+*/
+CREATE TABLE IF NOT EXISTS notita (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  titlu          text NOT NULL CHECK (btrim(titlu) <> ''),
+  detalii        text,
+  executant_id   uuid REFERENCES utilizator(id) ON DELETE RESTRICT,
+  incepe_la      timestamptz NOT NULL,
+  se_termina_la  timestamptz NOT NULL,
+  creat_de       uuid REFERENCES utilizator(id) ON DELETE SET NULL,
+  creat_la       timestamptz NOT NULL DEFAULT now(),
+  actualizat_la  timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT notita_interval_ck CHECK (se_termina_la > incepe_la)
+);
+
+CREATE INDEX IF NOT EXISTS notita_calendar_idx
+  ON notita (incepe_la, executant_id);
+
+DROP TRIGGER IF EXISTS notita_actualizat_la ON notita;
+CREATE TRIGGER notita_actualizat_la BEFORE UPDATE ON notita
+  FOR EACH ROW EXECUTE FUNCTION set_actualizat_la();
+
+
+-- ---------------------------------------------------------------------------
 -- consimtamant — acordul GDPR semnat de client, pe tabletă
 -- ---------------------------------------------------------------------------
 
@@ -548,6 +593,18 @@ LEFT JOIN LATERAL (
   WHERE vl.programare_id = p.id
   LIMIT 1
 ) i ON true;
+
+
+-- Notița, cu numele persoanei. `executant_nume` rămâne NULL pentru notițele
+-- întregii clinici — aici NULL are înțeles, nu se înlocuiește cu „—”.
+CREATE OR REPLACE VIEW v_notita_detaliu AS
+SELECT
+  n.*,
+  e.nume AS executant_nume,
+  u.nume AS creat_de_nume
+FROM notita n
+LEFT JOIN utilizator e ON e.id = n.executant_id
+LEFT JOIN utilizator u ON u.id = n.creat_de;
 
 
 -- Linia de vânzare, cu denumirea articolului și data ședinței stinse.

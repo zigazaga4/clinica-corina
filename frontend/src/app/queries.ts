@@ -24,6 +24,8 @@ import type {
   DateClientNou,
   DateConsimtamantNou,
   DateIncasare,
+  DateNotitaModificata,
+  DateNotitaNoua,
   DateProgramareModificata,
   DateProgramareNoua,
   DateUtilizatorModificat,
@@ -34,6 +36,7 @@ import type {
   FiltruClienti,
   FiltruConsimtaminte,
   FiltruJurnal,
+  FiltruNotite,
   FiltruProgramari,
   FiltruVanzari,
   Paginat,
@@ -47,6 +50,7 @@ import type {
   IstoricIntrare,
   JurnalOperatiuneDetaliu,
   NotaClientDetaliu,
+  NotitaDetaliu,
   ProgramareDetaliu,
   StareProgramare,
   Utilizator,
@@ -80,6 +84,10 @@ export const chei = {
     una: (id: Uuid) => ['programari', 'una', id] as const,
     pret: (client_id: Uuid, articol_id: Uuid) =>
       ['programari', 'pret', client_id, articol_id] as const,
+  },
+  notite: {
+    tot: ['notite'] as const,
+    lista: (filtru: FiltruNotite) => ['notite', 'lista', filtru] as const,
   },
   vanzari: {
     tot: ['vanzari'] as const,
@@ -341,6 +349,60 @@ export function usePretSugerat(
     queryFn: () => api.programari.pretSugerat(client_id as Uuid, articol_id as Uuid),
     enabled: client_id !== null && articol_id !== null,
     staleTime: PROSPETIME_NOMENCLATOR,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Notițe în calendar
+// ---------------------------------------------------------------------------
+
+export function useNotite(
+  filtru: FiltruNotite = {},
+  activa = true,
+): UseQueryResult<NotitaDetaliu[]> {
+  return useQuery({
+    queryKey: chei.notite.lista(filtru),
+    queryFn: () => api.notite.list(filtru),
+    enabled: activa,
+    placeholderData: (anterioare) => anterioare,
+  })
+}
+
+/**
+ * O notiță nu atinge clienți, încasări sau prețuri — invalidează doar
+ * calendarul ei și jurnalul. Este cea mai ieftină mutație din aplicație.
+ */
+function invalideazaNotite(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: chei.notite.tot })
+  void qc.invalidateQueries({ queryKey: chei.jurnal.tot })
+}
+
+export function useCreeazaNotita(): UseMutationResult<NotitaDetaliu, Error, DateNotitaNoua> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (date: DateNotitaNoua) => api.notite.create(date),
+    onSuccess: () => invalideazaNotite(qc),
+  })
+}
+
+export function useModificaNotita(): UseMutationResult<
+  NotitaDetaliu,
+  Error,
+  { id: Uuid; date: DateNotitaModificata }
+> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, date }: { id: Uuid; date: DateNotitaModificata }) =>
+      api.notite.update(id, date),
+    onSuccess: () => invalideazaNotite(qc),
+  })
+}
+
+export function useStergeNotita(): UseMutationResult<void, Error, Uuid> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: Uuid) => api.notite.remove(id),
+    onSuccess: () => invalideazaNotite(qc),
   })
 }
 

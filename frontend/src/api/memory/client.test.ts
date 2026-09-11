@@ -195,6 +195,149 @@ describe('programare_fara_suprapunere (EXCLUDE USING gist)', () => {
   })
 })
 
+describe('notițe în calendar (tabela notita)', () => {
+  let eu: Uuid
+  let alta: Uuid
+
+  beforeEach(async () => {
+    eu = (await autentificaCa(ADMIN)).id
+    alta = gaseste(magazin.utilizator, (u) => u.activ && u.id !== eu, 'un al doilea cont activ').id
+  })
+
+  /** Un interval departe de datele demo, ca testele să nu se vadă între ele. */
+  const interval = (oraInceput: number, oraSfarsit: number, zileInPlus = 0) => {
+    const zi = new Date()
+    zi.setFullYear(zi.getFullYear() + 2)
+    zi.setDate(zi.getDate() + zileInPlus)
+    const inceput = new Date(zi)
+    inceput.setHours(oraInceput, 0, 0, 0)
+    const sfarsit = new Date(zi)
+    sfarsit.setHours(oraSfarsit, 0, 0, 0)
+    return { incepe_la: inceput.toISOString(), se_termina_la: sfarsit.toISOString() }
+  }
+
+  it('fără persoană înseamnă toată clinica: executant NULL, nume NULL', async () => {
+    const notita = await api.notite.create({ titlu: 'Vine furnizorul', ...interval(15, 16) })
+    expect(notita.executant_id).toBeNull()
+    expect(notita.executant_nume).toBeNull()
+    expect(notita.detalii).toBeNull()
+  })
+
+  it('cu persoană, vine hidratată cu numele ei', async () => {
+    const notita = await api.notite.create({
+      titlu: 'Concediu',
+      executant_id: alta,
+      ...interval(9, 19),
+    })
+    expect(notita.executant_nume).toBe(magazin.utilizator.get(alta)?.nume)
+  })
+
+  it('NU blochează intervalul — o notiță stă peste o programare', async () => {
+    /*
+      Aici se deosebește de programare. „Pauză” peste ședința de la 10 nu e o
+      greșeală, e informația pe care recepția vrea să o vadă acolo. Constrângerea
+      de suprapunere nu se aplică notițelor, în niciun sens.
+    */
+    const client = gaseste(magazin.client, (c) => c.arhivat_la === null, 'clienți activi')
+    const serviciu = gaseste(magazin.articol, (a) => a.tip === 'serviciu' && a.activ, 'servicii')
+    const cand = interval(10, 11, 1)
+    await api.programari.create({
+      client_id: client.id,
+      articol_id: serviciu.id,
+      executant_id: eu,
+      ...cand,
+    })
+
+    await expect(
+      api.notite.create({ titlu: 'Pauză', executant_id: eu, ...cand }),
+    ).resolves.toBeTruthy()
+    // Și invers: programarea nu e blocată de o notiță existentă.
+    await api.notite.create({ titlu: 'Curs', executant_id: eu, ...interval(14, 15, 1) })
+    await expect(
+      api.programari.create({
+        client_id: client.id,
+        articol_id: serviciu.id,
+        executant_id: eu,
+        ...interval(14, 15, 1),
+      }),
+    ).resolves.toBeTruthy()
+  })
+
+  it('filtrul pe persoană aduce ALE EI și ALE CLINICII, nu ale altcuiva', async () => {
+    const cand = interval(11, 12, 2)
+    const aMea = await api.notite.create({ titlu: 'A mea', executant_id: eu, ...cand })
+    const aClinicii = await api.notite.create({ titlu: 'A clinicii', ...cand })
+    const aAlteia = await api.notite.create({ titlu: 'A alteia', executant_id: alta, ...cand })
+
+    const ids = (
+      await api.notite.list({ de_la: cand.incepe_la, pana_la: cand.se_termina_la, executant_id: eu })
+    ).map((n) => n.id)
+    expect(ids).toContain(aMea.id)
+    expect(ids).toContain(aClinicii.id)
+    expect(ids).not.toContain(aAlteia.id)
+  })
+
+  it('intervalul se citește ca suprapunere, nu ca „începe între”', async () => {
+    const notita = await api.notite.create({ titlu: 'Lungă', ...interval(8, 12, 3) })
+    // Fereastra 10–11 nu conține începutul, dar notița o traversează.
+    const fereastra = interval(10, 11, 3)
+    const ids = (
+      await api.notite.list({ de_la: fereastra.incepe_la, pana_la: fereastra.se_termina_la })
+    ).map((n) => n.id)
+    expect(ids).toContain(notita.id)
+  })
+
+  it('cere titlu (NOT NULL + CHECK btrim <> "")', async () => {
+    const eroare = await api.notite.create({ titlu: '   ', ...interval(9, 10) }).catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.camp).toBe('titlu')
+  })
+
+  it('cere ca sfârșitul să fie după început (notita_interval_ck)', async () => {
+    const eroare = await api.notite.create({ titlu: 'Invers', ...interval(11, 10) }).catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.camp).toBe('se_termina_la')
+  })
+
+  it('refuză un cont dezactivat ca persoană', async () => {
+    const inactiv = gaseste(magazin.utilizator, (u) => !u.activ, 'un cont dezactivat')
+    const eroare = await api.notite
+      .create({ titlu: 'X', executant_id: inactiv.id, ...interval(9, 10) })
+      .catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.camp).toBe('executant_id')
+  })
+
+  it('executant_id: null la modificare mută notița pe toată clinica', async () => {
+    const notita = await api.notite.create({ titlu: 'Curs', executant_id: eu, ...interval(9, 10, 4) })
+    const mutata = await api.notite.update(notita.id, { executant_id: null })
+    expect(mutata.executant_id).toBeNull()
+    expect(mutata.executant_nume).toBeNull()
+    // Iar lipsa câmpului o lasă cum e.
+    const redenumita = await api.notite.update(notita.id, { titlu: 'Curs de perfecționare' })
+    expect(redenumita.executant_id).toBeNull()
+    expect(redenumita.titlu).toBe('Curs de perfecționare')
+  })
+
+  it('se poate șterge, și ștergerea rămâne în jurnal', async () => {
+    const notita = await api.notite.create({ titlu: 'De șters', ...interval(9, 10, 5) })
+    await api.notite.remove(notita.id)
+
+    const eroare = await api.notite.get(notita.id).catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.cod).toBe('negasit')
+
+    const urme = magazin.jurnal_operatiuni.filter(
+      (j) => j.entitate === 'notita' && j.entitate_id === notita.id,
+    )
+    expect(urme.map((j) => j.actiune)).toEqual(['creare', 'stergere'])
+    expect(urme[1]?.date_vechi).toMatchObject({ titlu: 'De șters' })
+  })
+
+  it('operatorul obișnuit poate crea, modifica și șterge — nu e rută de administrator', async () => {
+    await autentificaCa(OPERATOR)
+    const notita = await api.notite.create({ titlu: 'A recepției', ...interval(9, 10, 6) })
+    await expect(api.notite.update(notita.id, { titlu: 'Tot a recepției' })).resolves.toBeTruthy()
+    await expect(api.notite.remove(notita.id)).resolves.toBeUndefined()
+  })
+})
+
 describe('articol_durata_ck', () => {
   beforeEach(async () => {
     await autentificaCa(ADMIN)

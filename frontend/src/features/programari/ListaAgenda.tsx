@@ -1,9 +1,12 @@
 import { CalendarOff } from 'lucide-react'
-import type { ProgramareDetaliu } from '@/domain/types'
+import type { NotitaDetaliu, ProgramareDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
-import { esteInZiua, formateazaZiLunga, isToday } from '@/lib/dates'
+import { formateazaZiLunga, isToday } from '@/lib/dates'
+import { plural } from '@/lib/text'
 import { StareGoala } from '@/ui'
+import { RandNotita } from './CardNotita'
 import { RandProgramare } from './CardProgramare'
+import { dinZiua, elementeCalendar } from './elemente'
 
 /**
  * Agenda, ca listă cronologică.
@@ -19,24 +22,32 @@ import { RandProgramare } from './CardProgramare'
 export function ListaAgenda({
   zile,
   programari,
+  notite = [],
   onAlegeProgramare,
+  onAlegeNotita,
   cuExecutant = true,
   ascundeZileleGoale = false,
 }: {
   zile: Date[]
   programari: ProgramareDetaliu[]
+  notite?: NotitaDetaliu[]
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
+  onAlegeNotita?: (notita: NotitaDetaliu) => void
   cuExecutant?: boolean
   /** În vederea pe lună, treizeci de zile goale ar îneca cele câteva pline. */
   ascundeZileleGoale?: boolean
 }) {
   const grupuri = zile
-    .map((zi) => ({
-      zi,
-      aleZilei: programari
-        .filter((p) => esteInZiua(p.incepe_la, zi))
-        .sort((a, b) => a.incepe_la.localeCompare(b.incepe_la)),
-    }))
+    .map((zi) => {
+      const programariZilei = dinZiua(programari, zi)
+      const notiteZilei = dinZiua(notite, zi)
+      return {
+        zi,
+        programari: programariZilei.length,
+        notite: notiteZilei.length,
+        aleZilei: elementeCalendar(programariZilei, notiteZilei),
+      }
+    })
     .filter((grup) => !ascundeZileleGoale || grup.aleZilei.length > 0)
 
   if (grupuri.every((grup) => grup.aleZilei.length === 0)) {
@@ -51,7 +62,7 @@ export function ListaAgenda({
 
   return (
     <div className="divide-y divide-line">
-      {grupuri.map(({ zi, aleZilei }) => (
+      {grupuri.map(({ zi, aleZilei, programari: nrProgramari, notite: nrNotite }) => (
         <section key={zi.toISOString()}>
           <h3
             className={cn(
@@ -62,9 +73,7 @@ export function ListaAgenda({
           >
             <span className="capitalize">{formateazaZiLunga(zi)}</span>
             <span className="text-[12px] font-normal text-ink-faint">
-              {aleZilei.length === 0
-                ? 'liber'
-                : `${aleZilei.length} ${aleZilei.length === 1 ? 'programare' : 'programări'}`}
+              {rezumatZilei(nrProgramari, nrNotite)}
             </span>
           </h3>
 
@@ -72,18 +81,34 @@ export function ListaAgenda({
             <p className="px-4 py-3 text-[13px] text-ink-faint">Nicio programare.</p>
           ) : (
             <div className="divide-y divide-line/60">
-              {aleZilei.map((programare) => (
-                <RandProgramare
-                  key={programare.id}
-                  programare={programare}
-                  onClick={onAlegeProgramare}
-                  cuExecutant={cuExecutant}
-                />
-              ))}
+              {aleZilei.map((element) =>
+                element.fel === 'programare' ? (
+                  <RandProgramare
+                    key={element.programare.id}
+                    programare={element.programare}
+                    onClick={onAlegeProgramare}
+                    cuExecutant={cuExecutant}
+                  />
+                ) : (
+                  <RandNotita
+                    key={element.notita.id}
+                    notita={element.notita}
+                    onClick={onAlegeNotita ?? (() => undefined)}
+                  />
+                ),
+              )}
             </div>
           )}
         </section>
       ))}
     </div>
   )
+}
+
+/** „3 programări · 1 notiță”, „liber”, „2 notițe”. */
+function rezumatZilei(programari: number, notite: number): string {
+  const parti: string[] = []
+  if (programari > 0) parti.push(`${programari} ${plural(programari, 'programare', 'programări')}`)
+  if (notite > 0) parti.push(`${notite} ${plural(notite, 'notiță', 'notițe')}`)
+  return parti.length ? parti.join(' · ') : 'liber'
 }

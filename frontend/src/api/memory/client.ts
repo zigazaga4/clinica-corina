@@ -18,6 +18,8 @@ import type {
   DateConsimtamantNou,
   DateIncasare,
   DateLinieVanzare,
+  DateNotitaModificata,
+  DateNotitaNoua,
   DatePunctLucruModificat,
   DatePunctLucruNou,
   DateProgramareModificata,
@@ -30,6 +32,7 @@ import type {
   FiltruClienti,
   FiltruConsimtaminte,
   FiltruJurnal,
+  FiltruNotite,
   FiltruProgramari,
   FiltruVanzari,
   Paginat,
@@ -52,6 +55,8 @@ import type {
   JurnalOperatiuneDetaliu,
   NotaClient,
   NotaClientDetaliu,
+  Notita,
+  NotitaDetaliu,
   Programare,
   ProgramareDetaliu,
   PunctLucru,
@@ -88,6 +93,7 @@ import {
   hidrateazaConsimtamant,
   hidrateazaJurnal,
   hidrateazaNota,
+  hidrateazaNotita,
   hidrateazaProgramare,
   hidrateazaVanzare,
   incasareaProgramarii,
@@ -888,6 +894,124 @@ export function creeazaApiInMemorie(): ApiClient {
     },
 
     // =======================================================================
+    // Notițe în calendar
+    // =======================================================================
+    notite: {
+      /** GET /notite — orice rol */
+      async list(filtru: FiltruNotite = {}): Promise<NotitaDetaliu[]> {
+        await intarziere()
+        cereUtilizator()
+
+        const randuri: NotitaDetaliu[] = []
+        for (const n of magazin.notita.values()) {
+          // Suprapunere cu intervalul, ca la programări.
+          if (filtru.de_la && n.se_termina_la <= filtru.de_la) continue
+          if (filtru.pana_la && n.incepe_la >= filtru.pana_la) continue
+          // Filtrul pe persoană aduce și notițele întregii clinici — o privesc.
+          if (filtru.executant_id && n.executant_id !== null && n.executant_id !== filtru.executant_id) {
+            continue
+          }
+          randuri.push(hidrateazaNotita(n))
+        }
+
+        randuri.sort((a, b) => a.incepe_la.localeCompare(b.incepe_la))
+        return randuri
+      },
+
+      /** GET /notite/:id — orice rol */
+      async get(id): Promise<NotitaDetaliu> {
+        await intarziere()
+        cereUtilizator()
+        return hidrateazaNotita(ceruta(magazin.notita, id, 'Notița'))
+      },
+
+      /** POST /notite — orice rol */
+      async create(date: DateNotitaNoua): Promise<NotitaDetaliu> {
+        await intarziere()
+        const autor = cereUtilizator()
+
+        const titlu = ceruteText(date.titlu, 'titlu', 'Titlul')
+        const executant_id = executantOptional(date.executant_id)
+        verificaIntervalProgramare(date.incepe_la, date.se_termina_la)
+        // FĂRĂ verificaSuprapunere: notița e informativă, nu blochează locul.
+
+        const rand: Notita = {
+          id: uuid(),
+          titlu,
+          detalii: textOptional(date.detalii),
+          executant_id,
+          incepe_la: date.incepe_la,
+          se_termina_la: date.se_termina_la,
+          creat_de: autor.id,
+          creat_la: acum(),
+          actualizat_la: acum(),
+        }
+        magazin.notita.set(rand.id, rand)
+
+        scrieJurnal({
+          utilizator_id: autor.id,
+          actiune: 'creare',
+          entitate: 'notita',
+          entitate_id: rand.id,
+          date_noi: instantaneu(rand as unknown as Record<string, unknown>),
+        })
+
+        return hidrateazaNotita(rand)
+      },
+
+      /** PATCH /notite/:id — orice rol */
+      async update(id, date: DateNotitaModificata): Promise<NotitaDetaliu> {
+        await intarziere()
+        const autor = cereUtilizator()
+        const rand = ceruta(magazin.notita, id, 'Notița')
+        const inainte = { ...rand }
+
+        if (date.titlu !== undefined) rand.titlu = ceruteText(date.titlu, 'titlu', 'Titlul')
+        if (date.detalii !== undefined) rand.detalii = textOptional(date.detalii)
+        // `null` explicit mută notița pe toată clinica; lipsa o lasă cum e.
+        if (date.executant_id !== undefined) rand.executant_id = executantOptional(date.executant_id)
+        if (date.incepe_la !== undefined) rand.incepe_la = date.incepe_la
+        if (date.se_termina_la !== undefined) rand.se_termina_la = date.se_termina_la
+
+        verificaIntervalProgramare(rand.incepe_la, rand.se_termina_la)
+        atinge(rand)
+
+        const dif = diferenta(
+          inainte as unknown as Record<string, unknown>,
+          rand as unknown as Record<string, unknown>,
+        )
+        if (dif) {
+          scrieJurnal({
+            utilizator_id: autor.id,
+            actiune: 'modificare',
+            entitate: 'notita',
+            entitate_id: rand.id,
+            ...dif,
+          })
+        }
+
+        return hidrateazaNotita(rand)
+      },
+
+      /** DELETE /notite/:id — orice rol */
+      async remove(id): Promise<void> {
+        await intarziere()
+        const autor = cereUtilizator()
+        const rand = ceruta(magazin.notita, id, 'Notița')
+
+        scrieJurnal({
+          utilizator_id: autor.id,
+          actiune: 'stergere',
+          entitate: 'notita',
+          entitate_id: id,
+          date_vechi: instantaneu(rand as unknown as Record<string, unknown>),
+        })
+
+        magazin.notita.delete(id)
+      },
+    },
+
+    // =======================================================================
     // Vânzări
     // =======================================================================
     vanzari: {
@@ -1478,6 +1602,22 @@ function punctImplicit(): Uuid {
   }
   if (rezerva === null) throw eroareValidare('Nu există niciun punct de lucru.', 'punct_lucru_id')
   return rezerva
+}
+
+/**
+ * Persoana unei notițe, dacă are una.
+ *
+ * `null` și lipsa înseamnă același lucru: „toată clinica”. Cu o persoană,
+ * contul trebuie să existe și să fie activ — aceeași regulă ca la executantul
+ * unei programări.
+ */
+function executantOptional(executant_id: Uuid | null | undefined): Uuid | null {
+  if (!executant_id) return null
+  const executant = ceruta(magazin.utilizator, executant_id, 'Executantul')
+  if (!executant.activ) {
+    throw eroareValidare('Contul selectat ca executant este dezactivat.', 'executant_id')
+  }
+  return executant.id
 }
 
 /**

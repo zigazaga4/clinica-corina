@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
-import { CalendarPlus, ChevronLeft, ChevronRight } from 'lucide-react'
-import { useProgramari, useUtilizatori } from '@/app/queries'
+import { CalendarPlus, ChevronLeft, ChevronRight, StickyNote } from 'lucide-react'
+import { useNotite, useProgramari, useUtilizatori } from '@/app/queries'
 import { useAutentificare } from '@/app/auth'
 import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
 import { SelectorClient, SelectorUtilizator } from '@/components/selectoare'
 import { etichetaStareProgramare } from '@/domain/labels'
 import {
   STARE_PROGRAMARE,
+  type NotitaDetaliu,
   type ProgramareDetaliu,
   type StareProgramare,
   type Uuid,
@@ -33,7 +34,10 @@ import {
 } from '@/ui'
 import { ButonCalendar, PanouCalendar } from './CalendarMic'
 import { FurnizorCulori, LegendaCulori } from './culoriExecutanti'
+import { DetaliuNotita } from './DetaliuNotita'
 import { DetaliuProgramare } from './DetaliuProgramare'
+import { dinZiua } from './elemente'
+import { FormularNotita } from './FormularNotita'
 import { FormularProgramare } from './FormularProgramare'
 import { GrilaLuna } from './GrilaLuna'
 import { GrilaOre, type ColoanaGrila } from './GrilaOre'
@@ -65,6 +69,10 @@ export function PaginaProgramari() {
   const [deModificat, setDeModificat] = useState<ProgramareDetaliu | null>(null)
   const [deVazut, setDeVazut] = useState<ProgramareDetaliu | null>(null)
 
+  const [formularNotitaDeschis, setFormularNotitaDeschis] = useState(false)
+  const [notitaDeModificat, setNotitaDeModificat] = useState<NotitaDetaliu | null>(null)
+  const [notitaDeVazuta, setNotitaDeVazuta] = useState<NotitaDetaliu | null>(null)
+
   const interval = useMemo(() => intervalPentruVedere(ancora, vedere), [ancora, vedere])
 
   const stariVizibile = STARE_PROGRAMARE.filter((s) => !stariAscunse.has(s))
@@ -77,7 +85,24 @@ export function PaginaProgramari() {
     stare: stariVizibile,
   })
 
+  /*
+    Notițele vin pe același interval, în paralel cu programările.
+
+    Filtrul de persoană le aduce pe ale ei ȘI pe cele ale clinicii — serverul
+    știe regula. Filtrul de client le oprește de tot: „când mai vine doamna X?”
+    nu are nevoie de „vine furnizorul”, iar starea programărilor nu le privește.
+  */
+  const { data: dateNotite } = useNotite(
+    {
+      de_la: laTimestamptz(interval.inceput),
+      pana_la: laTimestamptz(interval.sfarsit),
+      ...(executantId ? { executant_id: executantId } : {}),
+    },
+    clientId === null,
+  )
+
   const programari = data ?? []
+  const notite = clientId === null ? (dateNotite ?? []) : []
 
   // Coloanele pe persoană din vederea pe zi au nevoie de lista conturilor, care
   // este rută de administrator. Pentru ceilalți, ziua se afișează ca agendă —
@@ -87,6 +112,11 @@ export function PaginaProgramari() {
   const deschideFormular = (programare?: ProgramareDetaliu) => {
     setDeModificat(programare ?? null)
     setFormularDeschis(true)
+  }
+
+  const deschideFormularNotita = (notita?: NotitaDetaliu) => {
+    setNotitaDeModificat(notita ?? null)
+    setFormularNotitaDeschis(true)
   }
 
   const comutaStare = (stare: StareProgramare) => {
@@ -107,11 +137,21 @@ export function PaginaProgramari() {
         titlu="Programări"
         descriere={eticheteInterval(interval.zile, vedere, ancora)}
         actiuni={
-          <Buton varianta="primar" onClick={() => deschideFormular()}>
-            <CalendarPlus className="size-4" />
-            <span className="hidden sm:inline">Programare nouă</span>
-            <span className="sm:hidden">Adaugă</span>
-          </Buton>
+          <>
+            {/*
+              Notița stă lângă programare, dar în plan secund: se face de câteva
+              ori pe săptămână, programarea de câteva ori pe oră.
+            */}
+            <Buton onClick={() => deschideFormularNotita()} aria-label="Notiță nouă">
+              <StickyNote className="size-4" />
+              <span className="hidden sm:inline">Notiță</span>
+            </Buton>
+            <Buton varianta="primar" onClick={() => deschideFormular()}>
+              <CalendarPlus className="size-4" />
+              <span className="hidden sm:inline">Programare nouă</span>
+              <span className="sm:hidden">Adaugă</span>
+            </Buton>
+          </>
         }
       />
 
@@ -236,9 +276,11 @@ export function PaginaProgramari() {
             interval={interval}
             ancora={ancora}
             programari={programari}
+            notite={notite}
             executantId={executantId}
             utilizatori={utilizatori ?? []}
             onAlegeProgramare={setDeVazut}
+            onAlegeNotita={setNotitaDeVazuta}
             onAlegeZi={(zi) => {
               setAncora(zi)
               setVedere('zi')
@@ -261,6 +303,21 @@ export function PaginaProgramari() {
           deschideFormular(programare)
         }}
       />
+
+      <FormularNotita
+        deschisa={formularNotitaDeschis}
+        onInchide={() => setFormularNotitaDeschis(false)}
+        notita={notitaDeModificat}
+      />
+
+      <DetaliuNotita
+        notita={notitaDeVazuta}
+        onInchide={() => setNotitaDeVazuta(null)}
+        onModifica={(notita) => {
+          setNotitaDeVazuta(null)
+          deschideFormularNotita(notita)
+        }}
+      />
     </Pagina>
     </FurnizorCulori>
   )
@@ -276,9 +333,11 @@ function Continut({
   interval,
   ancora,
   programari,
+  notite,
   executantId,
   utilizatori,
   onAlegeProgramare,
+  onAlegeNotita,
   onAlegeZi,
 }: {
   vedere: VedereCalendar
@@ -286,9 +345,11 @@ function Continut({
   interval: { inceput: Date; sfarsit: Date; zile: Date[] }
   ancora: Date
   programari: ProgramareDetaliu[]
+  notite: NotitaDetaliu[]
   executantId: Uuid | null
   utilizatori: { id: Uuid; nume: string; rol: string }[]
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
+  onAlegeNotita: (notita: NotitaDetaliu) => void
   onAlegeZi: (zi: Date) => void
 }) {
   // Pe telefon, orice vedere devine listă.
@@ -298,7 +359,9 @@ function Continut({
         <ListaAgenda
           zile={interval.zile}
           programari={programari}
+          notite={notite}
           onAlegeProgramare={onAlegeProgramare}
+          onAlegeNotita={onAlegeNotita}
           cuExecutant={executantId === null}
           ascundeZileleGoale={vedere === 'luna'}
         />
@@ -313,8 +376,10 @@ function Continut({
           zile={interval.zile}
           luna={ancora.getMonth()}
           programari={programari}
+          notite={notite}
           onAlegeZi={onAlegeZi}
           onAlegeProgramare={onAlegeProgramare}
+          onAlegeNotita={onAlegeNotita}
         />
       </div>
     )
@@ -326,9 +391,16 @@ function Continut({
       eticheta: capitalizeaza(formateazaZiLunga(zi).split(',')[0] ?? ''),
       subeticheta: formateazaZiScurta(zi),
       zi,
-      programari: programari.filter((p) => aceeasiZi(p.incepe_la, zi)),
+      programari: dinZiua(programari, zi),
+      notite: dinZiua(notite, zi),
     }))
-    return <GrilaOre coloane={coloane} onAlegeProgramare={onAlegeProgramare} />
+    return (
+      <GrilaOre
+        coloane={coloane}
+        onAlegeProgramare={onAlegeProgramare}
+        onAlegeNotita={onAlegeNotita}
+      />
+    )
   }
 
   // Vederea pe zi: o coloană per persoană — agenda întregii clinici. Filtrată
@@ -336,7 +408,9 @@ function Continut({
   const zi = interval.zile[0]
   if (!zi) return null
 
-  const aleZilei = programari.filter((p) => aceeasiZi(p.incepe_la, zi))
+  const aleZilei = dinZiua(programari, zi)
+  const notiteZilei = dinZiua(notite, zi)
+  const notiteClinicii = notiteZilei.filter((n) => n.executant_id === null)
 
   // Fără lista conturilor (operator obișnuit), coloanele se deduc din
   // programările zilei — suficient pentru a vedea cine lucrează.
@@ -352,7 +426,30 @@ function Continut({
     subeticheta: `${aleZilei.filter((p) => p.executant_id === persoana.id).length} programări`,
     zi,
     programari: aleZilei.filter((p) => p.executant_id === persoana.id),
+    // Filtrată pe o persoană, coloana ei primește și notițele clinicii — nu
+    // mai există altă coloană care să le arate.
+    notite: notiteZilei.filter(
+      (n) => n.executant_id === persoana.id || (executantId !== null && n.executant_id === null),
+    ),
   }))
+
+  /*
+    Notițele întregii clinici au coloana lor, prima, și numai când există.
+
+    Puse în fiecare coloană de persoană, „vine furnizorul la 15” ar fi apărut
+    de șase ori pe același rând. Într-o coloană permanentă, ar fi ocupat loc în
+    zilele în care nu e nimic de spus — adică în cele mai multe.
+  */
+  if (executantId === null && notiteClinicii.length > 0) {
+    coloane.unshift({
+      id: 'clinica',
+      eticheta: 'Toată clinica',
+      subeticheta: `${notiteClinicii.length} ${notiteClinicii.length === 1 ? 'notiță' : 'notițe'}`,
+      zi,
+      programari: [],
+      notite: notiteClinicii,
+    })
+  }
 
   if (coloane.length === 0) {
     return (
@@ -360,27 +457,26 @@ function Continut({
         <ListaAgenda
           zile={[zi]}
           programari={aleZilei}
+          notite={notiteZilei}
           onAlegeProgramare={onAlegeProgramare}
+          onAlegeNotita={onAlegeNotita}
         />
       </div>
     )
   }
 
-  return <GrilaOre coloane={coloane} onAlegeProgramare={onAlegeProgramare} />
+  return (
+    <GrilaOre
+      coloane={coloane}
+      onAlegeProgramare={onAlegeProgramare}
+      onAlegeNotita={onAlegeNotita}
+    />
+  )
 }
 
 // ---------------------------------------------------------------------------
 // Ajutătoare
 // ---------------------------------------------------------------------------
-
-function aceeasiZi(momentIso: string, zi: Date): boolean {
-  const d = new Date(momentIso)
-  return (
-    d.getFullYear() === zi.getFullYear() &&
-    d.getMonth() === zi.getMonth() &&
-    d.getDate() === zi.getDate()
-  )
-}
 
 function capitalizeaza(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)

@@ -184,6 +184,15 @@ async function ruleaza(): Promise<void> {
   verifica('client fără nume -> 400 pe „nume”',
     faraNume.status === 400 && faraNume.corp?.camp === 'nume', JSON.stringify(faraNume.corp))
 
+  // Fișa rapidă, din formularul de programare: numai numele, restul mai târziu.
+  const doarNume = await cere('POST', '/clienti', {
+    token: operator, corp: { nume: `Client Rapid ${Date.now()}` },
+  })
+  verifica('client doar cu nume -> 201, restul câmpurilor NULL',
+    doarNume.status === 201 && doarNume.corp?.telefon === null && doarNume.corp?.email === null
+      && doarNume.corp?.data_nasterii === null,
+    JSON.stringify(doarNume.corp))
+
   // -------------------------------------------------------------------------
   console.log('\nProgramări')
 
@@ -265,6 +274,109 @@ async function ruleaza(): Promise<void> {
   verifica('ședința onorată apare ca restanță pe fișă',
     fisa.corp?.de_incasat === serviciu.pret_lista,
     `de_incasat = ${JSON.stringify(fisa.corp?.de_incasat)}`)
+
+  // -------------------------------------------------------------------------
+  console.log('\nNotițe în calendar')
+
+  const candNotita = interval(10, 12, 60)
+
+  const generala = await cere('POST', '/notite', {
+    token: operator,
+    corp: { titlu: 'Vine furnizorul', detalii: 'Comanda de creme', ...candNotita },
+  })
+  verifica('POST /notite fără persoană -> 201, executant NULL (toată clinica)',
+    generala.status === 201 && generala.corp?.executant_id === null
+      && generala.corp?.executant_nume === null && generala.corp?.titlu === 'Vine furnizorul',
+    JSON.stringify(generala.corp))
+  verifica('notița are toate coloanele din tip',
+    ['id', 'titlu', 'detalii', 'executant_id', 'incepe_la', 'se_termina_la', 'creat_de',
+      'creat_la', 'actualizat_la', 'executant_nume', 'creat_de_nume']
+      .every((c) => c in (generala.corp ?? {})),
+    JSON.stringify(Object.keys(generala.corp ?? {})))
+
+  const aPersoanei = await cere('POST', '/notite', {
+    token: admin,
+    corp: { titlu: 'Concediu', executant_id: executant.id, ...candNotita },
+  })
+  verifica('POST /notite cu persoană -> 201, cu numele ei',
+    aPersoanei.status === 201 && aPersoanei.corp?.executant_id === executant.id
+      && aPersoanei.corp?.executant_nume === executant.nume,
+    JSON.stringify(aPersoanei.corp))
+
+  // O notiță PESTE programarea din același interval: nu blochează, nu e 409.
+  const pesteProgramare = await cere('POST', '/notite', {
+    token: admin,
+    corp: { titlu: 'Pauză', executant_id: executant.id, ...interval(30, 9) },
+  })
+  verifica('notița NU blochează intervalul — peste o programare tot 201',
+    pesteProgramare.status === 201, `a venit ${pesteProgramare.status}`)
+
+  const alta = executanti.corp.find((u: any) => u.id !== executant.id && u.activ)
+  const aAlteia = await cere('POST', '/notite', {
+    token: admin,
+    corp: { titlu: 'Curs', executant_id: alta?.id, ...candNotita },
+  })
+  verifica('notiță pentru altă persoană -> 201', aAlteia.status === 201)
+
+  const toateZilei = await cere(
+    'GET', `/notite?de_la=${encodeURIComponent(candNotita.incepe_la)}&pana_la=${encodeURIComponent(candNotita.se_termina_la)}`,
+    { token: operator },
+  )
+  const ids = (toateZilei.corp ?? []).map((n: any) => n.id)
+  verifica('GET /notite pe interval -> le aduce pe toate trei',
+    toateZilei.status === 200 && [generala, aPersoanei, aAlteia].every((n) => ids.includes(n.corp?.id)),
+    JSON.stringify(ids.length))
+
+  const alePersoanei = await cere(
+    'GET', `/notite?executant_id=${executant.id}&de_la=${encodeURIComponent(candNotita.incepe_la)}&pana_la=${encodeURIComponent(candNotita.se_termina_la)}`,
+    { token: operator },
+  )
+  const idsPersoana = (alePersoanei.corp ?? []).map((n: any) => n.id)
+  verifica('filtrul pe persoană aduce ALE EI + ale clinicii, nu ale altcuiva',
+    idsPersoana.includes(aPersoanei.corp?.id) && idsPersoana.includes(generala.corp?.id)
+      && !idsPersoana.includes(aAlteia.corp?.id),
+    JSON.stringify(idsPersoana))
+
+  const faraTitlu = await cere('POST', '/notite', { token: admin, corp: { titlu: '  ', ...candNotita } })
+  verifica('notiță fără titlu -> 400 pe „titlu”',
+    faraTitlu.status === 400 && faraTitlu.corp?.camp === 'titlu', JSON.stringify(faraTitlu.corp))
+
+  const intervalInvers = await cere('POST', '/notite', {
+    token: admin,
+    corp: { titlu: 'Invers', incepe_la: candNotita.se_termina_la, se_termina_la: candNotita.incepe_la },
+  })
+  verifica('sfârșit înainte de început -> 400 pe „se_termina_la”',
+    intervalInvers.status === 400 && intervalInvers.corp?.camp === 'se_termina_la',
+    JSON.stringify(intervalInvers.corp))
+
+  const redenumita = await cere('PATCH', `/notite/${generala.corp?.id}`, {
+    token: operator, corp: { titlu: 'Vine furnizorul Dermalogica' },
+  })
+  verifica('PATCH /notite/:id -> titlu nou, restul neatins',
+    redenumita.status === 200 && redenumita.corp?.titlu === 'Vine furnizorul Dermalogica'
+      && redenumita.corp?.detalii === 'Comanda de creme',
+    JSON.stringify(redenumita.corp))
+
+  const mutataPeClinica = await cere('PATCH', `/notite/${aPersoanei.corp?.id}`, {
+    token: admin, corp: { executant_id: null },
+  })
+  verifica('PATCH executant_id: null -> notița trece pe toată clinica',
+    mutataPeClinica.status === 200 && mutataPeClinica.corp?.executant_id === null
+      && mutataPeClinica.corp?.executant_nume === null,
+    JSON.stringify(mutataPeClinica.corp))
+
+  const stearsa = await cere('DELETE', `/notite/${aAlteia.corp?.id}`, { token: operator })
+  verifica('DELETE /notite/:id -> 204 (orice rol)', stearsa.status === 204, `a venit ${stearsa.status}`)
+
+  const dupaStergere = await cere('GET', `/notite/${aAlteia.corp?.id}`, { token: admin })
+  verifica('notița ștearsă -> 404', dupaStergere.status === 404)
+
+  const urmaStergerii = await cere(
+    'GET', `/jurnal?entitate=notita&entitate_id=${aAlteia.corp?.id}`, { token: admin },
+  )
+  verifica('ștergerea a lăsat urmă în jurnal',
+    urmaStergerii.corp?.randuri?.some((r: any) => r.actiune === 'stergere'),
+    JSON.stringify(urmaStergerii.corp?.randuri?.map((r: any) => r.actiune)))
 
   // -------------------------------------------------------------------------
   console.log('\nÎncasări')
@@ -417,10 +529,13 @@ async function ruleaza(): Promise<void> {
   // -------------------------------------------------------------------------
   console.log('\nNote, utilizatori, jurnal')
 
+  // Numele e unic în bază (`utilizator_nume_uk`), la fel ca e-mailul: al doilea
+  // rulaj cu același „Cont Test” ar fi primit 409 în loc de 201.
+  const marcaj = Date.now()
   const contNou = await cere('POST', '/utilizatori', {
     token: admin,
     corp: {
-      nume: 'Cont Test', email: `test.${Date.now()}@clinica.ro`,
+      nume: `Cont Test ${marcaj}`, email: `test.${marcaj}@clinica.ro`,
       parola: 'parolaTest1', rol: 'utilizator',
     },
   })

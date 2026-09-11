@@ -13,6 +13,7 @@ import { eroareConflict, eroareValidare, ruta } from '../lib/erori.js'
 import { boolDin, Conditii, listaDin, textDin } from '../lib/filtre.js'
 import { adresaCererii, diferenta, instantaneu, scrieJurnal } from '../lib/jurnal.js'
 import { inregistreazaIncasare } from '../lib/incasari.js'
+import { executantulCerut } from '../lib/persoane.js'
 import { programareDetaliu, programariDetaliu, punctImplicit } from '../lib/proiectii.js'
 import {
   momentCerut,
@@ -23,7 +24,7 @@ import {
   verificaStare,
 } from '../lib/validare.js'
 import { requireAuth, AuthRequest, cont } from '../middleware/auth.js'
-import type { Articol, Programare, Utilizator } from '../types/database.js'
+import type { Articol, Programare } from '../types/database.js'
 
 const router = Router()
 router.use(requireAuth)
@@ -46,16 +47,6 @@ async function serviciulCerut(ex: Executor, articol_id: unknown): Promise<Artico
     throw eroareValidare('Se pot programa doar articole de tip serviciu.', 'articol_id')
   }
   return articol
-}
-
-async function executantulCerut(ex: Executor, executant_id: unknown): Promise<Utilizator> {
-  const executant = await unu<Utilizator>(
-    ex, `SELECT * FROM utilizator WHERE id = $1`, [executant_id], 'Executantul',
-  )
-  if (!executant.activ) {
-    throw eroareValidare('Contul selectat ca executant este dezactivat.', 'executant_id')
-  }
-  return executant
 }
 
 /**

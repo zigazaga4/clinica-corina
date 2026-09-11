@@ -196,6 +196,34 @@ export interface Programare {
   actualizat_la: Timestamptz
 }
 
+/**
+ * Tabela `notita` — o însemnare în calendar, care NU este o programare.
+ *
+ * „Irina e în concediu”, „vine furnizorul la 15:00”. Ocupă un loc în calendar,
+ * dar nu are client, serviciu sau preț — toate obligatorii la `programare`.
+ * Fără tabela asta, recepția ar fi inventat un client „Concediu” și un
+ * serviciu de zero lei, iar lista de clienți, prețul reținut și `de_incasat`
+ * s-ar fi umplut de ele.
+ *
+ * `executant_id` NULL = pentru toată clinica. Cu o persoană, notița stă în
+ * coloana și în culoarea ei.
+ *
+ * Nu blochează intervalul (nu intră în `programare_fara_suprapunere`) și se
+ * poate șterge — nu e o ședință care a avut loc și nu mișcă bani.
+ */
+export interface Notita {
+  id: Uuid
+  titlu: string
+  detalii: string | null
+  executant_id: Uuid | null
+  incepe_la: Timestamptz
+  /** CHECK (se_termina_la > incepe_la) */
+  se_termina_la: Timestamptz
+  creat_de: Uuid | null
+  creat_la: Timestamptz
+  actualizat_la: Timestamptz
+}
+
 /** Tabela `vanzare` — antetul: cui, când, unde, de către cine. */
 export interface Vanzare {
   id: Uuid
@@ -307,6 +335,15 @@ export interface ProgramareDetaliu extends Programare {
    * aug.” și bonul nu mai are ce căuta în cronologie.
    */
   achitat_la: Timestamptz | null
+}
+
+/**
+ * Notiță hidratată. `executant_nume` rămâne NULL pentru notițele întregii
+ * clinici — aici NULL are înțeles și nu se înlocuiește cu „—”.
+ */
+export interface NotitaDetaliu extends Notita {
+  executant_nume: string | null
+  creat_de_nume: string | null
 }
 
 /** Linie de vânzare hidratată cu denumirea articolului. */

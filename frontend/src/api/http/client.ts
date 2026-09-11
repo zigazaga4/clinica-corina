@@ -18,6 +18,7 @@ import type {
   FiltruClienti,
   FiltruConsimtaminte,
   FiltruJurnal,
+  FiltruNotite,
   FiltruProgramari,
   FiltruVanzari,
   Paginat,
@@ -39,6 +40,7 @@ import type {
   IstoricIntrare,
   JurnalOperatiuneDetaliu,
   NotaClientDetaliu,
+  NotitaDetaliu,
   ProgramareDetaliu,
   PunctLucru,
   Utilizator,
@@ -255,6 +257,15 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
         cerere<PretSugerat>('GET', '/programari/pret-sugerat', {
           parametri: { client_id, articol_id },
         }),
+    },
+
+    notite: {
+      list: (filtru?: FiltruNotite) =>
+        cerere<NotitaDetaliu[]>('GET', '/notite', { parametri: filtru }),
+      get: (id) => cerere<NotitaDetaliu>('GET', `/notite/${id}`),
+      create: (date) => cerere<NotitaDetaliu>('POST', '/notite', { corp: date }),
+      update: (id, date) => cerere<NotitaDetaliu>('PATCH', `/notite/${id}`, { corp: date }),
+      remove: (id) => cerere<void>('DELETE', `/notite/${id}`),
     },
 
     vanzari: {

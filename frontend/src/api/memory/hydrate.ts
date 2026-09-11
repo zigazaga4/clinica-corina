@@ -19,6 +19,8 @@ import type {
   JurnalOperatiuneDetaliu,
   NotaClient,
   NotaClientDetaliu,
+  Notita,
+  NotitaDetaliu,
   Programare,
   ProgramareDetaliu,
   Utilizator,
@@ -121,6 +123,15 @@ export function hidrateazaVanzare(v: Vanzare): VanzareDetaliu {
 
 export function hidrateazaNota(n: NotaClient): NotaClientDetaliu {
   return { ...n, autor_nume: numeUtilizator(n.autor_id) }
+}
+
+/** `v_notita_detaliu`: numele persoanei rămâne NULL la notițele întregii clinici. */
+export function hidrateazaNotita(n: Notita): NotitaDetaliu {
+  return {
+    ...n,
+    executant_nume: numeUtilizator(n.executant_id),
+    creat_de_nume: numeUtilizator(n.creat_de),
+  }
 }
 
 /**

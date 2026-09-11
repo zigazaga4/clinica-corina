@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react'
-import type { ProgramareDetaliu } from '@/domain/types'
+import type { NotitaDetaliu, ProgramareDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { isToday, laData } from '@/lib/dates'
+import { ChipNotita } from './CardNotita'
 import { ChipProgramare } from './CardProgramare'
 import { useCuloarePersoana } from './culoriExecutanti'
+import { type ElementCalendar, elementeCalendar, intervalul } from './elemente'
 import {
   INALTIME_GRILA,
   MINUTE_VIZIBILE,
@@ -31,15 +33,19 @@ export interface ColoanaGrila {
   /** Ziua reprezentată de coloană; marchează „azi” în vederea pe săptămână. */
   zi?: Date
   programari: ProgramareDetaliu[]
+  /** Notițele coloanei, așezate în aceeași grilă, alături de programări. */
+  notite?: NotitaDetaliu[]
 }
 
 export function GrilaOre({
   coloane,
   onAlegeProgramare,
+  onAlegeNotita,
   antetLipicios = true,
 }: {
   coloane: ColoanaGrila[]
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
+  onAlegeNotita?: (notita: NotitaDetaliu) => void
   antetLipicios?: boolean
 }) {
   const refDerulare = useRef<HTMLDivElement>(null)
@@ -88,10 +94,11 @@ export function GrilaOre({
             >
               <AntetColoana coloana={coloana} lipicios={antetLipicios} />
 
-              <ColoanaProgramari
-                programari={coloana.programari}
+              <ColoanaElemente
+                elemente={elementeCalendar(coloana.programari, coloana.notite ?? [])}
                 zi={coloana.zi}
-                onAlege={onAlegeProgramare}
+                onAlegeProgramare={onAlegeProgramare}
+                onAlegeNotita={onAlegeNotita}
               />
             </div>
           ))}
@@ -101,16 +108,18 @@ export function GrilaOre({
   )
 }
 
-function ColoanaProgramari({
-  programari,
+function ColoanaElemente({
+  elemente,
   zi,
-  onAlege,
+  onAlegeProgramare,
+  onAlegeNotita,
 }: {
-  programari: ProgramareDetaliu[]
+  elemente: ElementCalendar[]
   zi?: Date
-  onAlege: (programare: ProgramareDetaliu) => void
+  onAlegeProgramare: (programare: ProgramareDetaliu) => void
+  onAlegeNotita?: (notita: NotitaDetaliu) => void
 }) {
-  const asezate = asazaFaraSuprapunere(programari)
+  const asezate = asazaFaraSuprapunere(elemente)
 
   return (
     <div className="relative" style={{ height: INALTIME_GRILA }}>
@@ -129,23 +138,34 @@ function ColoanaProgramari({
 
       {zi && isToday(zi) && <LinieAcum />}
 
-      {asezate.map(({ programare, coloana, total }) => {
-        const inceput = laData(programare.incepe_la)
-        const sfarsit = laData(programare.se_termina_la)
+      {asezate.map(({ element, coloana, total }) => {
+        const { id, incepe_la, se_termina_la } = intervalul(element)
+        const inceput = laData(incepe_la)
+        const sfarsit = laData(se_termina_la)
         const latime = 100 / total
-        return (
+        const asezare = {
+          compact: inaltimeInterval(inceput, sfarsit) < 38,
+          className: 'absolute',
+          style: {
+            top: pozitieVerticala(inceput),
+            height: inaltimeInterval(inceput, sfarsit) - 2,
+            left: `calc(${coloana * latime}% + 2px)`,
+            width: `calc(${latime}% - 4px)`,
+          },
+        }
+        return element.fel === 'programare' ? (
           <ChipProgramare
-            key={programare.id}
-            programare={programare}
-            onClick={onAlege}
-            compact={inaltimeInterval(inceput, sfarsit) < 38}
-            className="absolute"
-            style={{
-              top: pozitieVerticala(inceput),
-              height: inaltimeInterval(inceput, sfarsit) - 2,
-              left: `calc(${coloana * latime}% + 2px)`,
-              width: `calc(${latime}% - 4px)`,
-            }}
+            key={id}
+            programare={element.programare}
+            onClick={onAlegeProgramare}
+            {...asezare}
+          />
+        ) : (
+          <ChipNotita
+            key={id}
+            notita={element.notita}
+            onClick={onAlegeNotita ?? (() => undefined)}
+            {...asezare}
           />
         )
       })}
@@ -213,40 +233,45 @@ function LinieAcum() {
 }
 
 interface Asezare {
-  programare: ProgramareDetaliu
+  element: ElementCalendar
   coloana: number
   total: number
 }
 
 /**
- * Împarte pe coloane programările care se suprapun în timp.
+ * Împarte pe coloane elementele care se suprapun în timp.
  *
- * În mod normal nu se suprapun: constrângerea `programare_fara_suprapunere`
- * împiedică asta pentru aceeași persoană. Excepția o fac programările ANULATE,
- * care sunt scoase din constrângere — iar locul eliberat este de obicei
- * reocupat imediat. Fără această așezare, cele două s-ar desena una peste alta
- * și una ar deveni imposibil de apăsat.
+ * Programările nu se suprapun în mod normal: constrângerea
+ * `programare_fara_suprapunere` împiedică asta pentru aceeași persoană.
+ * Excepția o fac programările ANULATE, care sunt scoase din constrângere — iar
+ * locul eliberat este de obicei reocupat imediat. Notițele, în schimb, se
+ * suprapun DINADINS cu orice: „furnizor la 15:00” stă peste ședința de la
+ * 15:00. Fără această așezare, cele două s-ar desena una peste alta și una ar
+ * deveni imposibil de apăsat.
  */
-function asazaFaraSuprapunere(programari: ProgramareDetaliu[]): Asezare[] {
-  const ordonate = [...programari].sort((a, b) => a.incepe_la.localeCompare(b.incepe_la))
+function asazaFaraSuprapunere(elemente: ElementCalendar[]): Asezare[] {
+  const ordonate = [...elemente].sort((a, b) =>
+    intervalul(a).incepe_la.localeCompare(intervalul(b).incepe_la),
+  )
   const rezultat: Asezare[] = []
 
-  let grup: ProgramareDetaliu[] = []
+  let grup: ElementCalendar[] = []
   let sfarsitGrup = ''
 
   const inchideGrupul = () => {
     if (grup.length === 0) return
-    // Fiecare programare din grup primește prima coloană liberă la ora ei.
+    // Fiecare element din grup primește prima coloană liberă la ora lui.
     const capeteColoane: string[] = []
-    const asezari = grup.map((programare) => {
-      let coloana = capeteColoane.findIndex((capat) => capat <= programare.incepe_la)
+    const asezari = grup.map((element) => {
+      const { incepe_la, se_termina_la } = intervalul(element)
+      let coloana = capeteColoane.findIndex((capat) => capat <= incepe_la)
       if (coloana === -1) {
         coloana = capeteColoane.length
-        capeteColoane.push(programare.se_termina_la)
+        capeteColoane.push(se_termina_la)
       } else {
-        capeteColoane[coloana] = programare.se_termina_la
+        capeteColoane[coloana] = se_termina_la
       }
-      return { programare, coloana }
+      return { element, coloana }
     })
     for (const asezare of asezari) {
       rezultat.push({ ...asezare, total: capeteColoane.length })
@@ -255,12 +280,13 @@ function asazaFaraSuprapunere(programari: ProgramareDetaliu[]): Asezare[] {
     sfarsitGrup = ''
   }
 
-  for (const programare of ordonate) {
-    // Un grup se încheie când apare o programare care nu atinge niciuna
-    // dintre cele dinainte.
-    if (grup.length > 0 && programare.incepe_la >= sfarsitGrup) inchideGrupul()
-    grup.push(programare)
-    if (programare.se_termina_la > sfarsitGrup) sfarsitGrup = programare.se_termina_la
+  for (const element of ordonate) {
+    const { incepe_la, se_termina_la } = intervalul(element)
+    // Un grup se încheie când apare un element care nu atinge niciunul dintre
+    // cele dinainte.
+    if (grup.length > 0 && incepe_la >= sfarsitGrup) inchideGrupul()
+    grup.push(element)
+    if (se_termina_la > sfarsitGrup) sfarsitGrup = se_termina_la
   }
   inchideGrupul()
 

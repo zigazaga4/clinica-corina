@@ -74,11 +74,19 @@ dezactivează. Cheile `ON DELETE RESTRICT` refuză ștergerea a orice are istori
 iar rutele `DELETE` există doar pentru rândurile create din greșeală, înainte de
 prima folosire.
 
+**Notița nu este o programare.** „Irina e în concediu”, „vine furnizorul la
+15:00” stau în tabela `notita`: titlu, interval, opțional o persoană
+(`executant_id` NULL = toată clinica). Nu au client, serviciu sau preț, nu
+intră în constrângerea de suprapunere — sunt informative — și sunt singurul
+lucru din calendar care se poate șterge, cu urmă în jurnal. Fără tabela asta,
+recepția ar fi inventat un client „Concediu” și un serviciu de zero lei.
+
 ### Vederile
 
 | Vedere | Pentru |
 | --- | --- |
 | `v_programare_detaliu` | ședința cu nume, denumiri și starea plății |
+| `v_notita_detaliu` | notița, cu numele persoanei (NULL = toată clinica) |
 | `v_vanzare_detaliu` | antetul încasării, hidratat |
 | `v_vanzare_linie_detaliu` | linia, cu articolul și data ședinței stinse |
 | `v_client_detaliu` | fișa cu contoare, ultima vizită și restanța |
@@ -113,6 +121,12 @@ POST   /programari
 GET    /programari/:id
 PATCH  /programari/:id
 PATCH  /programari/:id/stare    { stare, achitat? }
+
+GET    /notite                  ?de_la= &pana_la= &executant_id=   (persoana + toată clinica)
+POST   /notite                  { titlu, detalii?, executant_id?, incepe_la, se_termina_la }
+GET    /notite/:id
+PATCH  /notite/:id              executant_id: null = toată clinica
+DELETE /notite/:id
 
 GET    /vanzari                 ?client_id= &operator_id= &articol_id= &de_la= &pana_la=
 POST   /vanzari
@@ -202,7 +216,7 @@ la prima instalare în clinică. `CORS_ORIGINS` adaugă la listă, nu o înlocui
 Verificarea că cele două chiar se înțeleg:
 
 ```bash
-npm run test:api                       # 91 de verificări, din partea serverului
+npm run test:api                       # 106 verificări, din partea serverului
 # și, din proiectul de interfață:
 API_LIVE=http://localhost:3001 npx vitest run src/api/http
 ```

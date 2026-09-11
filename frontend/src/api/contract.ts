@@ -25,6 +25,7 @@ import type {
   IstoricIntrare,
   JurnalOperatiuneDetaliu,
   NotaClientDetaliu,
+  NotitaDetaliu,
   ProgramareDetaliu,
   PunctLucru,
   RolUtilizator,
@@ -268,6 +269,49 @@ export interface ApiProgramari {
 }
 
 // ---------------------------------------------------------------------------
+// Notițe în calendar
+// ---------------------------------------------------------------------------
+
+export interface FiltruNotite extends IntervalTimp {
+  /**
+   * Notițele persoanei ȘI cele ale întregii clinici (`executant_id` NULL).
+   * Întrebarea din calendar este „ce o privește pe Irina azi?”, iar „clinica e
+   * închisă de la 14” o privește.
+   */
+  executant_id?: Uuid
+}
+
+export interface DateNotitaNoua {
+  titlu: string
+  detalii?: string | null
+  /** Lipsă sau `null` = pentru toată clinica. */
+  executant_id?: Uuid | null
+  incepe_la: Timestamptz
+  /** CHECK (se_termina_la > incepe_la) */
+  se_termina_la: Timestamptz
+}
+
+/** `executant_id: null` explicit mută notița pe toată clinica. */
+export type DateNotitaModificata = Partial<DateNotitaNoua>
+
+export interface ApiNotite {
+  /** GET /notite — orice rol. Interval (ca suprapunere) și persoană. */
+  list(filtru?: FiltruNotite): Promise<NotitaDetaliu[]>
+  /** GET /notite/:id — orice rol. */
+  get(id: Uuid): Promise<NotitaDetaliu>
+  /** POST /notite — orice rol. Nu verifică suprapunerea: notița e informativă. */
+  create(date: DateNotitaNoua): Promise<NotitaDetaliu>
+  /** PATCH /notite/:id — orice rol. */
+  update(id: Uuid, date: DateNotitaModificata): Promise<NotitaDetaliu>
+  /**
+   * DELETE /notite/:id — orice rol.
+   * Singura entitate din calendar care se poate șterge: nu e o ședință care a
+   * avut loc și nu mișcă bani. Ștergerea rămâne în jurnal.
+   */
+  remove(id: Uuid): Promise<void>
+}
+
+// ---------------------------------------------------------------------------
 // Vânzări
 // ---------------------------------------------------------------------------
 
@@ -461,6 +505,7 @@ export interface ApiClient {
   clienti: ApiClienti
   consimtaminte: ApiConsimtaminte
   programari: ApiProgramari
+  notite: ApiNotite
   vanzari: ApiVanzari
   articole: ApiArticole
   puncteLucru: ApiPuncteLucru

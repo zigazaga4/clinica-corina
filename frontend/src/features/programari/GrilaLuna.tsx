@@ -1,9 +1,11 @@
-import type { ProgramareDetaliu } from '@/domain/types'
+import type { NotitaDetaliu, ProgramareDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
-import { esteInZiua, formateazaZiScurt, isToday } from '@/lib/dates'
+import { formateazaZiScurt, isToday } from '@/lib/dates'
+import { ChipNotita } from './CardNotita'
 import { ChipProgramare } from './CardProgramare'
+import { dinZiua, elementeCalendar, intervalul } from './elemente'
 
-/** Câte programări încap într-o celulă înainte de „+N”. */
+/** Câte elemente încap într-o celulă înainte de „+N”. */
 const MAXIM_PE_ZI = 3
 
 /**
@@ -17,16 +19,20 @@ export function GrilaLuna({
   zile,
   luna,
   programari,
+  notite = [],
   onAlegeZi,
   onAlegeProgramare,
+  onAlegeNotita,
 }: {
   /** Cele 42 de zile ale grilei (6 săptămâni complete). */
   zile: Date[]
   /** Luna ancoră: zilele din alte luni se estompează. */
   luna: number
   programari: ProgramareDetaliu[]
+  notite?: NotitaDetaliu[]
   onAlegeZi: (zi: Date) => void
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
+  onAlegeNotita?: (notita: NotitaDetaliu) => void
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -43,7 +49,7 @@ export function GrilaLuna({
 
       <div className="grid flex-1 auto-rows-fr grid-cols-7">
         {zile.map((zi) => {
-          const aleZilei = programari.filter((p) => esteInZiua(p.incepe_la, zi))
+          const aleZilei = elementeCalendar(dinZiua(programari, zi), dinZiua(notite, zi))
           const dinLunaCurenta = zi.getMonth() === luna
           const azi = isToday(zi)
 
@@ -73,15 +79,25 @@ export function GrilaLuna({
                 {zi.getDate()}
               </button>
 
-              {aleZilei.slice(0, MAXIM_PE_ZI).map((programare) => (
-                <ChipProgramare
-                  key={programare.id}
-                  programare={programare}
-                  onClick={onAlegeProgramare}
-                  compact
-                  className="shrink-0"
-                />
-              ))}
+              {aleZilei.slice(0, MAXIM_PE_ZI).map((element) =>
+                element.fel === 'programare' ? (
+                  <ChipProgramare
+                    key={element.programare.id}
+                    programare={element.programare}
+                    onClick={onAlegeProgramare}
+                    compact
+                    className="shrink-0"
+                  />
+                ) : (
+                  <ChipNotita
+                    key={intervalul(element).id}
+                    notita={element.notita}
+                    onClick={onAlegeNotita ?? (() => undefined)}
+                    compact
+                    className="shrink-0"
+                  />
+                ),
+              )}
 
               {aleZilei.length > MAXIM_PE_ZI && (
                 <button

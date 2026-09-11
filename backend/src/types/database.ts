@@ -236,6 +236,30 @@ export interface NotaClientDetaliu extends NotaClient {
 }
 
 /**
+ * Tabela `notita` — o însemnare în calendar, care NU este o programare.
+ *
+ * Fără client, serviciu sau preț. `executant_id` NULL = pentru toată clinica.
+ * Nu blochează intervalul și se poate șterge; vezi comentariul din schemă.
+ */
+export interface Notita {
+  id: string
+  titlu: string
+  detalii: string | null
+  executant_id: string | null
+  incepe_la: string
+  se_termina_la: string
+  creat_de: string | null
+  creat_la: string
+  actualizat_la: string
+}
+
+/** `v_notita_detaliu`. `executant_nume` NULL = notiță pentru toată clinica. */
+export interface NotitaDetaliu extends Notita {
+  executant_nume: string | null
+  creat_de_nume: string | null
+}
+
+/**
  * Datele clientului așa cum arătau în clipa semnării.
  *
  * Copiate, nu citite din fișă la afișare: omul își schimbă adresa peste un an,

@@ -46,6 +46,7 @@ import { trateazaErori } from './lib/erori.js'
 import authRouter from './routes/auth.js'
 import clientiRouter from './routes/clienti.js'
 import consimtaminteRouter from './routes/consimtaminte.js'
+import notiteRouter from './routes/notite.js'
 import programariRouter from './routes/programari.js'
 import vanzariRouter from './routes/vanzari.js'
 import abonamenteRouter from './routes/abonamente.js'
@@ -345,6 +346,7 @@ app.use('/auth', authRouter)
 app.use('/clienti', clientiRouter)
 app.use('/consimtaminte', consimtaminteRouter)
 app.use('/programari', programariRouter)
+app.use('/notite', notiteRouter)
 app.use('/vanzari', vanzariRouter)
 app.use('/articole', articoleRouter)
 app.use('/puncte-lucru', puncteLucruRouter)

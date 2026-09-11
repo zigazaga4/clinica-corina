@@ -110,6 +110,25 @@ suma tastată devine automat prețul lui pentru data viitoare.
 În cod, secțiunea se numește în continuare `vanzari` — tabelele și rutele §7
 nu s-au schimbat. Doar ecranul spune „Încasări”, pentru că asta este.
 
+## Ce mai încape în calendar
+
+**Notițe.** „Irina e în concediu”, „vine furnizorul la 15:00”: o însemnare cu
+titlu, interval și, opțional, o persoană — fără client, fără serviciu, fără
+preț. Stă în calendar lângă programări, pe fundal gălbui cu contur întrerupt,
+ca să nu fie luată drept ședință. Nu blochează intervalul (o notiță peste o
+programare nu e o greșeală, e informația) și e singurul lucru din calendar care
+se poate șterge, cu urmă în jurnal. Butonul „Notiță” stă lângă „Programare
+nouă”; tabela e `notita`, rutele `/notite`.
+
+**Clientul și serviciul pe loc.** Din formularul de programare, numele tastat
+în căutare care nu găsește nimic devine rândul „Client nou: „…””. O apăsare —
+sau Enter — creează fișa doar cu numele și o lasă aleasă; telefonul și restul
+se completează pe fișă, când e timp. Același drum pentru un serviciu care nu e
+încă în nomenclator (durată 60 min și preț de listă zero, de corectat în
+Nomenclator) — dar acela cere administrator, fiindcă `POST /articole` îi este
+rezervat (§7). Prețul ședinței se scrie oricum pe programare, deci recepția nu
+rămâne blocată.
+
 ## Conectarea la backend
 
 Întreaga interfață comunică printr-o singură interfață TypeScript,

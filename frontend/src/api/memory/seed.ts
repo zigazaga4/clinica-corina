@@ -15,6 +15,7 @@ import type {
   Articol,
   Client,
   NotaClient,
+  Notita,
   Programare,
   PunctLucru,
   StareProgramare,
@@ -407,6 +408,57 @@ export function populeaza(): void {
         cursor = addMinutes(sfarsit, alege(rnd, [0, 15, 15, 30]))
       }
     }
+  }
+
+  // --- notițe în calendar --------------------------------------------------
+  //
+  // Câteva însemnări care nu sunt programări: una pentru toată clinica, una a
+  // unei persoane, una care se întinde pe o zi întreagă. Fără ele, calendarul
+  // demo nu ar arăta niciodată cum se deosebește o notiță de o ședință.
+  const laOra = (zi: Date, ora: number, minute = 0) => {
+    const d = new Date(zi)
+    d.setHours(ora, minute, 0, 0)
+    return d
+  }
+  const notite: Array<Omit<Notita, 'id' | 'creat_de' | 'creat_la' | 'actualizat_la'>> = [
+    {
+      titlu: 'Vine furnizorul de creme',
+      detalii: 'Comanda lunară — de verificat lotul înainte de semnare.',
+      executant_id: null,
+      incepe_la: laTimestamptz(laOra(addDays(azi, 1), 15)),
+      se_termina_la: laTimestamptz(laOra(addDays(azi, 1), 15, 30)),
+    },
+    {
+      titlu: 'Concediu',
+      detalii: null,
+      executant_id: executanti[1]?.id ?? null,
+      incepe_la: laTimestamptz(laOra(addDays(azi, 3), ORA_DESCHIDERE)),
+      se_termina_la: laTimestamptz(laOra(addDays(azi, 3), ORA_INCHIDERE)),
+    },
+    {
+      titlu: 'Curățenie generală',
+      detalii: 'Sala 2 este indisponibilă până la 10:00.',
+      executant_id: null,
+      incepe_la: laTimestamptz(laOra(azi, 8)),
+      se_termina_la: laTimestamptz(laOra(azi, 10)),
+    },
+    {
+      titlu: 'Curs de perfecționare',
+      detalii: 'Revine după-amiază.',
+      executant_id: executanti[0]?.id ?? null,
+      incepe_la: laTimestamptz(laOra(addDays(azi, -2), ORA_DESCHIDERE)),
+      se_termina_la: laTimestamptz(laOra(addDays(azi, -2), 13)),
+    },
+  ]
+  for (const n of notite) {
+    const rand: Notita = {
+      id: uuid(),
+      ...n,
+      creat_de: alege(rnd, utilizatori).id,
+      creat_la,
+      actualizat_la: creat_la,
+    }
+    magazin.notita.set(rand.id, rand)
   }
 
   // --- încasări ------------------------------------------------------------

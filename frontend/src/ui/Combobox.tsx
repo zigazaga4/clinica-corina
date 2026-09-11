@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Check, ChevronDown, Search } from 'lucide-react'
+import { Check, ChevronDown, Plus, Search } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useInchidereExterna } from '@/lib/hooks'
 import { contine } from '@/lib/text'
@@ -55,6 +55,17 @@ export interface ComboboxProps<V extends string> {
   onCautare?: (text: string) => void
   /** Indicator de încărcare în listă, cât timp sosesc opțiunile de pe server. */
   incarca?: boolean
+  /**
+   * Creează o opțiune nouă din textul tastat în căutare.
+   *
+   * Apare ca ultim rând al listei, de îndată ce s-a scris ceva: recepția are
+   * clientul la telefon, îi caută numele, nu îl găsește și îl adaugă cu aceeași
+   * mișcare, fără să părăsească formularul. Apelantul creează rândul și
+   * cheamă apoi `onSchimba` cu identificatorul lui.
+   */
+  onCreare?: (text: string) => void
+  /** Textul rândului de creare; implicit „Adaugă „<text>””. */
+  etichetaCreare?: (text: string) => string
   className?: string
 }
 
@@ -72,11 +83,22 @@ export function Combobox<V extends string>({
   cuGolire = false,
   onCautare,
   incarca = false,
+  onCreare,
+  etichetaCreare = (text) => `Adaugă „${text}”`,
   className,
 }: ComboboxProps<V>) {
   const [deschis, setDeschis] = useState(false)
   const [cautare, setCautare] = useState('')
   const [indexActiv, setIndexActiv] = useState(0)
+
+  const textDeCreat = cautare.trim()
+  const poateCrea = Boolean(onCreare) && textDeCreat !== ''
+
+  const creeaza = () => {
+    if (!poateCrea) return
+    onCreare?.(textDeCreat)
+    setDeschis(false)
+  }
 
   const ref = useInchidereExterna<HTMLDivElement>(deschis, () => setDeschis(false))
   const refCautare = useRef<HTMLInputElement>(null)
@@ -92,15 +114,35 @@ export function Combobox<V extends string>({
     )
   }, [optiuni, cautare, onCautare])
 
-  // La deschidere: golim căutarea, mutăm focalizarea în câmp și poziționăm
-  // evidențierea pe opțiunea deja selectată, nu pe prima din listă.
+  /*
+    La deschidere: golim căutarea și mutăm focalizarea în câmp.
+
+    Efectul depinde NUMAI de `deschis`. Cu `optiuni` printre dependențe, cum
+    era, rula și de fiecare dată când soseau rezultate de pe server — adică
+    exact după ce s-a tastat ceva — și ștergea textul din câmp în timp ce
+    lista arăta rezultatele lui. Căutarea de pe server (`onCautare`) se golește
+    și ea: altfel lista s-ar deschide filtrată după ce s-a tastat data trecută,
+    cu câmpul gol deasupra.
+
+    `onCautare` lipsește intenționat dintre dependențe: e de obicei un
+    `setState` sau o funcție nouă la fiecare randare, iar includerea ei ar
+    reporni efectul la orice randare a părintelui.
+  */
   useEffect(() => {
     if (!deschis) return
     setCautare('')
-    const pozitie = optiuni.findIndex((o) => o.valoare === valoare)
-    setIndexActiv(pozitie >= 0 ? pozitie : 0)
+    onCautare?.('')
     const cronometru = setTimeout(() => refCautare.current?.focus(), 10)
     return () => clearTimeout(cronometru)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deschis])
+
+  // Evidențierea pornește de pe opțiunea deja aleasă, nu de pe prima din
+  // listă, și se reașază când lista se schimbă sub ea.
+  useEffect(() => {
+    if (!deschis) return
+    const pozitie = optiuni.findIndex((o) => o.valoare === valoare)
+    setIndexActiv(pozitie >= 0 ? pozitie : 0)
   }, [deschis, optiuni, valoare])
 
   // Ține opțiunea evidențiată în câmpul vizibil la navigarea cu săgeți.
@@ -126,7 +168,10 @@ export function Combobox<V extends string>({
     } else if (e.key === 'Enter') {
       e.preventDefault()
       const optiune = filtrate[indexActiv]
+      // Fără nicio potrivire, Enter face ce ar face și clicul pe ultimul rând:
+      // creează ce s-a tastat. Operatoarea nu ia mâna de pe tastatură.
       if (optiune) alege(optiune)
+      else creeaza()
     } else if (e.key === 'Escape') {
       e.preventDefault()
       setDeschis(false)
@@ -258,6 +303,22 @@ export function Combobox<V extends string>({
                     </li>
                   )
                 })}
+
+                {poateCrea && (
+                  <li className={cn(filtrate.length > 0 && 'mt-1 border-t border-line pt-1')}>
+                    <button
+                      type="button"
+                      onClick={creeaza}
+                      className={cn(
+                        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm',
+                        'font-medium text-primary-600 transition-colors hover:bg-primary-50',
+                      )}
+                    >
+                      <Plus className="size-4 shrink-0" aria-hidden />
+                      <span className="truncate">{etichetaCreare(textDeCreat)}</span>
+                    </button>
+                  </li>
+                )}
               </ul>
             </div>
           )}
