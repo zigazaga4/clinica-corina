@@ -212,6 +212,38 @@ describe('când tableta nu merge', () => {
     expect((await api.consimtaminte.list({ client_id: client.id })).total).toBe(0)
   })
 
+  it('nu pierde semnătura când serverul refuză, și o trimite din nou', async () => {
+    /*
+      Exact pățania de la prima folosire pe teren: ruta nu era desfășurată pe
+      server, iar aplicația a răspuns cu „Ruta cerută nu există.” — după ce
+      omul semnase. Semnătura se pierdea, iar butonul relua totul de la
+      căutarea tabletei, deci clientul semna a doua oară pentru o defecțiune
+      de server. Acum trimiterea se reia cu aceeași semnătură.
+    */
+    const { tableta } = pregatesteTableta()
+    const creare = vi
+      .spyOn(api.consimtaminte, 'create')
+      .mockRejectedValueOnce(new Error('Ruta cerută nu există.'))
+
+    const props = deseneaza()
+    await screen.findByText(/Rugați clientul să semneze/)
+
+    tableta().laSemnatura({ png: pngProba(), puncte: 240 })
+
+    const reluare = await screen.findByRole('button', { name: 'Trimite din nou' }, { timeout: 15_000 })
+    expect(screen.getByRole('alert')).toHaveTextContent(/Semnătura NU s-a pierdut/)
+    expect(props.onSemnat).not.toHaveBeenCalled()
+
+    fireEvent.click(reluare)
+
+    await waitFor(() => expect(props.onSemnat).toHaveBeenCalled(), { timeout: 15_000 })
+    // Tableta a fost pornită O SINGURĂ dată: nimeni nu a mai semnat a doua oară.
+    expect(vi.mocked(porneste)).toHaveBeenCalledTimes(1)
+    expect(creare).toHaveBeenCalledTimes(2)
+    expect((await api.consimtaminte.list({ client_id: client.id })).total).toBe(1)
+    creare.mockRestore()
+  })
+
   it('nu arată portița cât timp tableta este pregătită', async () => {
     pregatesteTableta()
     deseneaza()

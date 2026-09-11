@@ -30,7 +30,15 @@ type Stare =
   | { faza: 'pregatire' }
   | { faza: 'semnare' }
   | { faza: 'tiparire' }
-  | { faza: 'esec'; mesaj: string }
+  /**
+   * `potRelua` deosebește eșecul de dinainte de semnătură de cel de după.
+   *
+   * Dacă tableta nu a pornit, singura ieșire este să se ia totul de la capăt.
+   * Dacă însă omul a semnat deja și abia trimiterea a picat, semnătura este
+   * culeasă și bună — atunci „Încearcă din nou” trebuie să reia TRIMITEREA,
+   * nu să ceară o a doua semnătură pentru o defecțiune care nu e a lui.
+   */
+  | { faza: 'esec'; mesaj: string; potRelua?: boolean }
 
 /** Octeți → base64, pe bucăți: un PDF întreg dat lui `btoa` umple stiva. */
 function inBase64(octeti: Uint8Array): string {
@@ -72,6 +80,13 @@ export function ModalaAcordGdpr({
   const [incercarea, setIncercarea] = useState(0)
 
   const semneaza = useSemneazaAcord()
+  /**
+   * Semnătura culeasă de pe tabletă, ținută până când chiar ajunge pe server.
+   *
+   * Trăia doar ca parametru al funcției de păstrare, deci o trimitere picată o
+   * pierdea definitiv și clientul semna a doua oară.
+   */
+  const culeasa = useRef<Uint8Array | null>(null)
   const panza = useRef<HTMLCanvasElement>(null)
   const sesiune = useRef<SesiunePad | null>(null)
   const senzor = useRef({ latime: 0, inaltime: 0 })
@@ -184,11 +199,25 @@ export function ModalaAcordGdpr({
           dispozitiv: sesiune.current?.dispozitiv ?? null,
         })
 
+        culeasa.current = null
         await sesiune.current?.inchide()
         sesiune.current = null
         onSemnat()
       } catch (err) {
-        setStare({ faza: 'esec', mesaj: mesajEroare(err) })
+        /*
+          Semnătura rămâne în mână.
+
+          Aici se ajunge când documentul s-a întocmit dar serverul nu l-a
+          primit — ruta nedesfășurată, rețeaua căzută, sesiunea expirată. Omul
+          a semnat deja; a-i cere să semneze din nou pentru o defecțiune de
+          server ar fi o mică umilință inutilă, mai ales cu el în fața
+          ghișeului. Păstrăm PNG-ul și oferim reluarea trimiterii.
+        */
+        setStare({
+          faza: 'esec',
+          mesaj: `Semnătura a fost culeasă, dar documentul nu a putut fi trimis: ${mesajEroare(err)} Semnătura NU s-a pierdut — apăsați „Trimite din nou”.`,
+          potRelua: true,
+        })
       }
     },
     [onSemnat, semneaza],
@@ -207,6 +236,8 @@ export function ModalaAcordGdpr({
     let anulat = false
     setStare({ faza: 'pregatire' })
     setDispozitiv(null)
+    // O sesiune nouă înseamnă o semnătură nouă; cea veche nu mai are ce căuta.
+    culeasa.current = null
     stergePanza()
 
     const pornirea = porneste({
@@ -234,6 +265,7 @@ export function ModalaAcordGdpr({
           })
           return
         }
+        culeasa.current = png
         void pastreazaRef.current(png)
       },
       laStergere: () => {
@@ -302,11 +334,17 @@ export function ModalaAcordGdpr({
               )}
               <Buton
                 varianta="primar"
-                onClick={() => setIncercarea((n) => n + 1)}
+                onClick={() => {
+                  const png = stare.potRelua ? culeasa.current : null
+                  // Cu semnătura în mână se reia doar trimiterea; fără ea, tot
+                  // drumul, de la căutarea tabletei.
+                  if (png) void pastreazaRef.current(png)
+                  else setIncercarea((n) => n + 1)
+                }}
                 plin
                 className="sm:w-auto"
               >
-                Încearcă din nou
+                {stare.potRelua ? 'Trimite din nou' : 'Încearcă din nou'}
               </Buton>
             </>
           ) : (
