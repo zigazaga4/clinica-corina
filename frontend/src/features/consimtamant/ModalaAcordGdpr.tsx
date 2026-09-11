@@ -130,7 +130,6 @@ export function ModalaAcordGdpr({
     context.stroke()
 
     anterior.current = punct
-    setAreSemnatura(true)
   }, [])
 
   // ---------------------------------------------------------------------
@@ -214,7 +213,17 @@ export function ModalaAcordGdpr({
       numeCamp: client.nume,
       textAjutator: 'Acord privind prelucrarea datelor cu caracter personal',
       laPunct: (punct) => {
-        if (!anulat) deseneaza(punct)
+        if (anulat) return
+        /*
+          „Există semnătură” se ține de sosirea punctelor, nu de desenarea lor.
+
+          Oglinda de pe ecran e o comoditate: dacă `<canvas>` nu poate desena,
+          creionul tot a scris pe tabletă. Legate la un loc, un ecran fără
+          desenare ar fi lăsat butonul „Confirmă” stins pentru totdeauna, cu o
+          semnătură perfect validă pe aparat.
+        */
+        setAreSemnatura(true)
+        deseneaza(punct)
       },
       laSemnatura: ({ png, puncte }) => {
         if (anulat) return
