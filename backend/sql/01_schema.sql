@@ -262,6 +262,62 @@ CREATE TRIGGER programare_actualizat_la BEFORE UPDATE ON programare
 
 
 -- ---------------------------------------------------------------------------
+-- consimtamant — acordul GDPR semnat de client, pe tabletă
+-- ---------------------------------------------------------------------------
+
+/*
+  Singura tabelă din bază care NU se modifică niciodată.
+
+  Nu are `actualizat_la` și nu are trigger, fiindcă nu are ce actualiza: un
+  acord semnat pe care cineva îl poate rescrie mai târziu nu dovedește nimic.
+  Dacă ceva e greșit, clientul semnează din nou și rămân amândouă, cu datele
+  lor — istoria consimțământului este ea însăși dovada, iar o corecție tăcută
+  ar șterge exact partea care contează.
+
+  `document` ține PDF-ul întreg, exact cum l-a văzut și semnat omul. Ar fi fost
+  mai ieftin să păstrăm doar semnătura și să refacem hârtia la cerere, dar
+  atunci am arăta unui control o reconstituire, nu documentul. Textul se poate
+  schimba între timp; PDF-ul înghețat nu.
+
+  `date_semnatar` este instantaneul fișei din clipa semnării. Clientul își
+  schimbă adresa sau numele peste un an; acordul trebuie să arate în
+  continuare ce scria pe el atunci, nu ce scrie în fișă acum.
+*/
+CREATE TABLE IF NOT EXISTS consimtamant (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- RESTRICT, nu CASCADE: o fișă cu acorduri semnate nu poate fi ștearsă din
+  -- greșeală. Pentru clienții care pleacă există arhivarea.
+  client_id      uuid NOT NULL REFERENCES client(id) ON DELETE RESTRICT,
+  -- Ședința la care s-a semnat. Poate lipsi — un acord semnat la ghișeu, în
+  -- afara unei programări, este tot valid.
+  programare_id  uuid REFERENCES programare(id) ON DELETE SET NULL,
+  -- Versiunea textului semnat, ex. „gdpr-2026-09”. Fără ea nu s-ar mai putea
+  -- spune, peste doi ani, CE anume a acceptat omul.
+  versiune       text NOT NULL CHECK (btrim(versiune) <> ''),
+  document       bytea NOT NULL,
+  -- Mărimea și amprenta stau separat ca listele să nu atingă `document`:
+  -- un `SELECT *` peste o sută de acorduri ar trage zeci de megaocteți prin
+  -- rețea ca să afișeze o dată și un nume.
+  marime         integer NOT NULL CHECK (marime > 0),
+  -- sha256 hex. Dovedește că fișierul servit azi este cel scris atunci.
+  amprenta       text NOT NULL CHECK (amprenta ~ '^[0-9a-f]{64}$'),
+  date_semnatar  jsonb NOT NULL,
+  -- Ce tabletă a cules semnătura, cu serie cu tot.
+  dispozitiv     text,
+  semnat_la      timestamptz NOT NULL DEFAULT now(),
+  -- Cine de la recepție a asistat. Rămâne NULL dacă i se șterge contul.
+  creat_de       uuid REFERENCES utilizator(id) ON DELETE SET NULL
+);
+
+-- Banda de acorduri din fișa clientului, cele mai noi întâi.
+CREATE INDEX IF NOT EXISTS consimtamant_client_idx
+  ON consimtamant (client_id, semnat_la DESC);
+-- „S-a semnat la ședința asta?” — întrebare pusă la fiecare onorare.
+CREATE INDEX IF NOT EXISTS consimtamant_programare_idx
+  ON consimtamant (programare_id) WHERE programare_id IS NOT NULL;
+
+
+-- ---------------------------------------------------------------------------
 -- vanzare — antetul încasării: cui, când, unde, de către cine
 -- ---------------------------------------------------------------------------
 
@@ -542,5 +598,37 @@ LEFT JOIN LATERAL (
   SELECT count(*) AS numar, max(vz.efectuat_la) AS ultima_incasare
   FROM vanzare vz WHERE vz.client_id = c.id
 ) v ON true;
+
+
+-- ---------------------------------------------------------------------------
+-- v_consimtamant_detaliu — acordurile semnate, fără fișierul propriu-zis
+-- ---------------------------------------------------------------------------
+
+/*
+  `document` lipsește dinadins de mai jos.
+
+  Este singura coloană grea din toată baza, iar listele nu au ce face cu ea:
+  fișa clientului arată data, versiunea textului și cine a asistat. PDF-ul se
+  cere separat, câte unul, prin ruta lui. Scris aici `c.*`, deschiderea unei
+  fișe cu douăzeci de acorduri ar fi tras câțiva megaocteți prin rețea ca să
+  deseneze douăzeci de rânduri de listă.
+*/
+CREATE OR REPLACE VIEW v_consimtamant_detaliu AS
+SELECT
+  c.id,
+  c.client_id,
+  c.programare_id,
+  c.versiune,
+  c.marime,
+  c.amprenta,
+  c.date_semnatar,
+  c.dispozitiv,
+  c.semnat_la,
+  c.creat_de,
+  cl.nume AS client_nume,
+  u.nume  AS creat_de_nume
+FROM consimtamant c
+JOIN client cl ON cl.id = c.client_id
+LEFT JOIN utilizator u ON u.id = c.creat_de;
 
 COMMIT;

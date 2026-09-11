@@ -107,6 +107,19 @@ export async function vanzareDetaliu(ex: Executor, id: string): Promise<VanzareD
 export const DIN_CLIENTI = 'SELECT * FROM v_client_detaliu'
 
 // ---------------------------------------------------------------------------
+// Consimțăminte
+// ---------------------------------------------------------------------------
+
+/**
+ * Acordurile semnate, FĂRĂ fișierul PDF.
+ *
+ * Vederea nu are coloana `document`; cine vrea fișierul îl cere pe rută,
+ * câte unul. Așa nu se poate întâmpla ca o listare să tragă din greșeală
+ * câteva zeci de megaocteți de PDF-uri prin rețea.
+ */
+export const DIN_CONSIMTAMINTE = 'SELECT * FROM v_consimtamant_detaliu'
+
+// ---------------------------------------------------------------------------
 // Punctul de lucru implicit
 // ---------------------------------------------------------------------------
 

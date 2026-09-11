@@ -45,6 +45,7 @@ import helmet from 'helmet'
 import { trateazaErori } from './lib/erori.js'
 import authRouter from './routes/auth.js'
 import clientiRouter from './routes/clienti.js'
+import consimtaminteRouter from './routes/consimtaminte.js'
 import programariRouter from './routes/programari.js'
 import vanzariRouter from './routes/vanzari.js'
 import abonamenteRouter from './routes/abonamente.js'
@@ -193,7 +194,25 @@ app.use(cors({
   },
   credentials: true
 }))
-app.use(express.json())
+/*
+  Corpul cererilor, cu o singură excepție.
+
+  Limita implicită a lui `express.json()` este de o sută de kiloocteți, cât
+  trebuie pentru orice formular din aplicație și cât trebuie să rămână: o
+  limită largă peste tot înseamnă că oricine are un cont poate ține serverul
+  ocupat trimițând megaocteți la /clienti.
+
+  Acordurile GDPR sunt altceva. Acolo urcă un PDF semnat, iar base64 îl mai
+  umflă cu o treime, deci o sută de kiloocteți nu ajung. Limita mai mare se dă
+  exact acelei rute, nu întregului server.
+*/
+const corpJson = express.json()
+const corpJsonAcorduri = express.json({ limit: '4mb' })
+app.use((req, res, next) =>
+  req.path.startsWith('/consimtaminte')
+    ? corpJsonAcorduri(req, res, next)
+    : corpJson(req, res, next),
+)
 
 // Serve static files (test UI and future frontend build)
 app.use(express.static(path.join(process.cwd(), 'public')))
@@ -243,6 +262,7 @@ app.get('/health', (_req, res) => {
 
 app.use('/auth', authRouter)
 app.use('/clienti', clientiRouter)
+app.use('/consimtaminte', consimtaminteRouter)
 app.use('/programari', programariRouter)
 app.use('/vanzari', vanzariRouter)
 app.use('/articole', articoleRouter)

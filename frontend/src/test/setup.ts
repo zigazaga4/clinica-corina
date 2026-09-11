@@ -28,6 +28,16 @@ configureazaLatenta(0)
  * modală — și vor fi multe — ar trebui să o copieze.
  */
 beforeAll(() => {
+  /*
+    Nu orice test are ecran.
+
+    Fișierele marcate `@vitest-environment node` — cel care desenează PDF-ul
+    acordului, de pildă — rulează fără `jsdom`, fiindcă au nevoie de `node:fs`
+    și de `node:zlib`, pe care mediul de browser le scoate din joc. Acolo
+    `window` nu există, iar completările de mai jos nu au ce completa.
+  */
+  if (typeof window === 'undefined') return
+
   const prototip = window.HTMLDialogElement?.prototype ?? HTMLElement.prototype
   Object.assign(prototip, {
     showModal(this: HTMLElement) {

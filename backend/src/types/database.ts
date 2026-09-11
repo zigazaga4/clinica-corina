@@ -235,6 +235,47 @@ export interface NotaClientDetaliu extends NotaClient {
   autor_nume: string | null
 }
 
+/**
+ * Datele clientului așa cum arătau în clipa semnării.
+ *
+ * Copiate, nu citite din fișă la afișare: omul își schimbă adresa peste un an,
+ * iar acordul trebuie să arate în continuare ce scria pe el atunci.
+ */
+export interface DateSemnatar {
+  nume: string
+  telefon: string | null
+  email: string | null
+  adresa: string | null
+}
+
+/**
+ * Un acord GDPR semnat. Nu se modifică niciodată — vezi `sql/01_schema.sql`.
+ *
+ * `document` este PDF-ul întreg, exact cum l-a văzut clientul. Rutele care
+ * întorc liste NU îl citesc: pentru ele există `ConsimtamantDetaliu`, care
+ * vine din vedere și nu are coloana.
+ */
+export interface Consimtamant {
+  id: string
+  client_id: string
+  programare_id: string | null
+  versiune: string
+  document: Buffer
+  marime: number
+  /** sha256 hex al documentului, calculat la semnare. */
+  amprenta: string
+  date_semnatar: DateSemnatar
+  dispozitiv: string | null
+  semnat_la: string
+  creat_de: string | null
+}
+
+/** Acordul fără fișier — forma cu care lucrează listele și fișa clientului. */
+export interface ConsimtamantDetaliu extends Omit<Consimtamant, 'document'> {
+  client_nume: string
+  creat_de_nume: string | null
+}
+
 export interface JurnalOperatiune {
   id: number
   utilizator_id: string | null
