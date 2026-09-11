@@ -14,6 +14,7 @@
 import type {
   Articol,
   Client,
+  Consimtamant,
   JurnalOperatiune,
   NotaClient,
   Programare,
@@ -45,12 +46,24 @@ export interface RandSesiune {
   dispozitiv: string | null
 }
 
+/**
+ * `consimtamant`, cu PDF-ul pe care API-ul nu îl întoarce în liste.
+ *
+ * Ca la `utilizator`: coloana grea stă în magazin, fiindcă stă și în bază.
+ * Dacă ar lipsi de aici, ruta `/:id/document` nu ar avea ce sluji în modul de
+ * demonstrație, iar butonul „Vezi acordul” ar fi părut stricat.
+ */
+export interface RandConsimtamant extends Consimtamant {
+  document: Uint8Array
+}
+
 export interface Magazin {
   utilizator: Map<Uuid, RandUtilizator>
   punct_lucru: Map<Uuid, PunctLucru>
   articol: Map<Uuid, Articol>
   client: Map<Uuid, Client>
   nota_client: Map<Uuid, NotaClient>
+  consimtamant: Map<Uuid, RandConsimtamant>
   programare: Map<Uuid, Programare>
   vanzare: Map<Uuid, Vanzare>
   vanzare_linie: Map<Uuid, VanzareLinie>
@@ -67,6 +80,7 @@ function magazinGol(): Magazin {
     articol: new Map(),
     client: new Map(),
     nota_client: new Map(),
+    consimtamant: new Map(),
     programare: new Map(),
     vanzare: new Map(),
     vanzare_linie: new Map(),

@@ -15,6 +15,7 @@ import type {
   DateArticolNou,
   DateClientModificat,
   DateClientNou,
+  DateConsimtamantNou,
   DateIncasare,
   DateLinieVanzare,
   DatePunctLucruModificat,
@@ -27,6 +28,7 @@ import type {
   DateVanzareNoua,
   FiltruArticole,
   FiltruClienti,
+  FiltruConsimtaminte,
   FiltruJurnal,
   FiltruProgramari,
   FiltruVanzari,
@@ -45,6 +47,7 @@ import type {
   Articol,
   Client,
   ClientListItem,
+  ConsimtamantDetaliu,
   IstoricIntrare,
   JurnalOperatiuneDetaliu,
   NotaClient,
@@ -82,6 +85,7 @@ import {
 } from './constraints'
 import {
   hidrateazaClient,
+  hidrateazaConsimtamant,
   hidrateazaJurnal,
   hidrateazaNota,
   hidrateazaProgramare,
@@ -91,7 +95,12 @@ import {
 } from './hydrate'
 import { diferenta, instantaneu, scrieJurnal } from './journal'
 import { populeaza } from './seed'
-import { magazin, type RandSesiune, type RandUtilizator } from './store'
+import {
+  magazin,
+  type RandConsimtamant,
+  type RandSesiune,
+  type RandUtilizator,
+} from './store'
 
 // ---------------------------------------------------------------------------
 // Latență simulată
@@ -569,6 +578,108 @@ export function creeazaApiInMemorie(): ApiClient {
         })
 
         return hidrateazaNota(rand)
+      },
+    },
+
+    // =======================================================================
+    // Consimțăminte
+    // =======================================================================
+    consimtaminte: {
+      /** GET /consimtaminte — orice rol */
+      async list(filtru: FiltruConsimtaminte = {}): Promise<Paginat<ConsimtamantDetaliu>> {
+        await intarziere()
+        cereUtilizator()
+
+        const randuri: ConsimtamantDetaliu[] = []
+        for (const c of magazin.consimtamant.values()) {
+          if (filtru.client_id && c.client_id !== filtru.client_id) continue
+          if (filtru.programare_id && c.programare_id !== filtru.programare_id) continue
+          randuri.push(hidrateazaConsimtamant(c))
+        }
+
+        // Cele mai noi întâi, ca în `ORDER BY semnat_la DESC, id DESC`.
+        randuri.sort((a, b) => b.semnat_la.localeCompare(a.semnat_la) || b.id.localeCompare(a.id))
+        return pagineaza(randuri, filtru.pagina, filtru.pe_pagina)
+      },
+
+      /** GET /consimtaminte/:id — orice rol */
+      async get(id): Promise<ConsimtamantDetaliu> {
+        await intarziere()
+        cereUtilizator()
+        return hidrateazaConsimtamant(ceruta(magazin.consimtamant, id, 'Acordul'))
+      },
+
+      /** GET /consimtaminte/:id/document — orice rol */
+      async document(id): Promise<Blob> {
+        await intarziere()
+        cereUtilizator()
+        const rand = ceruta(magazin.consimtamant, id, 'Acordul')
+        // Copie, nu chiar octeții din magazin: un `Blob` construit peste
+        // tamponul viu ar lega fișierul descărcat de rândul din memorie.
+        return new Blob([rand.document.slice()], { type: 'application/pdf' })
+      },
+
+      /** POST /consimtaminte — orice rol */
+      async create(date: DateConsimtamantNou): Promise<ConsimtamantDetaliu> {
+        await intarziere()
+        const autor = cereUtilizator()
+        ceruta(magazin.client, date.client_id, 'Clientul')
+        if (date.programare_id) {
+          ceruta(magazin.programare, date.programare_id, 'Programarea')
+        }
+
+        const document = pdfDinBase64(date.document)
+
+        const rand: RandConsimtamant = {
+          id: uuid(),
+          client_id: date.client_id,
+          programare_id: date.programare_id ?? null,
+          versiune: ceruteText(date.versiune, 'versiune', 'Versiunea acordului'),
+          document,
+          marime: document.length,
+          amprenta: await amprentaSha256(document),
+          date_semnatar: {
+            nume: ceruteText(date.date_semnatar?.nume, 'date_semnatar', 'Numele semnatarului'),
+            telefon: textOptional(date.date_semnatar?.telefon),
+            email: textOptional(date.date_semnatar?.email),
+            adresa: textOptional(date.date_semnatar?.adresa),
+          },
+          dispozitiv: textOptional(date.dispozitiv),
+          semnat_la: acum(),
+          creat_de: autor.id,
+        }
+        magazin.consimtamant.set(rand.id, rand)
+
+        // Ca pe server: în jurnal intră tot rândul FĂRĂ fișier. Amprenta
+        // rămâne, și ea dovedește oricând că e vorba de același document.
+        const { document: _fisier, ...faraFisier } = rand
+        scrieJurnal({
+          utilizator_id: autor.id,
+          actiune: 'creare',
+          entitate: 'consimtamant',
+          entitate_id: rand.id,
+          date_noi: instantaneu(faraFisier as unknown as Record<string, unknown>),
+        })
+
+        return hidrateazaConsimtamant(rand)
+      },
+
+      /** DELETE /consimtaminte/:id — doar administrator */
+      async remove(id): Promise<void> {
+        await intarziere()
+        const autor = cereAdministrator()
+        const rand = ceruta(magazin.consimtamant, id, 'Acordul')
+
+        const { document: _fisier, ...faraFisier } = rand
+        scrieJurnal({
+          utilizator_id: autor.id,
+          actiune: 'stergere',
+          entitate: 'consimtamant',
+          entitate_id: id,
+          date_vechi: instantaneu(faraFisier as unknown as Record<string, unknown>),
+        })
+
+        magazin.consimtamant.delete(id)
       },
     },
 
@@ -1483,4 +1594,56 @@ function revocaSesiunile(utilizator_id: Uuid): void {
       s.revocata_la = momentul
     }
   }
+}
+
+/**
+ * Despachetează PDF-ul primit, cu aceleași verificări ca serverul.
+ *
+ * Se uită la primii octeți, nu doar la lungime. Fără asta, în modul de
+ * demonstrație ar intra în „bază” orice șir, iar butonul „Vezi acordul” ar fi
+ * întors un fișier pe care niciun cititor nu-l deschide — o diferență de
+ * comportament între demonstrație și server exact acolo unde nu trebuie.
+ */
+function pdfDinBase64(base64: string): Uint8Array {
+  if (typeof base64 !== 'string' || base64.trim() === '') {
+    throw eroareValidare('Lipsește documentul semnat.', 'document')
+  }
+
+  let binar: string
+  try {
+    binar = atob(base64)
+  } catch {
+    throw eroareValidare('Documentul semnat nu a putut fi citit.', 'document')
+  }
+
+  if (binar.length === 0) throw eroareValidare('Documentul semnat este gol.', 'document')
+  if (binar.length > 3 * 1024 * 1024) {
+    throw eroareValidare('Documentul semnat este prea mare.', 'document')
+  }
+  if (binar.slice(0, 5) !== '%PDF-') {
+    throw eroareValidare('Fișierul trimis nu este un document PDF.', 'document')
+  }
+
+  const octeti = new Uint8Array(binar.length)
+  for (let i = 0; i < binar.length; i++) octeti[i] = binar.charCodeAt(i)
+  return octeti
+}
+
+/**
+ * Amprenta documentului, calculată aici cum o calculează serverul acolo.
+ *
+ * `crypto.subtle` există în orice browser modern și în mediul de probe. Dacă
+ * totuși lipsește — o pagină servită fără context securizat, de pildă —
+ * întoarce o amprentă vădit falsă, în loc să oprească semnarea: în modul de
+ * demonstrație nu există nimic de dovedit, iar un ecran care refuză să meargă
+ * ar fi mai rău decât o amprentă care se vede de departe că nu e reală.
+ */
+async function amprentaSha256(octeti: Uint8Array): Promise<string> {
+  const subtle = globalThis.crypto?.subtle
+  if (!subtle) return '0'.repeat(64)
+
+  const rezumat = await subtle.digest('SHA-256', octeti.slice().buffer)
+  return Array.from(new Uint8Array(rezumat))
+    .map((o) => o.toString(16).padStart(2, '0'))
+    .join('')
 }

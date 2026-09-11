@@ -22,6 +22,7 @@ import type {
   DateArticolNou,
   DateClientModificat,
   DateClientNou,
+  DateConsimtamantNou,
   DateIncasare,
   DateProgramareModificata,
   DateProgramareNoua,
@@ -31,6 +32,7 @@ import type {
   DateVanzareNoua,
   FiltruArticole,
   FiltruClienti,
+  FiltruConsimtaminte,
   FiltruJurnal,
   FiltruProgramari,
   FiltruVanzari,
@@ -41,6 +43,7 @@ import type {
   Articol,
   Client,
   ClientListItem,
+  ConsimtamantDetaliu,
   IstoricIntrare,
   JurnalOperatiuneDetaliu,
   NotaClientDetaliu,
@@ -66,6 +69,10 @@ export const chei = {
     unul: (id: Uuid) => ['clienti', 'unul', id] as const,
     istoric: (id: Uuid) => ['clienti', 'istoric', id] as const,
     note: (id: Uuid) => ['clienti', 'note', id] as const,
+  },
+  consimtaminte: {
+    tot: ['consimtaminte'] as const,
+    lista: (filtru: FiltruConsimtaminte) => ['consimtaminte', 'lista', filtru] as const,
   },
   programari: {
     tot: ['programari'] as const,
@@ -204,6 +211,42 @@ export function useAdaugaNota(): UseMutationResult<
       api.clienti.adaugaNota(client_id, text),
     onSuccess: (_nota, { client_id }) => {
       void qc.invalidateQueries({ queryKey: chei.clienti.note(client_id) })
+      void qc.invalidateQueries({ queryKey: chei.jurnal.tot })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Consimțăminte
+// ---------------------------------------------------------------------------
+
+export function useConsimtaminte(
+  filtru: FiltruConsimtaminte = {},
+  activ = true,
+): UseQueryResult<Paginat<ConsimtamantDetaliu>> {
+  return useQuery({
+    queryKey: chei.consimtaminte.lista(filtru),
+    queryFn: () => api.consimtaminte.list(filtru),
+    enabled: activ,
+  })
+}
+
+/**
+ * Nu există `useModificaAcord` și nu va exista.
+ *
+ * Un acord semnat nu se rescrie: serverul nu are PATCH, iar tabela nu are
+ * `actualizat_la`. Îndreptarea unei greșeli este o semnătură nouă.
+ */
+export function useSemneazaAcord(): UseMutationResult<
+  ConsimtamantDetaliu,
+  Error,
+  DateConsimtamantNou
+> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (date: DateConsimtamantNou) => api.consimtaminte.create(date),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: chei.consimtaminte.tot })
       void qc.invalidateQueries({ queryKey: chei.jurnal.tot })
     },
   })

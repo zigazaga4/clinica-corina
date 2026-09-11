@@ -19,7 +19,9 @@ import type {
   Articol,
   Client,
   ClientListItem,
+  ConsimtamantDetaliu,
   DateOnly,
+  DateSemnatar,
   IstoricIntrare,
   JurnalOperatiuneDetaliu,
   NotaClientDetaliu,
@@ -135,6 +137,53 @@ export interface ApiClienti {
   note(id: Uuid): Promise<NotaClientDetaliu[]>
   /** POST /clienti/:id/note — orice rol. Autorul = utilizatorul autentificat. */
   adaugaNota(id: Uuid, text: string): Promise<NotaClientDetaliu>
+}
+
+// ---------------------------------------------------------------------------
+// Consimțăminte (acordurile GDPR semnate pe tabletă)
+// ---------------------------------------------------------------------------
+
+export interface FiltruConsimtaminte extends ParametriPaginare {
+  client_id?: Uuid
+  programare_id?: Uuid
+}
+
+export interface DateConsimtamantNou {
+  client_id: Uuid
+  /** Ședința la care s-a semnat; lipsește dacă se semnează în afara uneia. */
+  programare_id?: Uuid | null
+  /** `VERSIUNE_ACORD` a textului care a fost pe ecran. */
+  versiune: string
+  /** PDF-ul gata tipărit, cu semnătura pe el, codificat base64. */
+  document: string
+  date_semnatar: DateSemnatar
+  dispozitiv?: string | null
+}
+
+/**
+ * Acordurile nu se modifică — de aceea nu există `update` aici.
+ *
+ * Un act semnat pe care cineva îl poate rescrie mai târziu nu mai dovedește
+ * nimic. Lipsa metodei este intenționată, nu o scăpare: serverul nu are PATCH,
+ * iar tabela nu are `actualizat_la`.
+ */
+export interface ApiConsimtaminte {
+  /** GET /consimtaminte — orice rol. Cele mai noi întâi. */
+  list(filtru?: FiltruConsimtaminte): Promise<Paginat<ConsimtamantDetaliu>>
+  /** GET /consimtaminte/:id — orice rol. Fără fișier. */
+  get(id: Uuid): Promise<ConsimtamantDetaliu>
+  /** POST /consimtaminte — orice rol. Amprenta se calculează pe server. */
+  create(date: DateConsimtamantNou): Promise<ConsimtamantDetaliu>
+  /**
+   * GET /consimtaminte/:id/document — orice rol. PDF-ul propriu-zis.
+   * Întoarce octeții, nu o adresă: răspunsul cere antetul de autentificare.
+   */
+  document(id: Uuid): Promise<Blob>
+  /**
+   * DELETE /consimtaminte/:id — doar administrator.
+   * Pentru acordul semnat din greșeală pe fișa altcuiva, nimic altceva.
+   */
+  remove(id: Uuid): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
@@ -410,6 +459,7 @@ export interface ApiJurnal {
 export interface ApiClient {
   auth: ApiAuth
   clienti: ApiClienti
+  consimtaminte: ApiConsimtaminte
   programari: ApiProgramari
   vanzari: ApiVanzari
   articole: ApiArticole

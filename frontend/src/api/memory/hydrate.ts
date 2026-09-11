@@ -14,6 +14,7 @@
 import type {
   Client,
   ClientListItem,
+  ConsimtamantDetaliu,
   JurnalOperatiune,
   JurnalOperatiuneDetaliu,
   NotaClient,
@@ -27,7 +28,7 @@ import type {
   VanzareLinieDetaliu,
 } from '@/domain/types'
 import { sumaTotal } from '@/lib/money'
-import { magazin, type RandUtilizator } from './store'
+import { magazin, type RandConsimtamant, type RandUtilizator } from './store'
 
 /** Elimină `parola_hash` — coloana nu părăsește niciodată serverul. */
 export function utilizatorPublic(rand: RandUtilizator): Utilizator {
@@ -120,6 +121,22 @@ export function hidrateazaVanzare(v: Vanzare): VanzareDetaliu {
 
 export function hidrateazaNota(n: NotaClient): NotaClientDetaliu {
   return { ...n, autor_nume: numeUtilizator(n.autor_id) }
+}
+
+/**
+ * Acordul, fără PDF — exact ce întoarce vederea `v_consimtamant_detaliu`.
+ *
+ * Documentul se scoate aici, nu la apelant: dacă ar depinde de fiecare loc care
+ * citește un acord, ar fi de ajuns o singură uitare ca un PDF întreg să plece
+ * într-o listă.
+ */
+export function hidrateazaConsimtamant(c: RandConsimtamant): ConsimtamantDetaliu {
+  const { document: _fisier, ...fara } = c
+  return {
+    ...fara,
+    client_nume: magazin.client.get(c.client_id)?.nume ?? '—',
+    creat_de_nume: numeUtilizator(c.creat_de),
+  }
 }
 
 export function hidrateazaJurnal(j: JurnalOperatiune): JurnalOperatiuneDetaliu {

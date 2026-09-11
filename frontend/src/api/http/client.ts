@@ -16,6 +16,7 @@ import type {
   ApiClient,
   FiltruArticole,
   FiltruClienti,
+  FiltruConsimtaminte,
   FiltruJurnal,
   FiltruProgramari,
   FiltruVanzari,
@@ -34,6 +35,7 @@ import type {
   Articol,
   Client,
   ClientListItem,
+  ConsimtamantDetaliu,
   IstoricIntrare,
   JurnalOperatiuneDetaliu,
   NotaClientDetaliu,
@@ -116,7 +118,19 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
   async function cerere<T>(
     metoda: Metoda,
     cale: string,
-    optiuni: { corp?: unknown; parametri?: object; public?: boolean } = {},
+    optiuni: {
+      corp?: unknown
+      parametri?: object
+      public?: boolean
+      /**
+       * Răspunsul este un fișier, nu JSON — se întoarce ca `Blob`.
+       *
+       * Trece tot pe aici, și nu printr-o funcție separată, ca să moștenească
+       * reînnoirea token-ului și reluarea la 401. Un PDF cerut cu o sesiune
+       * expirată ar fi întors altfel o pagină de eroare deghizată în fișier.
+       */
+      binar?: boolean
+    } = {},
   ): Promise<T> {
     if (!optiuni.public) {
       const tokenuri = citesteTokenuri()
@@ -130,7 +144,9 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
     }
 
     const executa = async (): Promise<Response> => {
-      const antete: Record<string, string> = { Accept: 'application/json' }
+      const antete: Record<string, string> = {
+        Accept: optiuni.binar ? 'application/pdf' : 'application/json',
+      }
       if (optiuni.corp !== undefined) antete['Content-Type'] = 'application/json'
       if (!optiuni.public) {
         const t = citesteTokenuri()
@@ -160,6 +176,10 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
     }
 
     if (raspuns.status === 204) return undefined as T
+
+    // Numai când a mers: un răspuns de eroare are corp JSON, chiar dacă s-a
+    // cerut un fișier, și trebuie citit ca text mai jos ca să se afle motivul.
+    if (optiuni.binar && raspuns.ok) return (await raspuns.blob()) as T
 
     const text = await raspuns.text()
     const date: unknown = text ? safeJson(text) : null
@@ -207,6 +227,15 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
       note: (id) => cerere<NotaClientDetaliu[]>('GET', `/clienti/${id}/note`),
       adaugaNota: (id, text) =>
         cerere<NotaClientDetaliu>('POST', `/clienti/${id}/note`, { corp: { text } }),
+    },
+
+    consimtaminte: {
+      list: (filtru?: FiltruConsimtaminte) =>
+        cerere<Paginat<ConsimtamantDetaliu>>('GET', '/consimtaminte', { parametri: filtru }),
+      get: (id) => cerere<ConsimtamantDetaliu>('GET', `/consimtaminte/${id}`),
+      create: (date) => cerere<ConsimtamantDetaliu>('POST', '/consimtaminte', { corp: date }),
+      document: (id) => cerere<Blob>('GET', `/consimtaminte/${id}/document`, { binar: true }),
+      remove: (id) => cerere<void>('DELETE', `/consimtaminte/${id}`),
     },
 
     programari: {

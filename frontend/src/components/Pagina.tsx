@@ -13,10 +13,23 @@ import { Buton } from '@/ui'
   altfel fiecare ecran ar ajunge cu propriul său `p-4` ușor diferit.
 */
 
+/**
+ * Nu are lățime maximă, dinadins.
+ *
+ * A avut: `max-w-7xl`, adică 1280px, plus centrare. Nu se vedea în fereastra
+ * implicită de 1440px — mai rămâneau exact câțiva pixeli — dar pe un monitor
+ * lat, sau pur și simplu maximizată, aplicația se oprea din crescut și își
+ * împărțea restul în două dungi goale, tot mai late. Arăta ca o fereastră care
+ * refuză să se facă mare, nu ca o setare de lățime, tocmai fiindcă la
+ * dimensiunea din fabrică nu se observa deloc.
+ *
+ * Aici se măsoară în programări pe zi și rânduri de tabel, nu în rânduri de
+ * text: un calendar cu zece coloane și un jurnal cu opt au numai de câștigat
+ * din fiecare pixel. Un ecran care chiar vrea măsură de citit și-o cere singur,
+ * prin `className` — `cn` este peste `tailwind-merge`, deci o suprascrie.
+ */
 export function Pagina({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={cn('mx-auto w-full max-w-7xl p-3 sm:p-4 lg:p-6', className)}>{children}</div>
-  )
+  return <div className={cn('w-full p-3 sm:p-4 lg:p-6', className)}>{children}</div>
 }
 
 export function AntetPagina({

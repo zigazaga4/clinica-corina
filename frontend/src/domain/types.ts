@@ -130,6 +130,44 @@ export interface NotaClient {
   creat_la: Timestamptz
 }
 
+/**
+ * Fișa clientului așa cum a fost TIPĂRITĂ în acord, nu cum arată azi.
+ *
+ * Se ia de pe ecran în clipa semnării și rămâne neatinsă. Dacă peste un an
+ * clientul își schimbă telefonul, acordul semnat trebuie să spună în
+ * continuare ce scria pe hârtia pe care a semnat-o.
+ */
+export interface DateSemnatar {
+  nume: string
+  telefon: string | null
+  email: string | null
+  adresa: string | null
+}
+
+/**
+ * Tabela `consimtamant` — acordul GDPR semnat pe tabletă.
+ *
+ * Rândul nu se modifică NICIODATĂ: nu are `actualizat_la`, iar serverul nu
+ * expune PATCH. O greșeală se îndreaptă printr-o semnătură nouă, iar amândouă
+ * rămân în fișă.
+ */
+export interface Consimtamant {
+  id: Uuid
+  client_id: Uuid
+  /** Ședința la care s-a semnat; NULL dacă programarea a fost ștearsă între timp. */
+  programare_id: Uuid | null
+  /** `VERSIUNE_ACORD` din textul semnat — fără ea nu s-ar ști ce a acceptat. */
+  versiune: string
+  marime: number
+  /** SHA-256 al PDF-ului, calculat de server. Dovedește că fișierul e neatins. */
+  amprenta: string
+  date_semnatar: DateSemnatar
+  /** Aparatul care a cules semnătura, ex. „signotec Sigma (S/N 1000444927)”. */
+  dispozitiv: string | null
+  semnat_la: Timestamptz
+  creat_de: Uuid | null
+}
+
 /** Tabela `programare` — o programare în calendar. */
 export interface Programare {
   id: Uuid
@@ -292,6 +330,18 @@ export interface VanzareDetaliu extends Vanzare {
 /** Notă hidratată cu numele autorului (autorul poate fi șters — SET NULL). */
 export interface NotaClientDetaliu extends NotaClient {
   autor_nume: string | null
+}
+
+/**
+ * Acord hidratat cu numele clientului și al celui care l-a cules.
+ *
+ * PDF-ul nu este aici și nu va fi niciodată: se ia separat, prin
+ * `/consimtaminte/:id/document`. O fișă cu douăzeci de acorduri ar fi tras
+ * câțiva megaocteți doar ca să deseneze douăzeci de rânduri de listă.
+ */
+export interface ConsimtamantDetaliu extends Consimtamant {
+  client_nume: string
+  creat_de_nume: string | null
 }
 
 /** Rând din jurnal, cu numele utilizatorului care a operat. */
