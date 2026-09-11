@@ -41,6 +41,34 @@ const PALETA: CuloarePersoana[] = [
   { fundal: 'bg-persoana-6', text: 'text-persoana-6', pastila: 'bg-persoana-6/12 text-persoana-6' },
 ]
 
+/**
+ * Bejul deschis, cerut anume de clinică.
+ *
+ * Singura culoare cu fundal și text diferite: bejul destul de deschis cât să se
+ * cheme bej nu se poate citi ca text pe alb (motivarea completă stă lângă
+ * jetoane, în `index.css`). Pastila are și ea nevoie de mai mult fundal decât
+ * celelalte — 12% dintr-un bej deschis, pe alb, nu se mai vede deloc.
+ */
+const BEJ: CuloarePersoana = {
+  fundal: 'bg-persoana-bej',
+  text: 'text-persoana-bej-text',
+  pastila: 'bg-persoana-bej/45 text-persoana-bej-text dark:bg-persoana-bej/15',
+}
+
+/**
+ * Culori cerute pe nume, care trec înaintea rotației.
+ *
+ * Cheia e primul cuvânt din nume, cu litere mici: contul se numește azi „Irina”,
+ * dar un „Irina P.” de mâine trebuie să rămână tot bej.
+ */
+const CULORI_PE_NUME: Record<string, CuloarePersoana | undefined> = {
+  irina: BEJ,
+}
+
+function prenumeMic(nume: string): string {
+  return (nume.trim().split(/\s+/)[0] ?? '').toLowerCase()
+}
+
 export interface PersoanaColorata {
   id: Uuid
   nume: string
@@ -61,6 +89,10 @@ const Context = createContext<Map<Uuid, PersoanaColorata>>(new Map())
  * Peste șase conturi culorile se reiau. Este o limită acceptată conștient: o
  * recepție cu șapte persoane simultan are oricum nevoie de filtrul pe persoană,
  * nu de încă o nuanță greu de deosebit de prima.
+ *
+ * Culorile cerute pe nume sar peste rotație, dar NU consumă locuri din ea:
+ * poziția în listă rămâne poziția în paletă, așa că trecerea Irinei pe bej nu
+ * schimbă culoarea nimănui altcuiva.
  */
 export function FurnizorCulori({
   utilizatori,
@@ -71,9 +103,16 @@ export function FurnizorCulori({
 }) {
   const harta = useMemo(() => {
     const m = new Map<Uuid, PersoanaColorata>()
-    const ordonati = [...(utilizatori ?? [])].sort((a, b) => a.creat_la.localeCompare(b.creat_la))
+    // Numele departajează data: cele două conturi de la deschidere au fost
+    // create în aceeași instrucțiune, deci au `creat_la` identic la microsecundă.
+    // Fără departajare, ordinea lor ar fi rămas cea în care le întoarce serverul,
+    // iar culorile s-ar fi schimbat între ele la prima modificare a acelei liste.
+    const ordonati = [...(utilizatori ?? [])].sort(
+      (a, b) => a.creat_la.localeCompare(b.creat_la) || a.nume.localeCompare(b.nume),
+    )
     ordonati.forEach((u, i) => {
-      m.set(u.id, { id: u.id, nume: u.nume, culoare: PALETA[i % PALETA.length]! })
+      const ceruta = CULORI_PE_NUME[prenumeMic(u.nume)]
+      m.set(u.id, { id: u.id, nume: u.nume, culoare: ceruta ?? PALETA[i % PALETA.length]! })
     })
     return m
   }, [utilizatori])

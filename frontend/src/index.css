@@ -70,6 +70,19 @@
   --color-persoana-5: oklch(0.578 0.135 140);
   --color-persoana-6: oklch(0.552 0.155 262);
 
+  /*
+    Bejul, cerut anume pentru un cont, în afara rotației de mai sus.
+
+    Este singura culoare de persoană care are nevoie de DOUĂ valori. Un bej
+    rămâne bej doar cât timp e folosit ca fundal — bandă, punct, pastilă. Același
+    bej scris ca text de 11px pe alb are un contrast sub 2:1, adică un nume pe
+    care nimeni nu-l citește. Textul primește deci aceeași nuanță caldă, coborâtă
+    până devine lizibilă: se citește ca „persoana bej”, fiindcă punctul de lângă
+    el este bejul deschis.
+  */
+  --color-persoana-bej: oklch(0.855 0.045 85);
+  --color-persoana-bej-text: oklch(0.505 0.048 72);
+
   --radius-camp: 0.625rem;
   --umbra-card: 0 1px 2px oklch(0.235 0.012 315 / 0.05);
   --umbra-ridicat:
@@ -133,6 +146,10 @@
   --color-persoana-5: oklch(0.742 0.125 142);
   --color-persoana-6: oklch(0.722 0.135 262);
 
+  /* Pe fundal închis bejul deschis e lizibil și ca text; valorile aproape coincid. */
+  --color-persoana-bej: oklch(0.885 0.042 85);
+  --color-persoana-bej-text: oklch(0.855 0.045 85);
+
   --umbra-card: 0 1px 2px oklch(0 0 0 / 0.35);
   --umbra-ridicat:
     0 10px 30px -12px oklch(0 0 0 / 0.6),
@@ -185,6 +202,8 @@
   --color-persoana-4: var(--color-persoana-4);
   --color-persoana-5: var(--color-persoana-5);
   --color-persoana-6: var(--color-persoana-6);
+  --color-persoana-bej: var(--color-persoana-bej);
+  --color-persoana-bej-text: var(--color-persoana-bej-text);
 
   --shadow-card: var(--umbra-card);
   --shadow-ridicat: var(--umbra-ridicat);
