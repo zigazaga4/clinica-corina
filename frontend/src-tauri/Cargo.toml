@@ -1,6 +1,6 @@
 [package]
 name = "clinica-app"
-version = "0.1.4"
+version = "0.1.5"
 description = "Aplicatie interna de gestiune a clientilor unei clinici"
 authors = ["TZ INTELLIGENCE 28 SRL"]
 license = ""

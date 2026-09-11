@@ -30,7 +30,7 @@ export function GrilaLuna({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="grid grid-cols-7 border-b border-line">
+      <div className="grid grid-cols-7 border-b-2 border-line">
         {zile.slice(0, 7).map((zi) => (
           <div
             key={zi.toISOString()}
@@ -51,7 +51,7 @@ export function GrilaLuna({
             <div
               key={zi.toISOString()}
               className={cn(
-                'flex min-h-24 flex-col gap-0.5 border-r border-b border-line p-1',
+                'flex min-h-24 flex-col gap-0.5 border-r-2 border-b-2 border-line p-1',
                 // Zilele din lunile vecine rămân vizibile, dar estompate:
                 // săptămâna de la marginea lunii trebuie să arate completă.
                 !dinLunaCurenta && 'bg-muted/40',

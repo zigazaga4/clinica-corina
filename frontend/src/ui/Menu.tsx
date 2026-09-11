@@ -16,10 +16,24 @@ export interface MeniuProps {
   children: ReactNode
   /** Aliniere față de declanșator. */
   aliniere?: 'stanga' | 'dreapta'
+  /**
+   * Partea în care se desface meniul.
+   *
+   * „sus” este obligatoriu pentru declanșatoarele lipite de marginea de jos a
+   * ecranului — meniul contului, de pildă. Desfăcut în jos de acolo, ajunge sub
+   * marginea ferestrei și nu se mai vede: butonul răspunde, dar nu apare nimic.
+   */
+  directie?: 'jos' | 'sus'
   className?: string
 }
 
-export function Meniu({ declansator, children, aliniere = 'dreapta', className }: MeniuProps) {
+export function Meniu({
+  declansator,
+  children,
+  aliniere = 'dreapta',
+  directie = 'jos',
+  className,
+}: MeniuProps) {
   const [deschis, setDeschis] = useState(false)
   const ref = useInchidereExterna<HTMLDivElement>(deschis, () => setDeschis(false))
 
@@ -34,9 +48,10 @@ export function Meniu({ declansator, children, aliniere = 'dreapta', className }
           // element de meniu să nu fie nevoit să o ceară explicit.
           onClick={() => setDeschis(false)}
           className={cn(
-            'absolute top-full z-30 mt-1.5 min-w-48 overflow-hidden rounded-xl',
+            'absolute z-30 min-w-48 overflow-hidden rounded-xl',
             'border border-line bg-elevated p-1 shadow-(--umbra-ridicat)',
             'anim-intrare-modala',
+            directie === 'sus' ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
             aliniere === 'dreapta' ? 'right-0' : 'left-0',
             className,
           )}

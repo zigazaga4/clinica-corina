@@ -298,6 +298,10 @@ function MeniuCont({ compact = false }: { compact?: boolean }) {
     <div className={cn(!compact && 'border-t border-line p-2.5')}>
       <Meniu
         aliniere={compact ? 'dreapta' : 'stanga'}
+        // Pe calculator butonul stă lipit de marginea de jos a barei laterale:
+        // desfăcut în jos, meniul ar cădea sub marginea ferestrei. În antetul
+        // de telefon („compact”) stă sus, deci acolo se desface normal.
+        directie={compact ? 'jos' : 'sus'}
         declansator={({ comuta, deschis }) => (
           <button
             type="button"

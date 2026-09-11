@@ -62,7 +62,7 @@ export function GrilaOre({
         <div className="sticky left-0 z-20 w-13 shrink-0 bg-surface">
           <div
             className={cn(
-              'h-11 border-b border-line bg-surface',
+              'h-11 border-b-2 border-line bg-surface',
               antetLipicios && 'sticky top-0 z-10',
             )}
           />
@@ -84,7 +84,7 @@ export function GrilaOre({
           {coloane.map((coloana) => (
             <div
               key={coloana.id}
-              className="min-w-40 flex-1 border-l border-line"
+              className="min-w-40 flex-1 border-l-2 border-line"
             >
               <AntetColoana coloana={coloana} lipicios={antetLipicios} />
 
@@ -118,7 +118,10 @@ function ColoanaProgramari({
       {ORE.map((ora) => (
         <div
           key={ora}
-          className="absolute inset-x-0 border-t border-line/60"
+          // Linia orei este reperul după care se citește la ce oră stă o
+          // programare. Subțire și spălăcită, se pierdea pe ecranul de la
+          // recepție; acum are grosime întreagă și culoarea neatenuată.
+          className="absolute inset-x-0 border-t-2 border-line"
           style={{ top: (ora - ORA_INCEPUT) * PIXELI_PE_ORA }}
           aria-hidden
         />
@@ -168,7 +171,7 @@ function AntetColoana({ coloana, lipicios }: { coloana: ColoanaGrila; lipicios: 
   return (
     <div
       className={cn(
-        'flex h-11 flex-col justify-center border-b border-line bg-surface px-2',
+        'flex h-11 flex-col justify-center border-b-2 border-line bg-surface px-2',
         lipicios && 'sticky top-0 z-10',
         coloana.zi && isToday(coloana.zi) && 'bg-primary-50',
       )}
@@ -203,8 +206,8 @@ function LinieAcum() {
       style={{ top: pozitieVerticala(acum) }}
       aria-hidden
     >
-      <span className="size-2 shrink-0 rounded-full bg-danger" />
-      <span className="h-px flex-1 bg-danger" />
+      <span className="size-2.5 shrink-0 rounded-full bg-danger" />
+      <span className="h-0.5 flex-1 bg-danger" />
     </div>
   )
 }
