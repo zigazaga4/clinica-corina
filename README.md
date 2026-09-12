@@ -97,7 +97,7 @@ unul la altul să nu ceară altă parolă. Toate au parola `parola123`:
 ## Verificarea
 
 ```bash
-cd frontend && npm test          # 180 de teste: interfață, reguli, formulare
+cd frontend && npm test          # 184 de teste: interfață, reguli, formulare
 cd frontend && npm run typecheck
 cd backend  && npm run test:db   # „văd baza? are schema și constrângerile?”
 cd backend  && npm run test:api  # 130 de verificări, întreg contractul HTTP

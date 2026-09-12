@@ -86,5 +86,16 @@ export default defineConfig({
       își construiește singur clientul și citește altă variabilă, `API_LIVE`.
     */
     env: { NODE_ENV: 'test', VITE_API_URL: '' },
+    /*
+      Pragul unui test: 30 s, nu cele 5 implicite.
+
+      Fișierele rulează în paralel, pe aceleași nuclee, și suita are ecrane
+      grele — o săptămână de calendar, o fișă cu trei ferestre suprapuse,
+      tableta de semnat cu așteptările ei de 15 s. Rulat singur, fiecare
+      trece în câteva secunde; în suita întreagă, cel care nimerește un nucleu
+      ocupat depășea pragul și pica fără vreo legătură cu codul testat.
+      Pragul e o plasă pentru un test chiar blocat, nu o măsură a vitezei.
+    */
+    testTimeout: 30_000,
   },
 })
