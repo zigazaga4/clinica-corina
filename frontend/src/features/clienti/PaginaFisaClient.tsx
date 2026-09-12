@@ -61,6 +61,8 @@ import {
   type Fila,
 } from '@/ui'
 import { PanouAcorduri } from '../consimtamant/PanouAcorduri'
+import { FormularProgramare, type ProgramareInitiala } from '../programari/FormularProgramare'
+import { TratamenteleClientului } from '../tratamente/TratamenteleClientului'
 import { FormularClient } from './FormularClient'
 import { ModalaIncasare } from './ModalaIncasare'
 
@@ -101,6 +103,8 @@ export function PaginaFisaClient() {
   const [formularDeschis, setFormularDeschis] = useState(false)
   const [incasareDeschisa, setIncasareDeschisa] = useState(false)
   const [cereConfirmareStergere, setCereConfirmareStergere] = useState(false)
+  // Ședința următoare a unui tratament, programată de pe fișă.
+  const [programareDinTratament, setProgramareDinTratament] = useState<ProgramareInitiala | null>(null)
 
   // Cronologia curățată de dubluri; contorul de pe filă o numără pe ea, ca
   // eticheta să spună câte intrări se văd, nu câte a trimis serverul.
@@ -294,6 +298,17 @@ export function PaginaFisaClient() {
           </CorpCard>
         </Card>
 
+        <TratamenteleClientului
+          clientId={client.id}
+          onProgrameaza={(t) =>
+            setProgramareDinTratament({
+              client_id: t.client_id,
+              articol_id: t.articol_id,
+              tratament_id: t.id,
+            })
+          }
+        />
+
         {/*
           Banda de plată.
 
@@ -347,6 +362,12 @@ export function PaginaFisaClient() {
         clientId={client.id}
         clientNume={client.nume}
         sedinte={sedinteNeachitate}
+      />
+
+      <FormularProgramare
+        deschisa={programareDinTratament !== null}
+        onInchide={() => setProgramareDinTratament(null)}
+        initial={programareDinTratament}
       />
 
       <ModalaConfirmare

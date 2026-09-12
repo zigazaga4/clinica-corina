@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Layers } from 'lucide-react'
 import {
   useArticole,
   useCreeazaProgramare,
@@ -6,12 +7,14 @@ import {
   usePretSugerat,
 } from '@/app/queries'
 import { useAutentificare } from '@/app/auth'
+import type { PretSugerat, SugestieTratament } from '@/api/contract'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
 import { GrilaFormular, PeToataLatimea } from '@/components/Pagina'
 import type { ProgramareDetaliu, Uuid } from '@/domain/types'
 import { addMinutes, dinInputDatetime, laInputDatetime } from '@/lib/dates'
 import { useEroriFormular } from '@/lib/formular'
 import { formateazaBani, parseNumar } from '@/lib/money'
+import { plural } from '@/lib/text'
 import { Buton, Input, Modala, Textarea, useNotificari } from '@/ui'
 import { CampuriInterval, proximulSfertDeOra } from './CampuriInterval'
 
@@ -23,19 +26,33 @@ type CampFormular =
   | 'incepe_la'
   | 'se_termina_la'
 
+/**
+ * Ce se completează dinainte când formularul se deschide din fișa unui
+ * tratament: clientul și serviciul sunt ale tratamentului și nu se mai aleg.
+ */
+export interface ProgramareInitiala {
+  client_id: Uuid
+  articol_id: Uuid
+  tratament_id: Uuid
+}
+
 export function FormularProgramare({
   deschisa,
   onInchide,
   programare,
   /** Momentul pe care s-a apăsat în calendar, folosit ca oră de început. */
   momentInitial,
+  initial,
 }: {
   deschisa: boolean
   onInchide: () => void
   programare?: ProgramareDetaliu | null
   momentInitial?: Date
+  /** Ședința următoare a unui tratament — client și serviciu fixate. */
+  initial?: ProgramareInitiala | null
 }) {
   const esteModificare = Boolean(programare)
+  const dinTratament = Boolean(initial) && !esteModificare
   const { utilizator } = useAutentificare()
   const notificari = useNotificari()
   const erori = useEroriFormular<CampFormular>()
@@ -87,8 +104,8 @@ export function FormularProgramare({
     }
 
     const inceput = momentInitial ?? proximulSfertDeOra()
-    setClientId(null)
-    setArticolId(null)
+    setClientId(initial?.client_id ?? null)
+    setArticolId(initial?.articol_id ?? null)
     // Operatorul se programează cel mai des pe sine; e punctul de plecare cel
     // mai probabil, iar schimbarea costă un clic.
     setExecutantId(utilizator?.id ?? null)
@@ -100,7 +117,28 @@ export function FormularProgramare({
     // `erori` lipsește intenționat dintre dependențe: funcțiile lui sunt stabile
     // prin useCallback, iar obiectul se recreează la fiecare randare, deci
     // includerea lui ar reporni efectul și ar șterge ce tocmai s-a completat.
-  }, [deschisa, programare, momentInitial, utilizator])
+  }, [deschisa, programare, momentInitial, initial, utilizator])
+
+  /*
+    Durata serviciului fixat dinainte.
+
+    Efectul de mai sus nu trece prin `alegeServiciu`, iar nomenclatorul poate
+    sosi după deschidere; ora de sfârșit ar rămâne la cele 60 de minute
+    implicite. Se aplică o singură dată pe deschidere (`durataAplicata`), ca o
+    reîncărcare a nomenclatorului să nu rescrie o oră deja mutată de mână.
+  */
+  const durataAplicata = useRef(false)
+  useEffect(() => {
+    if (!deschisa) durataAplicata.current = false
+  }, [deschisa])
+  useEffect(() => {
+    if (!deschisa || !initial || !servicii || durataAplicata.current) return
+    const serviciu = servicii.find((s) => s.id === initial.articol_id)
+    if (!serviciu?.durata_minute) return
+    durataAplicata.current = true
+    const inceput = momentInitial ?? proximulSfertDeOra()
+    setSeTerminaLa(laInputDatetime(addMinutes(inceput, serviciu.durata_minute)))
+  }, [deschisa, initial, servicii, momentInitial])
 
   /**
    * Alegerea serviciului mută ora de sfârșit după `durata_minute`.
@@ -152,8 +190,17 @@ export function FormularProgramare({
         await modifica.mutateAsync({ id: programare.id, date })
         notificari.succes('Programare modificată')
       } else {
-        await creeaza.mutateAsync(date)
-        notificari.succes('Programare adăugată')
+        // Din fișa tratamentului, ședința intră EXPLICIT în el; din calendar,
+        // serverul o pune singur în tratamentul în curs al clientului.
+        const creata = await creeaza.mutateAsync(
+          initial ? { ...date, tratament_id: initial.tratament_id } : date,
+        )
+        notificari.succes(
+          'Programare adăugată',
+          creata.sedinta_nr !== null && creata.tratament_numar_sedinte !== null
+            ? `Ședința ${creata.sedinta_nr} din ${creata.tratament_numar_sedinte} a tratamentului.`
+            : undefined,
+        )
       }
       onInchide()
     } catch (err) {
@@ -207,6 +254,7 @@ export function FormularProgramare({
             onSchimba={setClientId}
             obligatoriu
             cuCreare
+            disabled={dinTratament}
             eroare={erori.peCamp.client_id ?? null}
           />
           <SelectorArticol
@@ -216,8 +264,22 @@ export function FormularProgramare({
             eticheta="Serviciu"
             obligatoriu
             cuCreare
+            disabled={dinTratament}
             eroare={erori.peCamp.articol_id ?? null}
           />
+
+          {/*
+            Ce se întâmplă cu tratamentul dacă ședința se salvează acum — spus
+            ÎNAINTE de a salva. Recepția trebuie să știe că pune „ședința 3 din
+            8”, nu o programare oarecare, și că prețul de mai jos este partea
+            ei din tratament, nu prețul din nomenclator.
+          */}
+          {!esteModificare && sugestie?.tratament && (
+            <PeToataLatimea>
+              <NotaTratament sugestie={sugestie.tratament} />
+            </PeToataLatimea>
+          )}
+
           <SelectorUtilizator
             valoare={executantId}
             onSchimba={setExecutantId}
@@ -234,11 +296,7 @@ export function FormularProgramare({
               setPret(e.target.value)
             }}
             eroare={erori.peCamp.pret ?? null}
-            ajutor={
-              sugestie?.din_istoric
-                ? `Prețul reținut pentru acest client. Preț de listă: ${formateazaBani(sugestie.pret_lista)}`
-                : undefined
-            }
+            ajutor={ajutorPret(sugestie)}
             className="text-right tabular-nums"
           />
 
@@ -279,4 +337,54 @@ export function FormularProgramare({
 /** Sumele intră în câmp cu virgulă zecimală, forma pe care o tastează recepția. */
 function laText(valoare: number): string {
   return String(valoare).replace('.', ',')
+}
+
+/** De unde vine prețul propus — ca operatoarea să știe de ce nu e cel din nomenclator. */
+function ajutorPret(sugestie: PretSugerat | undefined): string | undefined {
+  if (!sugestie) return undefined
+  if (sugestie.tratament) {
+    const { pret_total, numar_sedinte } = sugestie.tratament
+    return `Partea ședinței din tratamentul de ${formateazaBani(pret_total)} în ${numar_sedinte} ședințe. Se poate corecta și la închiderea ședinței.`
+  }
+  if (sugestie.din_istoric) {
+    return `Prețul reținut pentru acest client. Preț de listă: ${formateazaBani(sugestie.pret_lista)}`
+  }
+  return undefined
+}
+
+function NotaTratament({ sugestie }: { sugestie: SugestieTratament }) {
+  const plin = sugestie.sedinta_nr > sugestie.numar_sedinte
+  return (
+    <div
+      role={plin ? 'alert' : 'note'}
+      className={
+        plin
+          ? 'flex items-start gap-2 rounded-lg bg-warning-soft px-3 py-2 text-[13px] text-warning'
+          : 'flex items-start gap-2 rounded-lg bg-primary-50 px-3 py-2 text-[13px] text-primary-700'
+      }
+    >
+      <Layers className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <span>
+        {plin ? (
+          <>
+            Tratamentul are deja toate cele {sugestie.numar_sedinte} ședințe programate sau făcute.
+            Mărește numărul de ședințe din fișa tratamentului sau încheie-l și începe altul.
+          </>
+        ) : sugestie.id === null ? (
+          <>
+            Începe un <strong>tratament nou</strong> de {sugestie.numar_sedinte}{' '}
+            {plural(sugestie.numar_sedinte, 'ședință', 'ședințe')}, {formateazaBani(sugestie.pret_total)} în
+            total. Următoarele ședințe se programează din fila „Tratamente”.
+          </>
+        ) : (
+          <>
+            <strong>
+              Ședința {sugestie.sedinta_nr} din {sugestie.numar_sedinte}
+            </strong>{' '}
+            a tratamentului în curs ({formateazaBani(sugestie.pret_total)} în total).
+          </>
+        )}
+      </span>
+    </div>
+  )
 }

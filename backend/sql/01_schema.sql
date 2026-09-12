@@ -145,11 +145,19 @@ CREATE TABLE IF NOT EXISTS articol (
   activ          boolean NOT NULL DEFAULT true,
   creat_la       timestamptz NOT NULL DEFAULT now(),
   actualizat_la  timestamptz NOT NULL DEFAULT now(),
+  -- În câte ședințe se face serviciul. Peste 1, `pret_lista` este prețul
+  -- ÎNTREGULUI tratament, iar fiecare programare primește o parte din el
+  -- (v. `tratament`). Un produs se vinde dintr-o bucată: rămâne 1.
+  numar_sedinte  integer NOT NULL DEFAULT 1,
 
   CONSTRAINT articol_durata_ck CHECK (
     (tip = 'serviciu' AND durata_minute IS NOT NULL AND durata_minute > 0)
     OR
     (tip = 'produs'   AND durata_minute IS NULL)
+  ),
+
+  CONSTRAINT articol_sedinte_ck CHECK (
+    numar_sedinte >= 1 AND (tip = 'serviciu' OR numar_sedinte = 1)
   ),
 
   -- Ținta cheii străine compuse din `programare`. Redundantă ca unicitate
@@ -213,6 +221,65 @@ CREATE INDEX IF NOT EXISTS nota_client_fisa_idx ON nota_client (client_id, creat
 
 
 -- ---------------------------------------------------------------------------
+-- tratament — un serviciu făcut în mai multe ședințe, pentru un client
+-- ---------------------------------------------------------------------------
+
+/*
+  „Epilare IPL axile, 6 ședințe”, „anti-acnee, 4 ședințe”. Serviciul se
+  cumpără o dată și se face în mai multe veniri; fiecare venire este o
+  `programare` obișnuită, legată de rândul de aici prin `tratament_id`.
+
+  Rândul ține DOAR ce se convine la început: câte ședințe și cât costă totul.
+  Restul — câte s-au făcut, cât s-a încasat, cât mai e de programat — se
+  NUMĂRĂ din programări, în `v_tratament_detaliu`. Nu există contoare ținute
+  de mână: ar fi ajuns să se contrazică cu ședințele pe care le rezumă (vezi
+  `abonament`, mai jos, care exact asta face și tocmai de aceea nu se
+  folosește).
+
+  Banii nu stau aici. `pret_total` se ÎMPARTE pe ședințe la crearea fiecăreia
+  (restul neplanificat, la ședințele rămase) și devine `programare.pret`, iar
+  de acolo urmează drumul obișnuit: onorat -> achitat -> linie de vânzare.
+  Recepția poate corecta suma la fiecare ședință; ședințele următoare își
+  refac singure partea din ce a rămas.
+
+  `incheiat_la` se pune singur când s-au onorat toate ședințele, sau de mână
+  când clientul renunță. Un client are cel mult un tratament ÎN CURS pentru
+  același serviciu (`tratament_in_curs_uk`): o programare nouă la acel serviciu
+  intră în el, nu deschide altul.
+*/
+
+CREATE TABLE IF NOT EXISTS tratament (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id      uuid NOT NULL REFERENCES client(id) ON DELETE RESTRICT,
+  articol_id     uuid NOT NULL,
+  articol_tip    tip_articol NOT NULL DEFAULT 'serviciu'
+                 CHECK (articol_tip = 'serviciu'),
+  -- Copiate din nomenclator la deschidere și editabile pe tratament: o
+  -- schimbare ulterioară în nomenclator nu rescrie ce s-a convenit cu omul.
+  numar_sedinte  integer NOT NULL CHECK (numar_sedinte >= 1),
+  pret_total     numeric(10,2) NOT NULL CHECK (pret_total >= 0),
+  nota           text,
+  incheiat_la    timestamptz,
+  creat_de       uuid REFERENCES utilizator(id) ON DELETE SET NULL,
+  creat_la       timestamptz NOT NULL DEFAULT now(),
+  actualizat_la  timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT tratament_articol_fk
+    FOREIGN KEY (articol_id, articol_tip) REFERENCES articol (id, tip)
+    ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS tratament_in_curs_uk
+  ON tratament (client_id, articol_id) WHERE incheiat_la IS NULL;
+CREATE INDEX IF NOT EXISTS tratament_client_idx
+  ON tratament (client_id, creat_la DESC);
+
+DROP TRIGGER IF EXISTS tratament_actualizat_la ON tratament;
+CREATE TRIGGER tratament_actualizat_la BEFORE UPDATE ON tratament
+  FOR EACH ROW EXECUTE FUNCTION set_actualizat_la();
+
+
+-- ---------------------------------------------------------------------------
 -- programare — o ședință în calendar
 -- ---------------------------------------------------------------------------
 
@@ -239,6 +306,11 @@ CREATE TABLE IF NOT EXISTS programare (
   creat_de        uuid REFERENCES utilizator(id) ON DELETE SET NULL,
   creat_la        timestamptz NOT NULL DEFAULT now(),
   actualizat_la   timestamptz NOT NULL DEFAULT now(),
+  -- Tratamentul din care face parte ședința; NULL la serviciile dintr-o
+  -- singură venire. Ultima coloană dinadins: pe o bază migrată, ALTER TABLE o
+  -- pune tot la sfârșit, iar `p.*` din vederi dă atunci aceleași coloane, în
+  -- aceeași ordine, indiferent cum a fost creată baza.
+  tratament_id    uuid REFERENCES tratament(id) ON DELETE RESTRICT,
 
   CONSTRAINT programare_articol_fk
     FOREIGN KEY (articol_id, articol_tip) REFERENCES articol (id, tip)
@@ -261,6 +333,10 @@ CREATE INDEX IF NOT EXISTS programare_client_idx
 -- Restanțele: ședințe onorate, căutate des de banda „De plată” a fișei.
 CREATE INDEX IF NOT EXISTS programare_onorate_idx
   ON programare (client_id) WHERE stare = 'onorat';
+-- Ședințele unui tratament: numărate la fiecare citire a lui și la fiecare
+-- programare nouă în el.
+CREATE INDEX IF NOT EXISTS programare_tratament_idx
+  ON programare (tratament_id, incepe_la) WHERE tratament_id IS NOT NULL;
 
 DROP TRIGGER IF EXISTS programare_actualizat_la ON programare;
 CREATE TRIGGER programare_actualizat_la BEFORE UPDATE ON programare
@@ -479,7 +555,9 @@ CREATE INDEX IF NOT EXISTS jurnal_utilizator_idx ON jurnal_operatiuni (utilizato
 --
 -- Nu au ecran în aplicație și nu fac parte din contractul API al interfeței.
 -- Tabelele există pentru rutele /abonamente, păstrate din versiunea inițială a
--- serverului.
+-- serverului. Ce folosește aplicația pentru „serviciu în mai multe ședințe”
+-- este `tratament`, mai sus: fără contoare ținute de mână și fără un al doilea
+-- drum al banilor (`plata`) pe lângă încasări.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS abonament (
@@ -569,6 +647,10 @@ CREATE TRIGGER plata_contor
 --
 -- `achitat`, `vanzare_id` și `achitat_la` sunt DERIVATE — nu există coloane cu
 -- aceste nume. Se citesc din linia de vânzare care indică ședința.
+--
+-- `sedinta_nr` / `tratament_numar_sedinte` dau „ședința 3 din 8” pe ședințele
+-- unui tratament; NULL în rest. Se numără doar ședințele care CONTEAZĂ —
+-- programate sau onorate; una anulată nu ocupă un loc din cele 8.
 CREATE OR REPLACE VIEW v_programare_detaliu AS
 SELECT
   p.*,
@@ -580,12 +662,23 @@ SELECT
   COALESCE(pl.denumire, '—')  AS punct_lucru_denumire,
   (i.vanzare_id IS NOT NULL)  AS achitat,
   i.vanzare_id                AS vanzare_id,
-  i.efectuat_la               AS achitat_la
+  i.efectuat_la               AS achitat_la,
+  t.numar_sedinte             AS tratament_numar_sedinte,
+  CASE
+    WHEN p.tratament_id IS NULL OR p.stare NOT IN ('programat', 'onorat') THEN NULL
+    ELSE (
+      SELECT count(*)::integer FROM programare q
+      WHERE q.tratament_id = p.tratament_id
+        AND q.stare IN ('programat', 'onorat')
+        AND (q.incepe_la, q.id) <= (p.incepe_la, p.id)
+    )
+  END                         AS sedinta_nr
 FROM programare p
 LEFT JOIN client      c  ON c.id  = p.client_id
 LEFT JOIN articol     a  ON a.id  = p.articol_id
 LEFT JOIN utilizator  e  ON e.id  = p.executant_id
 LEFT JOIN punct_lucru pl ON pl.id = p.punct_lucru_id
+LEFT JOIN tratament   t  ON t.id  = p.tratament_id
 LEFT JOIN LATERAL (
   SELECT vl.vanzare_id, v.efectuat_la
   FROM vanzare_linie vl
@@ -593,6 +686,63 @@ LEFT JOIN LATERAL (
   WHERE vl.programare_id = p.id
   LIMIT 1
 ) i ON true;
+
+
+-- Tratamentul, cu tot ce se NUMĂRĂ din ședințele lui.
+--
+-- Nimic de aici nu este coloană: câte ședințe s-au făcut, cât s-a încasat și
+-- cât mai e de plată se citesc din programări și din liniile de vânzare, la
+-- fiecare cerere. `pret_urmatoarea` este partea propusă pentru ședința
+-- următoare — ce a rămas neplanificat din `pret_total`, împărțit la ședințele
+-- rămase — și este singurul loc în care se face împărțirea: serverul o
+-- citește de aici la fiecare programare nouă.
+--
+-- Se numără doar ședințele programate sau onorate. Cele anulate și
+-- neprezentările nu ocupă un loc și nu iau bani: clientul are în continuare
+-- ședința de făcut.
+CREATE OR REPLACE VIEW v_tratament_detaliu AS
+SELECT
+  t.*,
+  COALESCE(c.nume, '—')                                   AS client_nume,
+  c.telefon                                               AS client_telefon,
+  COALESCE(a.denumire, '—')                               AS articol_denumire,
+  a.durata_minute                                         AS articol_durata_minute,
+  COALESCE(s.programate, 0)::integer                      AS sedinte_programate,
+  COALESCE(s.onorate, 0)::integer                         AS sedinte_onorate,
+  GREATEST(t.numar_sedinte - COALESCE(s.programate, 0) - COALESCE(s.onorate, 0), 0)::integer
+                                                          AS sedinte_ramase,
+  COALESCE(s.alocat, 0)                                   AS alocat,
+  COALESCE(s.incasat, 0)                                  AS incasat,
+  COALESCE(s.de_incasat, 0)                               AS de_incasat,
+  CASE
+    WHEN t.numar_sedinte - COALESCE(s.programate, 0) - COALESCE(s.onorate, 0) <= 0 THEN 0
+    ELSE GREATEST(round(
+      (t.pret_total - COALESCE(s.alocat, 0))
+        / (t.numar_sedinte - COALESCE(s.programate, 0) - COALESCE(s.onorate, 0)),
+      2), 0)
+  END                                                     AS pret_urmatoarea,
+  s.urmatoarea_la,
+  s.ultima_la
+FROM tratament t
+LEFT JOIN client  c ON c.id = t.client_id
+LEFT JOIN articol a ON a.id = t.articol_id
+LEFT JOIN LATERAL (
+  SELECT
+    count(*) FILTER (WHERE p.stare = 'programat')                       AS programate,
+    count(*) FILTER (WHERE p.stare = 'onorat')                          AS onorate,
+    round(sum(p.pret) FILTER (WHERE p.stare IN ('programat', 'onorat')), 2) AS alocat,
+    round(sum(p.pret) FILTER (
+      WHERE p.stare = 'onorat'
+        AND EXISTS (SELECT 1 FROM vanzare_linie vl WHERE vl.programare_id = p.id)
+    ), 2)                                                               AS incasat,
+    round(sum(p.pret) FILTER (
+      WHERE p.stare = 'onorat'
+        AND NOT EXISTS (SELECT 1 FROM vanzare_linie vl WHERE vl.programare_id = p.id)
+    ), 2)                                                               AS de_incasat,
+    min(p.incepe_la) FILTER (WHERE p.stare = 'programat')               AS urmatoarea_la,
+    max(p.incepe_la) FILTER (WHERE p.stare = 'onorat')                  AS ultima_la
+  FROM programare p WHERE p.tratament_id = t.id
+) s ON true;
 
 
 -- Notița, cu numele persoanei. `executant_nume` rămâne NULL pentru notițele

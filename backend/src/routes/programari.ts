@@ -16,6 +16,13 @@ import { inregistreazaIncasare } from '../lib/incasari.js'
 import { executantulCerut } from '../lib/persoane.js'
 import { programareDetaliu, programariDetaliu, punctImplicit } from '../lib/proiectii.js'
 import {
+  incheieDacaEComplet,
+  pretTotalPentru,
+  tratamentDetaliu,
+  tratamentInCurs,
+  tratamentulSedintei,
+} from '../lib/tratamente.js'
+import {
   momentCerut,
   numarCerut,
   textOptional,
@@ -90,10 +97,47 @@ async function verificaSuprapunere(
 /**
  * Prețul cu care se deschide formularul pentru un client și un serviciu.
  *
- * Ultima ședință a clientului la acel serviciu dictează. Ședințele anulate nu
- * spun nimic despre ce plătește omul, deci nu se numără.
+ * Serviciu dintr-o venire: ultima ședință a clientului la acel serviciu
+ * dictează. Ședințele anulate nu spun nimic despre ce plătește omul, deci nu
+ * se numără.
+ *
+ * Serviciu în mai multe ședințe: prețul este PARTEA ședinței din tratament —
+ * ce a rămas neplanificat din `pret_total`, împărțit la ședințele rămase.
+ * Răspunsul spune și în ce tratament ar intra ședința și a câta ar fi, ca
+ * formularul să poată scrie „ședința 3 din 8” înainte de a salva ceva.
  */
 async function pretPentru(ex: Executor, client_id: string, articol: Articol) {
+  const pret_lista = Number(articol.pret_lista)
+
+  // Un tratament în curs — oricum ar fi fost deschis — dictează partea ședinței.
+  const inCurs = await tratamentInCurs(ex, client_id, articol.id)
+  if (inCurs) {
+    const t = await tratamentDetaliu(ex, inCurs.id)
+    return {
+      pret: Number(t.pret_urmatoarea),
+      din_istoric: false,
+      pret_lista,
+      tratament: {
+        id: t.id,
+        numar_sedinte: t.numar_sedinte,
+        sedinta_nr: t.sedinte_programate + t.sedinte_onorate + 1,
+        pret_total: Number(t.pret_total),
+      },
+    }
+  }
+
+  if (articol.numar_sedinte > 1) {
+    // Ședința ar deschide un tratament nou: prima parte din prețul lui, care
+    // la rândul lui ține minte ce s-a convenit data trecută cu acest client.
+    const { pret_total, din_istoric } = await pretTotalPentru(ex, client_id, articol)
+    return {
+      pret: Math.round((pret_total / articol.numar_sedinte) * 100) / 100,
+      din_istoric,
+      pret_lista,
+      tratament: { id: null, numar_sedinte: articol.numar_sedinte, sedinta_nr: 1, pret_total },
+    }
+  }
+
   const ultima = await unuSauNimic<{ pret: number }>(
     ex,
     `SELECT pret FROM programare
@@ -102,7 +146,6 @@ async function pretPentru(ex: Executor, client_id: string, articol: Articol) {
     [client_id, articol.id],
   )
 
-  const pret_lista = Number(articol.pret_lista)
   if (!ultima || Number(ultima.pret) === pret_lista) {
     return { pret: pret_lista, din_istoric: false, pret_lista }
   }
@@ -131,6 +174,8 @@ router.get('/', ruta(async (req: AuthRequest, res: Response) => {
   unde.egal('executant_id', textDin(req.query['executant_id']))
   unde.egal('punct_lucru_id', textDin(req.query['punct_lucru_id']))
   unde.egal('client_id', textDin(req.query['client_id']))
+  // Ședințele unui tratament, pentru fișa lui.
+  unde.egal('tratament_id', textDin(req.query['tratament_id']))
   unde.oricareDin('stare::text', listaDin(req.query['stare']))
 
   // `neachitate` este întrebarea „cine îmi datorează bani?”, pusă din calendar.
@@ -202,11 +247,20 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
     // Punctul de lucru nu mai apare în niciun formular: clinica are unul singur.
     const punct_lucru_id = textDin(corp['punct_lucru_id']) ?? (await punctImplicit(ex))
 
+    /*
+      Tratamentul, înaintea prețului: la un serviciu în mai multe ședințe,
+      prețul ședinței este partea ei din tratament, iar tratamentul trebuie
+      găsit (sau deschis) și blocat înainte de a se număra locurile din el.
+    */
+    const inTratament = await tratamentulSedintei(ex, {
+      client_id, articol, tratament_id: corp['tratament_id'], autor_id: autor.id, req,
+    })
+
     // Prețul lipsă se completează din memoria clientului, nu direct din
     // nomenclator: dacă i s-a mai făcut acest serviciu la un preț anume, acela
-    // este prețul lui.
+    // este prețul lui. Într-un tratament, memoria este chiar tratamentul.
     const pret = corp['pret'] === undefined || corp['pret'] === null
-      ? (await pretPentru(ex, client_id, articol)).pret
+      ? (inTratament?.pret ?? (await pretPentru(ex, client_id, articol)).pret)
       : verificaPret(numarCerut(corp['pret'], 'pret', 'Prețul'), 'pret')
 
     const q = dynamicInsert('programare', {
@@ -220,6 +274,7 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
       pret,
       nota: textOptional(corp['nota']),
       creat_de: autor.id,
+      tratament_id: inTratament?.tratament.id ?? null,
     })
     const { rows } = await ex.query<Programare>(q.text, q.values)
     const rand = rows[0]!
@@ -257,6 +312,25 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
     )
 
     const date = alege(corp, CAMPURI)
+
+    /*
+      Într-un tratament, clientul și serviciul sunt ale tratamentului.
+
+      Mutată pe alt client, ședința ar rămâne numărată în tratamentul primului;
+      pe alt serviciu, ar lua o parte din prețul unui tratament de altceva.
+      Ședința greșită se anulează și se face alta — anularea îi eliberează
+      locul din tratament.
+    */
+    if (inainte.tratament_id !== null) {
+      const schimbaClientul = date['client_id'] !== undefined && date['client_id'] !== inainte.client_id
+      const schimbaServiciul = date['articol_id'] !== undefined && date['articol_id'] !== inainte.articol_id
+      if (schimbaClientul || schimbaServiciul) {
+        throw eroareValidare(
+          'Ședința face parte dintr-un tratament; clientul și serviciul nu se pot schimba. Anuleaz-o și fă alta.',
+          schimbaClientul ? 'client_id' : 'articol_id',
+        )
+      }
+    }
 
     if (date['client_id'] !== undefined) {
       await unu(ex, `SELECT id FROM client WHERE id = $1`, [date['client_id']], 'Clientul')
@@ -349,11 +423,16 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
  * care nu a avut loc. Omis, ședința rămâne „de plată” și se stinge mai târziu
  * prin `POST /vanzari/incasare` — cazul clientei care vine de mai multe ori și
  * plătește la final.
+ *
+ * `pret` corectează suma ședinței în același gest: la casă se află cât s-a
+ * luat de fapt — mai puțin la o ședință scurtă, mai mult la una prelungită —
+ * iar la un tratament partea următoarelor ședințe se reface din ce a rămas.
+ * Pe o ședință deja încasată nu se mai poate schimba, ca la PATCH.
  */
 router.patch('/:id/stare', ruta(async (req: AuthRequest, res: Response) => {
   const autor = cont(req)
   const id = req.params['id']!
-  const corp = req.body as { stare?: unknown; achitat?: unknown }
+  const corp = req.body as { stare?: unknown; achitat?: unknown; pret?: unknown }
   const stare = verificaStare(corp.stare)
 
   const programare = await tranzactie(async (ex: Executor) => {
@@ -363,6 +442,28 @@ router.patch('/:id/stare', ruta(async (req: AuthRequest, res: Response) => {
        FROM programare p WHERE p.id = $1 FOR UPDATE OF p`,
       [id], 'Programarea',
     )
+
+    if (corp.pret !== undefined && corp.pret !== null) {
+      const pret = verificaPret(numarCerut(corp.pret, 'pret', 'Prețul'), 'pret')
+      if (pret !== Number(inainte.pret)) {
+        if (inainte.achitata) {
+          throw eroareValidare(
+            'Ședința este deja încasată; prețul ei nu se mai poate schimba.', 'pret',
+          )
+        }
+        await ex.query(`UPDATE programare SET pret = $1 WHERE id = $2`, [pret, id])
+        await scrieJurnal(ex, {
+          utilizator_id: autor.id,
+          actiune: 'modificare',
+          entitate: 'programare',
+          entitate_id: id,
+          date_vechi: { pret: Number(inainte.pret) },
+          date_noi: { pret },
+          adresa_ip: adresaCererii(req),
+        })
+        inainte.pret = pret
+      }
+    }
 
     if (inainte.stare !== stare) {
       /*
@@ -412,6 +513,9 @@ router.patch('/:id/stare', ruta(async (req: AuthRequest, res: Response) => {
         adresa_ip: adresaCererii(req),
       })
     }
+
+    // Ultima ședință onorată încheie tratamentul de la sine.
+    await incheieDacaEComplet(ex, inainte.tratament_id, autor.id, adresaCererii(req))
 
     return programareDetaliu(ex, id)
   })

@@ -32,6 +32,7 @@ import type {
   StareProgramare,
   Timestamptz,
   TipArticol,
+  TratamentDetaliu,
   Utilizator,
   Uuid,
   VanzareDetaliu,
@@ -195,6 +196,8 @@ export interface FiltruProgramari extends IntervalTimp {
   executant_id?: Uuid
   punct_lucru_id?: Uuid
   client_id?: Uuid
+  /** Ședințele unui tratament, pentru fișa lui. */
+  tratament_id?: Uuid
   stare?: StareProgramare[]
   /** true = doar ședințele onorate și neîncasate. */
   neachitate?: boolean
@@ -212,13 +215,31 @@ export interface DateProgramareNoua {
   se_termina_la: Timestamptz
   /**
    * Prețul ședinței. Lipsă = serverul aplică `pretSugerat` (ultimul preț al
-   * acestui client pentru acest serviciu, altfel prețul de listă).
+   * acestui client pentru acest serviciu, altfel prețul de listă; într-un
+   * tratament, partea ședinței din el).
    */
   pret?: number
   nota?: string | null
+  /**
+   * Tratamentul în care intră ședința. Lipsă: serverul o pune singur în
+   * tratamentul în curs al clientului pentru acest serviciu, sau deschide
+   * unul nou dacă serviciul se face în mai multe ședințe. Trimis explicit —
+   * din fișa tratamentului — se verifică să fie al clientului și în curs.
+   */
+  tratament_id?: Uuid | null
 }
 
 export type DateProgramareModificata = Partial<DateProgramareNoua>
+
+/** Ce s-ar întâmpla cu tratamentul dacă ședința s-ar salva acum. */
+export interface SugestieTratament {
+  /** Tratamentul în curs în care ar intra ședința; null = ședința l-ar deschide. */
+  id: Uuid | null
+  numar_sedinte: number
+  /** A câta ședință ar fi. Peste `numar_sedinte` = tratamentul e plin. */
+  sedinta_nr: number
+  pret_total: number
+}
 
 /** Răspunsul la „cât îi cer clientului pentru serviciul ăsta?”. */
 export interface PretSugerat {
@@ -231,6 +252,23 @@ export interface PretSugerat {
   din_istoric: boolean
   /** Prețul curent din nomenclator, pentru comparație. */
   pret_lista: number
+  /**
+   * Prezent când ședința ar face parte dintr-un tratament. Atunci `pret` este
+   * PARTEA ședinței — restul neplanificat din `pret_total`, împărțit la
+   * ședințele rămase — nu prețul din nomenclator.
+   */
+  tratament?: SugestieTratament
+}
+
+/** Ce se poate cere odată cu schimbarea stării unei ședințe. */
+export interface OptiuniStare {
+  /** true = încasează ședința pe loc, în aceeași tranzacție (doar la 'onorat'). */
+  achitat?: boolean
+  /**
+   * Suma corectată a ședinței — cât s-a luat de fapt. Se aplică înaintea
+   * încasării; refuzată pe o ședință deja încasată.
+   */
+  pret?: number
 }
 
 export interface ApiProgramari {
@@ -254,18 +292,81 @@ export interface ApiProgramari {
    * Omis sau false, ședința rămâne „de plată” și se încasează mai târziu, prin
    * `vanzari.incaseaza` — cazul clientului care vine de mai multe ori și
    * plătește la final.
+   *
+   * `pret` corectează suma ședinței în același gest — la casă se află cât s-a
+   * luat de fapt. Într-un tratament, ședințele următoare își refac partea din
+   * ce a rămas. Ultima ședință onorată a unui tratament îl încheie singură.
    */
   schimbaStarea(
     id: Uuid,
     stare: StareProgramare,
-    achitat?: boolean,
+    optiuni?: OptiuniStare,
   ): Promise<ProgramareDetaliu>
   /**
    * GET /programari/pret-sugerat?client_id=&articol_id= — orice rol.
    * Prețul cu care se deschide formularul, ținând minte ce a plătit clientul
-   * ultima dată pentru acel serviciu.
+   * ultima dată pentru acel serviciu — sau, într-un tratament, partea ședinței.
    */
   pretSugerat(client_id: Uuid, articol_id: Uuid): Promise<PretSugerat>
+}
+
+// ---------------------------------------------------------------------------
+// Tratamente — servicii în mai multe ședințe
+// ---------------------------------------------------------------------------
+
+export interface FiltruTratamente extends ParametriPaginare {
+  client_id?: Uuid
+  articol_id?: Uuid
+  /** true = doar cele în curs; false = doar cele încheiate; lipsă = toate. */
+  in_curs?: boolean
+  /** Căutare după numele clientului sau denumirea serviciului. */
+  q?: string
+}
+
+export interface DateTratamentNou {
+  client_id: Uuid
+  /** Un articol de tip 'serviciu'. */
+  articol_id: Uuid
+  /** Lipsă = `articol.numar_sedinte`. */
+  numar_sedinte?: number
+  /** Lipsă = prețul reținut al clientului pentru acest serviciu, altfel `articol.pret_lista`. */
+  pret_total?: number
+  nota?: string | null
+}
+
+export interface DateTratamentModificat {
+  /** Nu poate coborî sub ședințele deja programate sau făcute. */
+  numar_sedinte?: number
+  pret_total?: number
+  nota?: string | null
+}
+
+/**
+ * Ședințele NU se scriu pe aici: se fac prin `programari.create`, ca oricare
+ * alta, iar serverul le pune singur în tratamentul în curs. Metodele de mai
+ * jos deschid, corectează și încheie înțelegerea. Nu există `remove`:
+ * încheierea de mână este „clientul a renunțat”, cu ședințele și banii la
+ * locul lor.
+ */
+export interface ApiTratamente {
+  /** GET /tratamente — orice rol. Cele în curs întâi, apoi după următoarea ședință. */
+  list(filtru?: FiltruTratamente): Promise<Paginat<TratamentDetaliu>>
+  /** GET /tratamente/:id — orice rol. */
+  get(id: Uuid): Promise<TratamentDetaliu>
+  /**
+   * POST /tratamente — orice rol. Deschide un tratament fără ședințe încă.
+   * Respins (409) dacă clientul are deja unul în curs la același serviciu.
+   */
+  create(date: DateTratamentNou): Promise<TratamentDetaliu>
+  /** PATCH /tratamente/:id — orice rol. */
+  update(id: Uuid, date: DateTratamentModificat): Promise<TratamentDetaliu>
+  /** POST /tratamente/:id/incheiere — orice rol. Fără efect dacă e deja încheiat. */
+  incheie(id: Uuid): Promise<TratamentDetaliu>
+  /**
+   * POST /tratamente/:id/redeschidere — orice rol.
+   * Respins (409) dacă între timp s-a deschis alt tratament în curs la aceeași pereche.
+   */
+  redeschide(id: Uuid): Promise<TratamentDetaliu>
 }
 
 // ---------------------------------------------------------------------------
@@ -409,6 +510,8 @@ export interface DateArticolNou {
   durata_minute?: number | null
   pret_lista: number
   activ?: boolean
+  /** >= 1 la servicii; lipsă = 1. Refuzat pe produse (articol_sedinte_ck). */
+  numar_sedinte?: number
 }
 
 export type DateArticolModificat = Partial<DateArticolNou>
@@ -506,6 +609,7 @@ export interface ApiClient {
   consimtaminte: ApiConsimtaminte
   programari: ApiProgramari
   notite: ApiNotite
+  tratamente: ApiTratamente
   vanzari: ApiVanzari
   articole: ApiArticole
   puncteLucru: ApiPuncteLucru

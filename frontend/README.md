@@ -105,10 +105,46 @@ flowchart LR
 
 Prețul unei ședințe se propune singur: dacă acelui client i s-a mai făcut acel
 serviciu, revine prețul lui; altfel, prețul de listă. Rămâne editabil, iar
-suma tastată devine automat prețul lui pentru data viitoare.
+suma tastată devine automat prețul lui pentru data viitoare. La închiderea
+ședinței („Ședință efectuată”) suma se mai poate corecta o dată — cât s-a luat
+de fapt — înainte de a intra în încasare.
 
 În cod, secțiunea se numește în continuare `vanzari` — tabelele și rutele §7
 nu s-au schimbat. Doar ecranul spune „Încasări”, pentru că asta este.
+
+## Tratamente — serviciile în mai multe ședințe
+
+„Epilare IPL axile, 6 ședințe”, „anti-acnee, 4 ședințe”: serviciul se cumpără
+o dată și se face în mai multe veniri. În Nomenclator, serviciul primește un
+**număr de ședințe**; peste 1, prețul de listă este al întregului tratament.
+
+Prima programare a unui asemenea serviciu **deschide singură un tratament** pe
+fișa clientului. Următoarele ședințe intră în el — din calendar, ca oricare
+programare, sau din fila **Tratamente**, cu butonul „Programează”, unde
+clientul și serviciul sunt deja alese. Formularul spune dinainte ce urmează să
+facă: „Ședința 3 din 8 a tratamentului în curs”.
+
+```mermaid
+flowchart LR
+  N["Nomenclator:<br/>serviciu în 8 ședințe, 2.400 lei"] --> P1["Prima programare<br/>deschide tratamentul"]
+  P1 --> S["Ședința primește partea ei:<br/>rest neplanificat / ședințe rămase"]
+  S --> O["Ședință efectuată:<br/>suma se corectează pe loc"]
+  O --> R["Următoarele ședințe<br/>își refac partea din ce a rămas"]
+  R --> F["Ultima ședință onorată<br/>încheie tratamentul"]
+```
+
+Banii nu au un al doilea drum. Prețul total se **împarte pe ședințe** la
+programarea fiecăreia — restul neplanificat, la ședințele rămase — și devine
+prețul ședinței, care se încasează exact ca orice altă ședință. Dacă la o
+ședință s-a luat mai mult sau mai puțin, următoarele își refac singure partea.
+Ecranul „Tratamente” arată, pentru fiecare client, câte ședințe s-au făcut din
+câte, cât s-a încasat din cât, când e următoarea — și îi pune primii pe cei
+fără nicio ședință programată, adică pe cei de sunat.
+
+Nimic din toate acestea nu este un contor ținut de mână: tabela `tratament`
+ține doar înțelegerea (câte ședințe, cât în total), iar restul se numără din
+programări la fiecare citire. Rutele sunt `/tratamente`; o ședință anulată sau
+o neprezentare nu ocupă un loc din cele convenite.
 
 ## Ce mai încape în calendar
 
@@ -209,14 +245,16 @@ Rute în plus față de §7, folosite de interfață:
 
 ### Abateri de la §3, cerute de Beneficiar
 
-Trei modificări de schemă, convenite după prima demonstrație. Sunt puține și
-aditive: nicio coloană existentă nu își schimbă înțelesul.
+Modificări de schemă convenite după demonstrații. Sunt puține și aditive:
+nicio coloană existentă nu își schimbă înțelesul.
 
 | Modificare | Unde | De ce |
 | --- | --- | --- |
 | `programare.pret numeric(10,2) NOT NULL` | tabela `programare` | Fiecare ședință are prețul ei, convenit la programare și editabil acolo. Prețul din nomenclator rămâne doar referință. |
 | `vanzare_linie.programare_id uuid NULL REFERENCES programare(id)` | tabela `vanzare_linie` | Leagă plata de ședința pe care o stinge. Pe LINIE, nu pe antet, ca o singură încasare să poată acoperi mai multe ședințe. |
 | `punct_lucru` nu mai apare în interfață | — | Clinica are o singură locație. Coloanele și rutele rămân neatinse; serverul completează punctul implicit când cererea nu îl trimite. |
+| tabela `notita` | nouă | Însemnări în calendar care nu sunt programări. |
+| `articol.numar_sedinte`, tabela `tratament`, `programare.tratament_id` | nomenclator + nouă + `programare` | Serviciile în mai multe ședințe: înțelegerea (câte, cât) stă în `tratament`; ședințele o referă. Tot ce se vede în ecranul „Tratamente” se numără din programări (`v_tratament_detaliu`). |
 
 Din a doua modificare rezultă două câmpuri **derivate**, pe care serverul le
 calculează și interfața doar le citește — nu există coloană `achitat`, pentru
@@ -289,6 +327,7 @@ src/
 │   ├── auth/         autentificare
 │   ├── programari/   calendar zi / săptămână / lună + agendă, preț și plată
 │   ├── clienti/      listă, fișă, note, istoric, încasarea restanțelor
+│   ├── tratamente/   serviciile în mai multe ședințe: progres, bani, programare
 │   ├── vanzari/      încasările (ruta /incasari): plăți și produse
 │   ├── nomenclator/  servicii și produse
 │   ├── utilizatori/  conturi și roluri

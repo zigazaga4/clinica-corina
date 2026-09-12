@@ -19,6 +19,7 @@ import type {
   Programare,
   PunctLucru,
   StareProgramare,
+  Tratament,
   Uuid,
   Vanzare,
   VanzareLinie,
@@ -53,22 +54,25 @@ const nowIso = () => new Date().toISOString()
 interface SabonServiciu {
   denumire: string
   durata: number
+  /** La un serviciu în mai multe ședințe: prețul ÎNTREGULUI tratament. */
   pret: number
+  /** În câte veniri se face; lipsă = una singură. */
+  sedinte?: number
   activ?: boolean
 }
 
 const SERVICII: SabonServiciu[] = [
   { denumire: 'Curățare facială profundă', durata: 75, pret: 220 },
   { denumire: 'Tratament facial hidratant', durata: 60, pret: 180 },
-  { denumire: 'Tratament anti-acnee', durata: 60, pret: 210 },
+  { denumire: 'Tratament anti-acnee', durata: 60, pret: 760, sedinte: 4 },
   { denumire: 'Microdermabraziune', durata: 45, pret: 250 },
   { denumire: 'Peeling chimic', durata: 40, pret: 300 },
   { denumire: 'Mezoterapie facială', durata: 50, pret: 450 },
   { denumire: 'Masaj facial anti-aging', durata: 40, pret: 160 },
   { denumire: 'Radiofrecvență facială', durata: 45, pret: 280 },
   { denumire: 'Epilare definitivă IPL — față', durata: 20, pret: 150 },
-  { denumire: 'Epilare definitivă IPL — axile', durata: 25, pret: 180 },
-  { denumire: 'Epilare definitivă IPL — picioare complet', durata: 60, pret: 400 },
+  { denumire: 'Epilare definitivă IPL — axile', durata: 25, pret: 900, sedinte: 6 },
+  { denumire: 'Epilare definitivă IPL — picioare complet', durata: 60, pret: 2400, sedinte: 8 },
   { denumire: 'Epilare cu ceară — picioare', durata: 40, pret: 120 },
   { denumire: 'Manichiură clasică', durata: 45, pret: 80 },
   { denumire: 'Manichiură cu gel', durata: 75, pret: 140 },
@@ -245,6 +249,7 @@ export function populeaza(): void {
       activ: s.activ ?? true,
       creat_la,
       actualizat_la: creat_la,
+      numar_sedinte: s.sedinte ?? 1,
     }
     magazin.articol.set(rand.id, rand)
     return rand
@@ -260,6 +265,7 @@ export function populeaza(): void {
       activ: p.activ ?? true,
       creat_la,
       actualizat_la: creat_la,
+      numar_sedinte: 1,
     }
     magazin.articol.set(rand.id, rand)
     return rand
@@ -353,6 +359,38 @@ export function populeaza(): void {
     return pret
   }
 
+  /*
+    Tratamentele se deschid pe măsură ce apar ședințele lor, exact cum face
+    API-ul: prima ședință a unui serviciu în mai multe veniri deschide
+    tratamentul, următoarele intră în el, iar una peste numărul convenit nu
+    se face. Ședințele care contează (programate, onorate) primesc partea lor
+    din preț; cele anulate sau neprezentate nu ocupă loc — ca în vedere.
+  */
+  const tratamente = new Map<string, { rand: Tratament; contate: number }>()
+  const tratamentPentru = (client_id: Uuid, serviciu: Articol) => {
+    const cheie = `${client_id}:${serviciu.id}`
+    let intrare = tratamente.get(cheie)
+    if (!intrare) {
+      const rand: Tratament = {
+        id: uuid(),
+        client_id,
+        articol_id: serviciu.id,
+        articol_tip: 'serviciu',
+        numar_sedinte: serviciu.numar_sedinte,
+        // O parte din cliente au un preț convenit sub listă, ca la ședințe.
+        pret_total: sansa(rnd, 1 / 5) ? Math.round(serviciu.pret_lista * 0.9) : serviciu.pret_lista,
+        nota: null,
+        incheiat_la: null,
+        creat_de: alege(rnd, utilizatori).id,
+        creat_la,
+        actualizat_la: creat_la,
+      }
+      intrare = { rand, contate: 0 }
+      tratamente.set(cheie, intrare)
+    }
+    return intrare
+  }
+
   for (let deplasare = -ZILE_TRECUT; deplasare <= ZILE_VIITOR; deplasare++) {
     const zi = addDays(azi, deplasare)
     // Duminica este închis.
@@ -385,6 +423,23 @@ export function populeaza(): void {
         if (sfarsit > limita) break
 
         const client_id = alege(rnd, clientiActivi).id
+        const stare = stareInFunctieDeMoment(deplasare)
+
+        let tratament: { rand: Tratament; contate: number } | null = null
+        let pret: number
+        if (serviciu.numar_sedinte > 1) {
+          tratament = tratamentPentru(client_id, serviciu)
+          // Tratamentul e plin: clienta nu mai vine la el, locul rămâne liber.
+          if (tratament.contate >= tratament.rand.numar_sedinte) {
+            cursor = addMinutes(cursor, 30)
+            continue
+          }
+          pret = Math.round((tratament.rand.pret_total / tratament.rand.numar_sedinte) * 100) / 100
+          if (stare === 'programat' || stare === 'onorat') tratament.contate++
+        } else {
+          pret = pretPentruSedinta(client_id, serviciu)
+        }
+
         const rand: Programare = {
           id: uuid(),
           client_id,
@@ -394,12 +449,13 @@ export function populeaza(): void {
           punct_lucru_id: alege(rnd, puncteActive).id,
           incepe_la: laTimestamptz(cursor),
           se_termina_la: laTimestamptz(sfarsit),
-          stare: stareInFunctieDeMoment(deplasare),
-          pret: pretPentruSedinta(client_id, serviciu),
+          stare,
+          pret,
           nota: alege(rnd, NOTE_PROGRAMARE),
           creat_de: alege(rnd, utilizatori).id,
           creat_la: laTimestamptz(addDays(cursor, -intreg(rnd, 1, 14))),
           actualizat_la: creat_la,
+          tratament_id: tratament?.rand.id ?? null,
         }
         magazin.programare.set(rand.id, rand)
         programari.push(rand)
@@ -408,6 +464,16 @@ export function populeaza(): void {
         cursor = addMinutes(sfarsit, alege(rnd, [0, 15, 15, 30]))
       }
     }
+  }
+
+  // Tratamentele cu toate ședințele onorate s-au încheiat de la sine, la
+  // sfârșitul ultimei — exact ce face API-ul la marcarea ei.
+  for (const { rand } of tratamente.values()) {
+    const onorate = programari.filter((p) => p.tratament_id === rand.id && p.stare === 'onorat')
+    if (onorate.length >= rand.numar_sedinte) {
+      rand.incheiat_la = onorate.reduce((max, p) => (p.se_termina_la > max ? p.se_termina_la : max), '')
+    }
+    magazin.tratament.set(rand.id, rand)
   }
 
   // --- notițe în calendar --------------------------------------------------

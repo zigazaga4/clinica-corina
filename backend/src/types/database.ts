@@ -35,10 +35,16 @@ export interface Articol {
   tip: TipArticol
   denumire: string
   durata_minute: number | null
+  /**
+   * Preț de referință. La un serviciu în mai multe ședințe este prețul
+   * ÎNTREGULUI tratament, nu al unei veniri.
+   */
   pret_lista: number
   activ: boolean
   creat_la: string
   actualizat_la: string
+  /** În câte ședințe se face serviciul; 1 = o singură venire. Produsele: 1. */
+  numar_sedinte: number
 }
 
 export interface Client {
@@ -89,6 +95,29 @@ export interface Programare {
    */
   pret: number
   nota: string | null
+  creat_de: string | null
+  creat_la: string
+  actualizat_la: string
+  /** Tratamentul din care face parte ședința; NULL la serviciile dintr-o venire. */
+  tratament_id: string | null
+}
+
+/**
+ * Tabela `tratament` — un serviciu făcut în mai multe ședințe, pentru un client.
+ *
+ * Ține doar ce s-a convenit la început: câte ședințe și cât în total. Tot
+ * restul se numără din programările legate prin `programare.tratament_id`
+ * (v. `TratamentDetaliu`). `incheiat_la` NULL = în curs.
+ */
+export interface Tratament {
+  id: string
+  client_id: string
+  articol_id: string
+  articol_tip: TipArticol
+  numar_sedinte: number
+  pret_total: number
+  nota: string | null
+  incheiat_la: string | null
   creat_de: string | null
   creat_la: string
   actualizat_la: string
@@ -211,6 +240,42 @@ export interface ProgramareDetaliu extends Programare {
   vanzare_id: string | null
   /** DERIVAT: `efectuat_la` al încasării care a stins-o. */
   achitat_la: string | null
+  /** Câte ședințe are tratamentul din care face parte; NULL în afara unuia. */
+  tratament_numar_sedinte: number | null
+  /**
+   * DERIVAT: a câta ședință a tratamentului este aceasta, numărând doar
+   * ședințele programate sau onorate. NULL în afara unui tratament sau la o
+   * ședință anulată / neprezentată — aceea nu ocupă un loc.
+   */
+  sedinta_nr: number | null
+}
+
+/**
+ * Tratamentul cu tot ce se numără din ședințele lui: `v_tratament_detaliu`.
+ *
+ * Niciun câmp de mai jos nu este coloană. Se numără doar ședințele programate
+ * sau onorate; cele anulate și neprezentările nu ocupă un loc și nu iau bani.
+ */
+export interface TratamentDetaliu extends Tratament {
+  client_nume: string
+  client_telefon: string | null
+  articol_denumire: string
+  articol_durata_minute: number | null
+  sedinte_programate: number
+  sedinte_onorate: number
+  /** Câte mai sunt de programat: `numar_sedinte` minus cele care contează. */
+  sedinte_ramase: number
+  /** Suma prețurilor ședințelor care contează — cât din `pret_total` e deja împărțit. */
+  alocat: number
+  incasat: number
+  /** Ședințe onorate și neîncasate. */
+  de_incasat: number
+  /** Partea propusă ședinței următoare: restul neplanificat, împărțit la cele rămase. */
+  pret_urmatoarea: number
+  /** Prima ședință programată în viitor sau nu; NULL dacă nu e niciuna. */
+  urmatoarea_la: string | null
+  /** Ultima ședință onorată. */
+  ultima_la: string | null
 }
 
 /** Linie hidratată: `v_vanzare_linie_detaliu`. */
@@ -362,6 +427,12 @@ export interface CreateProgramareRequest {
   /** Lipsă = serverul aplică prețul reținut al clientului pentru acest serviciu. */
   pret?: number
   nota?: string
+  /**
+   * Tratamentul în care intră ședința. Lipsă: la un serviciu în mai multe
+   * ședințe, serverul o pune singur în tratamentul în curs al clientului sau
+   * deschide unul nou.
+   */
+  tratament_id?: string | null
 }
 
 /** O linie trimisă de interfață la crearea sau corectarea unei încasări. */

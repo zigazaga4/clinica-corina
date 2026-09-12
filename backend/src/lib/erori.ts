@@ -158,6 +158,18 @@ const mesajeConstrangeri: Record<string, { mesaj: string; camp?: string }> = {
     mesaj: 'Se pot programa doar articole de tip serviciu.',
     camp: 'articol_id',
   },
+  tratament_in_curs_uk: {
+    mesaj: 'Clientul are deja un tratament în curs pentru acest serviciu; ședințele noi intră în el.',
+    camp: 'articol_id',
+  },
+  tratament_articol_fk: {
+    mesaj: 'Un tratament se face dintr-un serviciu, nu dintr-un produs.',
+    camp: 'articol_id',
+  },
+  articol_sedinte_ck: {
+    mesaj: 'Un serviciu se face în cel puțin o ședință; un produs nu se face în ședințe.',
+    camp: 'numar_sedinte',
+  },
   abonament_sedinte_ck: {
     mesaj: 'Abonamentul nu mai are ședințe disponibile.',
   },

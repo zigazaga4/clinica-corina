@@ -28,6 +28,8 @@ import type {
   DateNotitaNoua,
   DateProgramareModificata,
   DateProgramareNoua,
+  DateTratamentModificat,
+  DateTratamentNou,
   DateUtilizatorModificat,
   DateUtilizatorNou,
   DateVanzareModificata,
@@ -38,7 +40,9 @@ import type {
   FiltruJurnal,
   FiltruNotite,
   FiltruProgramari,
+  FiltruTratamente,
   FiltruVanzari,
+  OptiuniStare,
   Paginat,
   PretSugerat,
 } from '@/api/contract'
@@ -53,6 +57,7 @@ import type {
   NotitaDetaliu,
   ProgramareDetaliu,
   StareProgramare,
+  TratamentDetaliu,
   Utilizator,
   Uuid,
   VanzareDetaliu,
@@ -88,6 +93,11 @@ export const chei = {
   notite: {
     tot: ['notite'] as const,
     lista: (filtru: FiltruNotite) => ['notite', 'lista', filtru] as const,
+  },
+  tratamente: {
+    tot: ['tratamente'] as const,
+    lista: (filtru: FiltruTratamente) => ['tratamente', 'lista', filtru] as const,
+    unul: (id: Uuid) => ['tratamente', 'unul', id] as const,
   },
   vanzari: {
     tot: ['vanzari'] as const,
@@ -282,6 +292,9 @@ function invalideazaProgramari(qc: ReturnType<typeof useQueryClient>, client_id?
   void qc.invalidateQueries({ queryKey: chei.jurnal.tot })
   // Contorul de programări și „ultima vizită” din lista de clienți.
   void qc.invalidateQueries({ queryKey: chei.clienti.tot })
+  // Tot ce știe un tratament se numără din ședințele lui: câte s-au făcut,
+  // cât s-a împărțit, care e următoarea. O ședință nouă sau mutată le schimbă.
+  void qc.invalidateQueries({ queryKey: chei.tratamente.tot })
   if (client_id) void qc.invalidateQueries({ queryKey: chei.clienti.istoric(client_id) })
 }
 
@@ -311,7 +324,8 @@ export function useModificaProgramare(): UseMutationResult<
 }
 
 /**
- * Schimbarea stării, cu răspunsul la „s-a achitat?” dat în același apel.
+ * Schimbarea stării, cu răspunsul la „s-a achitat?” — și „cât?” — dat în
+ * același apel.
  *
  * `achitat` contează doar la trecerea pe „onorat”. Fiind o plată, invalidează
  * și încasările — de aceea trece prin `invalideazaVanzari`, nu doar prin
@@ -320,12 +334,12 @@ export function useModificaProgramare(): UseMutationResult<
 export function useSchimbaStareProgramare(): UseMutationResult<
   ProgramareDetaliu,
   Error,
-  { id: Uuid; stare: StareProgramare; achitat?: boolean }
+  { id: Uuid; stare: StareProgramare } & OptiuniStare
 > {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, stare, achitat }: { id: Uuid; stare: StareProgramare; achitat?: boolean }) =>
-      api.programari.schimbaStarea(id, stare, achitat),
+    mutationFn: ({ id, stare, achitat, pret }: { id: Uuid; stare: StareProgramare } & OptiuniStare) =>
+      api.programari.schimbaStarea(id, stare, { achitat, pret }),
     onSuccess: (programare, { achitat }) => {
       invalideazaProgramari(qc, programare.client_id)
       if (achitat) invalideazaVanzari(qc, programare.client_id)
@@ -403,6 +417,75 @@ export function useStergeNotita(): UseMutationResult<void, Error, Uuid> {
   return useMutation({
     mutationFn: (id: Uuid) => api.notite.remove(id),
     onSuccess: () => invalideazaNotite(qc),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Tratamente — servicii în mai multe ședințe
+// ---------------------------------------------------------------------------
+
+export function useTratamente(
+  filtru: FiltruTratamente = {},
+  activa = true,
+): UseQueryResult<Paginat<TratamentDetaliu>> {
+  return useQuery({
+    queryKey: chei.tratamente.lista(filtru),
+    queryFn: () => api.tratamente.list(filtru),
+    enabled: activa,
+    placeholderData: (anterioare) => anterioare,
+  })
+}
+
+export function useTratament(id: Uuid | null): UseQueryResult<TratamentDetaliu> {
+  return useQuery({
+    queryKey: chei.tratamente.unul(id ?? ''),
+    queryFn: () => api.tratamente.get(id as Uuid),
+    enabled: id !== null,
+  })
+}
+
+/**
+ * O schimbare pe tratament mută partea propusă ședințelor următoare, deci și
+ * `pretSugerat` din formularul de programare (cheie sub `programari`).
+ */
+function invalideazaTratamente(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: chei.tratamente.tot })
+  void qc.invalidateQueries({ queryKey: chei.programari.tot })
+  void qc.invalidateQueries({ queryKey: chei.jurnal.tot })
+}
+
+export function useCreeazaTratament(): UseMutationResult<TratamentDetaliu, Error, DateTratamentNou> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (date: DateTratamentNou) => api.tratamente.create(date),
+    onSuccess: () => invalideazaTratamente(qc),
+  })
+}
+
+export function useModificaTratament(): UseMutationResult<
+  TratamentDetaliu,
+  Error,
+  { id: Uuid; date: DateTratamentModificat }
+> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, date }: { id: Uuid; date: DateTratamentModificat }) =>
+      api.tratamente.update(id, date),
+    onSuccess: () => invalideazaTratamente(qc),
+  })
+}
+
+/** Încheierea și redeschiderea, într-un singur hook — ca arhivarea fișei. */
+export function useIncheieTratament(): UseMutationResult<
+  TratamentDetaliu,
+  Error,
+  { id: Uuid; incheie: boolean }
+> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, incheie }: { id: Uuid; incheie: boolean }) =>
+      incheie ? api.tratamente.incheie(id) : api.tratamente.redeschide(id),
+    onSuccess: () => invalideazaTratamente(qc),
   })
 }
 

@@ -1,8 +1,17 @@
 import { useState } from 'react'
-import { BanknoteArrowUp, CalendarClock, CheckCircle2, PencilLine, UserX, XCircle } from 'lucide-react'
+import {
+  BanknoteArrowUp,
+  CalendarClock,
+  CheckCircle2,
+  Layers,
+  PencilLine,
+  UserX,
+  XCircle,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useIncaseaza, useSchimbaStareProgramare } from '@/app/queries'
 import { InsemnPlata, InsemnStareProgramare } from '@/components/insemne'
+import { etichetaSedinta } from '@/features/tratamente/ProgresTratament'
 import { STARE_PROGRAMARE, type ProgramareDetaliu, type StareProgramare } from '@/domain/types'
 import { etichetaStareProgramare } from '@/domain/labels'
 import {
@@ -129,6 +138,19 @@ export function DetaliuProgramare({
             </div>
             <InsemnStareProgramare stare={programare.stare} />
           </div>
+
+          {/* Locul ședinței în tratament, cu drum spre fișa lui. */}
+          {programare.tratament_id !== null && (
+            <Link
+              to={`/tratamente?tratament=${programare.tratament_id}`}
+              onClick={onInchide}
+              className="flex items-center gap-2 rounded-xl bg-primary-50 px-3 py-2 text-[13px] font-medium text-primary-700 hover:bg-primary-100"
+            >
+              <Layers className="size-4 shrink-0" aria-hidden />
+              <span className="flex-1">{etichetaSedinta(programare)}</span>
+              <span aria-hidden>→</span>
+            </Link>
+          )}
 
           {/*
             Banii ședinței. Însemnul de plată apare DOAR la ședințele onorate:

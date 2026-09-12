@@ -20,6 +20,7 @@ import type {
   Notita,
   Programare,
   PunctLucru,
+  Tratament,
   Utilizator,
   Uuid,
   Vanzare,
@@ -65,6 +66,7 @@ export interface Magazin {
   client: Map<Uuid, Client>
   nota_client: Map<Uuid, NotaClient>
   consimtamant: Map<Uuid, RandConsimtamant>
+  tratament: Map<Uuid, Tratament>
   programare: Map<Uuid, Programare>
   notita: Map<Uuid, Notita>
   vanzare: Map<Uuid, Vanzare>
@@ -83,6 +85,7 @@ function magazinGol(): Magazin {
     client: new Map(),
     nota_client: new Map(),
     consimtamant: new Map(),
+    tratament: new Map(),
     programare: new Map(),
     notita: new Map(),
     vanzare: new Map(),

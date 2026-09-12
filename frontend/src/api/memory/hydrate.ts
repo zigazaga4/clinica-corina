@@ -23,13 +23,15 @@ import type {
   NotitaDetaliu,
   Programare,
   ProgramareDetaliu,
+  Tratament,
+  TratamentDetaliu,
   Utilizator,
   Uuid,
   Vanzare,
   VanzareDetaliu,
   VanzareLinieDetaliu,
 } from '@/domain/types'
-import { sumaTotal } from '@/lib/money'
+import { rotunjeste, sumaTotal } from '@/lib/money'
 import { magazin, type RandConsimtamant, type RandUtilizator } from './store'
 
 /** Elimină `parola_hash` — coloana nu părăsește niciodată serverul. */
@@ -59,12 +61,40 @@ export function incasareaProgramarii(programare_id: Uuid): Vanzare | null {
   return null
 }
 
+/** Ședința ocupă un loc în tratament — și ia bani — doar programată sau onorată. */
+const conteaza = (p: Programare): boolean => p.stare === 'programat' || p.stare === 'onorat'
+
+/**
+ * Ședințele unui tratament, în ordinea din calendar.
+ *
+ * Ordinea este `(incepe_la, id)`, ca pe server: două ședințe la aceeași oră —
+ * o greșeală, dar posibilă la persoane diferite — trebuie totuși să primească
+ * același „ședința 3 din 8” la fiecare citire.
+ */
+export function sedinteleTratamentului(tratament_id: Uuid): Programare[] {
+  const randuri: Programare[] = []
+  for (const p of magazin.programare.values()) {
+    if (p.tratament_id === tratament_id) randuri.push(p)
+  }
+  randuri.sort((a, b) => a.incepe_la.localeCompare(b.incepe_la) || a.id.localeCompare(b.id))
+  return randuri
+}
+
 export function hidrateazaProgramare(p: Programare): ProgramareDetaliu {
   const client = magazin.client.get(p.client_id)
   const articol = magazin.articol.get(p.articol_id)
   const executant = magazin.utilizator.get(p.executant_id)
   const punct = magazin.punct_lucru.get(p.punct_lucru_id)
   const incasare = incasareaProgramarii(p.id)
+  const tratament = p.tratament_id === null ? null : (magazin.tratament.get(p.tratament_id) ?? null)
+
+  // „Ședința 3 din 8”: poziția între ședințele care contează, până la ea inclusiv.
+  let sedinta_nr: number | null = null
+  if (tratament && conteaza(p)) {
+    sedinta_nr = sedinteleTratamentului(tratament.id)
+      .filter(conteaza)
+      .findIndex((q) => q.id === p.id) + 1
+  }
 
   return {
     ...p,
@@ -77,6 +107,64 @@ export function hidrateazaProgramare(p: Programare): ProgramareDetaliu {
     achitat: incasare !== null,
     vanzare_id: incasare?.id ?? null,
     achitat_la: incasare?.efectuat_la ?? null,
+    tratament_numar_sedinte: tratament?.numar_sedinte ?? null,
+    sedinta_nr,
+  }
+}
+
+/**
+ * `v_tratament_detaliu`: tot ce se numără din ședințe, la fiecare citire.
+ *
+ * Aceeași împărțire ca pe server: restul neplanificat din `pret_total`, la
+ * ședințele rămase, rotunjit la ban și niciodată sub zero. Ultima ședință ia
+ * exact ce a rămas, deci suma părților dă totalul convenit.
+ */
+export function hidrateazaTratament(t: Tratament): TratamentDetaliu {
+  const client = magazin.client.get(t.client_id)
+  const articol = magazin.articol.get(t.articol_id)
+
+  let sedinte_programate = 0
+  let sedinte_onorate = 0
+  const alocate: number[] = []
+  const incasate: number[] = []
+  const restante: number[] = []
+  let urmatoarea_la: string | null = null
+  let ultima_la: string | null = null
+
+  for (const p of sedinteleTratamentului(t.id)) {
+    if (p.stare === 'programat') {
+      sedinte_programate++
+      alocate.push(p.pret)
+      if (urmatoarea_la === null || p.incepe_la < urmatoarea_la) urmatoarea_la = p.incepe_la
+    } else if (p.stare === 'onorat') {
+      sedinte_onorate++
+      alocate.push(p.pret)
+      if (incasareaProgramarii(p.id) !== null) incasate.push(p.pret)
+      else restante.push(p.pret)
+      if (ultima_la === null || p.incepe_la > ultima_la) ultima_la = p.incepe_la
+    }
+  }
+
+  const alocat = sumaTotal(alocate)
+  const sedinte_ramase = Math.max(t.numar_sedinte - sedinte_programate - sedinte_onorate, 0)
+  const pret_urmatoarea =
+    sedinte_ramase === 0 ? 0 : Math.max(rotunjeste((t.pret_total - alocat) / sedinte_ramase), 0)
+
+  return {
+    ...t,
+    client_nume: client?.nume ?? '—',
+    client_telefon: client?.telefon ?? null,
+    articol_denumire: articol?.denumire ?? '—',
+    articol_durata_minute: articol?.durata_minute ?? null,
+    sedinte_programate,
+    sedinte_onorate,
+    sedinte_ramase,
+    alocat,
+    incasat: sumaTotal(incasate),
+    de_incasat: sumaTotal(restante),
+    pret_urmatoarea,
+    urmatoarea_la,
+    ultima_la,
   }
 }
 

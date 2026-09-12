@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react'
 import { BanknoteArrowUp, Clock3, ShieldCheck } from 'lucide-react'
 import { esteDesktopNativ } from '@/app/platforma'
-import { useClient, useConsimtaminte, useSchimbaStareProgramare } from '@/app/queries'
+import {
+  useClient,
+  useConsimtaminte,
+  useSchimbaStareProgramare,
+  useTratament,
+} from '@/app/queries'
 import { ModalaAcordGdpr } from '@/features/consimtamant/ModalaAcordGdpr'
+import { BaniTratament, etichetaSedinta, ProgresSedinte } from '@/features/tratamente/ProgresTratament'
 import type { ProgramareDetaliu } from '@/domain/types'
-import { formateazaBani } from '@/lib/money'
-import { Buton, Modala, Spinner, useNotificari } from '@/ui'
+import { formateazaBani, parseNumar } from '@/lib/money'
+import { Buton, Input, Modala, Spinner, useNotificari } from '@/ui'
 
 /**
  * Închiderea unei ședințe: a avut loc, iar acum se răspunde la „s-a plătit?”.
@@ -22,6 +28,10 @@ import { Buton, Modala, Spinner, useNotificari } from '@/ui'
  * ÎNAINTEA banilor se cere acordul GDPR, din același motiv de moment: clientul
  * este de față, cu tableta la îndemână. Cerut mai târziu, nu s-ar mai cere
  * niciodată. Dacă ședința are deja un acord semnat, pasul se sare de la sine.
+ *
+ * Suma se poate corecta AICI, nu doar în formularul de modificare: la casă se
+ * află cât s-a luat de fapt — o ședință mai scurtă, un extra — iar la un
+ * tratament partea ședințelor următoare se reface singură din ce a rămas.
  */
 export function ModalaOnorare({
   deschisa,
@@ -48,11 +58,24 @@ export function ModalaOnorare({
   */
   const acorduri = useConsimtaminte({ programare_id: programare.id, pe_pagina: 1 }, deschisa)
   const clientul = useClient(deschisa ? programare.client_id : null)
+  // Tratamentul din care face parte ședința, pentru context: cât s-a încasat
+  // până acum din cât — ca suma de mai jos să se hotărască în cunoștință.
+  const tratament = useTratament(deschisa ? programare.tratament_id : null)
 
   const [acordRezolvat, setAcordRezolvat] = useState(false)
+  // Suma pleacă de la prețul ședinței și se poate corecta; pe o ședință deja
+  // încasată câmpul nu apare — bonul nu se rescrie.
+  const [suma, setSuma] = useState('')
+  const [eroareSuma, setEroareSuma] = useState<string | null>(null)
   useEffect(() => {
-    if (deschisa) setAcordRezolvat(false)
-  }, [deschisa])
+    if (!deschisa) return
+    setAcordRezolvat(false)
+    setSuma(String(programare.pret).replace('.', ','))
+    setEroareSuma(null)
+  }, [deschisa, programare.pret])
+
+  const sumaNumerica = parseNumar(suma)
+  const sumaSchimbata = sumaNumerica !== null && sumaNumerica !== programare.pret
 
   const seVerifica = acorduri.isPending || clientul.isPending
   const areAcord = (acorduri.data?.total ?? 0) > 0
@@ -79,13 +102,26 @@ export function ModalaOnorare({
   const seAchita = inCurs && schimbaStarea.variables?.achitat === true
 
   const confirma = async (achitat: boolean) => {
+    // Zero este o sumă validă — o ședință oferită gratuit — dar lipsa sau un
+    // minus nu sunt.
+    if (sumaNumerica === null) return setEroareSuma('Completează suma ședinței.')
+    if (sumaNumerica < 0) return setEroareSuma('Suma nu poate fi negativă.')
+    setEroareSuma(null)
+
     try {
-      await schimbaStarea.mutateAsync({ id: programare.id, stare: 'onorat', achitat })
+      await schimbaStarea.mutateAsync({
+        id: programare.id,
+        stare: 'onorat',
+        achitat,
+        // Se trimite doar când s-a schimbat: pe o ședință deja încasată,
+        // prețul retrimis neschimbat nu trebuie să cadă pe „nu se mai poate”.
+        ...(sumaSchimbata ? { pret: sumaNumerica } : {}),
+      })
       notificari.succes(
         'Ședință marcată ca onorată',
         achitat
-          ? `Încasare ${formateazaBani(programare.pret)}.`
-          : `${formateazaBani(programare.pret)} rămân de plată.`,
+          ? `Încasare ${formateazaBani(sumaNumerica)}.`
+          : `${formateazaBani(sumaNumerica)} rămân de plată.`,
       )
       onOnorata()
     } catch (err) {
@@ -95,6 +131,8 @@ export function ModalaOnorare({
       )
     }
   }
+
+  const sedinta = etichetaSedinta(programare)
 
   return (
     <>
@@ -138,13 +176,43 @@ export function ModalaOnorare({
             <p className="truncate text-sm font-medium text-ink">{programare.client_nume}</p>
             <p className="mt-0.5 truncate text-[13px] text-ink-soft">
               {programare.articol_denumire}
+              {sedinta && <span className="text-primary-600"> · {sedinta}</span>}
             </p>
-            {/* Suma este cea a ȘEDINȚEI, nu prețul din nomenclator: se citește
-                o dată, cu voce tare, la casă. */}
-            <p className="mt-2 text-2xl font-semibold text-ink tabular-nums">
-              {formateazaBani(programare.pret)}
-            </p>
+            {/*
+              Suma este cea a ȘEDINȚEI, nu prețul din nomenclator, și se poate
+              corecta pe loc — cât s-a luat de fapt. Pe o ședință deja
+              încasată rămâne doar de citit: bonul nu se rescrie.
+            */}
+            {programare.achitat ? (
+              <p className="mt-2 text-2xl font-semibold text-ink tabular-nums">
+                {formateazaBani(programare.pret)}
+              </p>
+            ) : (
+              <Input
+                eticheta="Suma ședinței"
+                inputMode="decimal"
+                value={suma}
+                onChange={(e) => setSuma(e.target.value)}
+                eroare={eroareSuma}
+                sufix="RON"
+                containerClassName="mx-auto mt-3 max-w-48 text-left"
+                className="text-right text-lg font-semibold tabular-nums"
+                ajutor={
+                  sumaSchimbata
+                    ? `Prețul convenit era ${formateazaBani(programare.pret)}.`
+                    : undefined
+                }
+              />
+            )}
           </div>
+
+          {/* Tratamentul: unde s-a ajuns și cât s-a încasat până acum din el. */}
+          {tratament.data && (
+            <div className="flex items-start justify-between gap-4 rounded-xl border border-line px-3 py-2.5">
+              <ProgresSedinte tratament={tratament.data} className="flex-1" />
+              <BaniTratament tratament={tratament.data} className="shrink-0 text-right" />
+            </div>
+          )}
 
           {seVerifica ? (
             <p className="flex items-center gap-2 text-[13px] text-ink-faint">

@@ -1,5 +1,6 @@
 import {
   CalendarDays,
+  Layers,
   Receipt,
   ScrollText,
   Tags,
@@ -43,6 +44,12 @@ export const NAVIGARE: ElementNavigare[] = [
     pictograma: Users,
     principal: true,
     descriere: 'Fișele de client, note și istoric',
+  },
+  {
+    cale: '/tratamente',
+    eticheta: 'Tratamente',
+    pictograma: Layers,
+    descriere: 'Serviciile în mai multe ședințe: unde a ajuns fiecare client',
   },
   {
     cale: '/incasari',

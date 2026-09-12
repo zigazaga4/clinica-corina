@@ -32,18 +32,22 @@ const CONTURI: { nume: string; email: string; rol: 'administrator' | 'utilizator
   { nume: 'Diana Georgescu', email: 'diana.georgescu@clinica.ro', rol: 'utilizator', activ: false },
 ]
 
-const SERVICII: { denumire: string; durata: number; pret: number; activ?: boolean }[] = [
+/*
+  `sedinte` peste 1 face din serviciu un tratament: `pret` este atunci al
+  ÎNTREGULUI tratament, iar fiecare venire primește o parte din el.
+*/
+const SERVICII: { denumire: string; durata: number; pret: number; sedinte?: number; activ?: boolean }[] = [
   { denumire: 'Curățare facială profundă', durata: 75, pret: 220 },
   { denumire: 'Tratament facial hidratant', durata: 60, pret: 180 },
-  { denumire: 'Tratament anti-acnee', durata: 60, pret: 210 },
+  { denumire: 'Tratament anti-acnee', durata: 60, pret: 760, sedinte: 4 },
   { denumire: 'Microdermabraziune', durata: 45, pret: 250 },
   { denumire: 'Peeling chimic', durata: 40, pret: 300 },
   { denumire: 'Mezoterapie facială', durata: 50, pret: 450 },
   { denumire: 'Masaj facial anti-aging', durata: 40, pret: 160 },
   { denumire: 'Radiofrecvență facială', durata: 45, pret: 280 },
   { denumire: 'Epilare definitivă IPL — față', durata: 20, pret: 150 },
-  { denumire: 'Epilare definitivă IPL — axile', durata: 25, pret: 180 },
-  { denumire: 'Epilare definitivă IPL — picioare complet', durata: 60, pret: 400 },
+  { denumire: 'Epilare definitivă IPL — axile', durata: 25, pret: 900, sedinte: 6 },
+  { denumire: 'Epilare definitivă IPL — picioare complet', durata: 60, pret: 2400, sedinte: 8 },
   { denumire: 'Epilare cu ceară — picioare', durata: 40, pret: 120 },
   { denumire: 'Manichiură clasică', durata: 45, pret: 80 },
   { denumire: 'Manichiură cu gel', durata: 75, pret: 140 },
@@ -100,7 +104,7 @@ async function ruleaza(): Promise<void> {
     // Ordinea contează: copiii înaintea părinților, altfel cheile RESTRICT
     // opresc ștergerea.
     await ex.query(`TRUNCATE vanzare_linie, vanzare, abonament_sedinta, plata, abonament,
-                             programare, nota_client, jurnal_operatiuni, sesiune
+                             programare, tratament, nota_client, jurnal_operatiuni, sesiune
                     RESTART IDENTITY CASCADE`)
     // Nomenclatorul și fișele se rescriu întregi. Se pot șterge doar fiindcă
     // tabelele care le referă tocmai au fost golite; ordinea inversă ar lovi în
@@ -131,14 +135,14 @@ async function ruleaza(): Promise<void> {
     }
     const admin_id = conturi.get('admin@clinica.ro')!
 
-    const articole = new Map<string, { id: string; pret: number }>()
+    const articole = new Map<string, { id: string; pret: number; sedinte: number }>()
     for (const s of SERVICII) {
       const { rows } = await ex.query<{ id: string }>(
-        `INSERT INTO articol (tip, denumire, durata_minute, pret_lista, activ)
-         VALUES ('serviciu', $1, $2, $3, $4) RETURNING id`,
-        [s.denumire, s.durata, s.pret, s.activ ?? true],
+        `INSERT INTO articol (tip, denumire, durata_minute, pret_lista, activ, numar_sedinte)
+         VALUES ('serviciu', $1, $2, $3, $4, $5) RETURNING id`,
+        [s.denumire, s.durata, s.pret, s.activ ?? true, s.sedinte ?? 1],
       )
-      articole.set(s.denumire, { id: rows[0]!.id, pret: s.pret })
+      articole.set(s.denumire, { id: rows[0]!.id, pret: s.pret, sedinte: s.sedinte ?? 1 })
     }
     for (const p of PRODUSE) {
       const { rows } = await ex.query<{ id: string }>(
@@ -146,7 +150,7 @@ async function ruleaza(): Promise<void> {
          VALUES ('produs', $1, NULL, $2, $3) RETURNING id`,
         [p.denumire, p.pret, p.activ ?? true],
       )
-      articole.set(p.denumire, { id: rows[0]!.id, pret: p.pret })
+      articole.set(p.denumire, { id: rows[0]!.id, pret: p.pret, sedinte: 1 })
     }
 
     const cliente = new Map<string, string>()
@@ -172,8 +176,14 @@ async function ruleaza(): Promise<void> {
     }[] = [
       { client: 'Ioana Dobre', serviciu: 'Peeling chimic', executant: 'cristina.marin@clinica.ro', start: la(-14, 11, 55), stare: 'onorat', pret: 260 },
       { client: 'Ioana Dobre', serviciu: 'Radiofrecvență facială', executant: 'andreea.popescu@clinica.ro', start: la(-7, 13, 0), stare: 'onorat' },
+      // Tratament în curs: 2 din 6 ședințe de IPL, a doua încă neprogramată
+      // mai departe — exact rândul pe care îl arată ecranul „Tratamente”.
+      { client: 'Ioana Dobre', serviciu: 'Epilare definitivă IPL — axile', executant: 'mihaela.stan@clinica.ro', start: la(-30, 11, 0), stare: 'onorat' },
       { client: 'Ioana Dobre', serviciu: 'Epilare definitivă IPL — axile', executant: 'mihaela.stan@clinica.ro', start: la(-2, 11, 0), stare: 'onorat' },
       { client: 'Ioana Dobre', serviciu: 'Peeling chimic', executant: 'cristina.marin@clinica.ro', start: la(6, 12, 0), stare: 'programat', pret: 260 },
+      // Tratament anti-acnee, 4 ședințe: una făcută, una programată.
+      { client: 'Gabriela Nistor', serviciu: 'Tratament anti-acnee', executant: 'andreea.popescu@clinica.ro', start: la(-8, 10, 0), stare: 'onorat' },
+      { client: 'Gabriela Nistor', serviciu: 'Tratament anti-acnee', executant: 'andreea.popescu@clinica.ro', start: la(6, 10, 0), stare: 'programat' },
       { client: 'Alexandra Petrescu', serviciu: 'Manichiură cu gel', executant: 'raluca.ionescu@clinica.ro', start: la(-3, 10, 0), stare: 'onorat' },
       { client: 'Alexandra Petrescu', serviciu: 'Pedichiură cu gel', executant: 'raluca.ionescu@clinica.ro', start: la(-3, 11, 30), stare: 'onorat' },
       { client: 'Alexandra Petrescu', serviciu: 'Manichiură cu gel', executant: 'raluca.ionescu@clinica.ro', start: la(4, 10, 0), stare: 'programat' },
@@ -187,24 +197,48 @@ async function ruleaza(): Promise<void> {
       { client: 'Simona Radu', serviciu: 'Machiaj profesional', executant: 'cristina.marin@clinica.ro', start: la(5, 15, 0), stare: 'programat' },
     ]
 
+    /*
+      Tratamentele se deschid pe măsură ce apar ședințele lor, exact cum face
+      serverul la `POST /programari`: prima ședință a unui serviciu în mai multe
+      veniri deschide tratamentul, următoarele intră în el. Prețul fiecărei
+      ședințe este partea ei — totalul împărțit la numărul de ședințe.
+    */
+    const tratamente = new Map<string, string>()
+    const tratamentPentru = async (client: string, serviciu: string): Promise<string | null> => {
+      const articol = articole.get(serviciu)!
+      if (articol.sedinte <= 1) return null
+      const cheie = `${client}|${serviciu}`
+      const existent = tratamente.get(cheie)
+      if (existent) return existent
+      const { rows } = await ex.query<{ id: string }>(
+        `INSERT INTO tratament (client_id, articol_id, numar_sedinte, pret_total, creat_de)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [cliente.get(client), articol.id, articol.sedinte, articol.pret, admin_id],
+      )
+      tratamente.set(cheie, rows[0]!.id)
+      return rows[0]!.id
+    }
+
     const create = new Map<string, { id: string; articol_id: string; pret: number; se_termina_la: Date }>()
     for (const p of programari) {
       const serviciu = articole.get(p.serviciu)!
       const durata = SERVICII.find((s) => s.denumire === p.serviciu)!.durata
       const se_termina_la = dupa(p.start, durata)
+      const tratament_id = await tratamentPentru(p.client, p.serviciu)
+      const pret = p.pret ?? Math.round((serviciu.pret / serviciu.sedinte) * 100) / 100
 
       const { rows } = await ex.query<{ id: string }>(
         `INSERT INTO programare
            (client_id, articol_id, executant_id, punct_lucru_id, incepe_la, se_termina_la,
-            stare, pret, creat_de)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+            stare, pret, creat_de, tratament_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
         [
           cliente.get(p.client), serviciu.id, conturi.get(p.executant), punct_lucru_id,
-          p.start, se_termina_la, p.stare, p.pret ?? serviciu.pret, admin_id,
+          p.start, se_termina_la, p.stare, pret, admin_id, tratament_id,
         ],
       )
       create.set(`${p.client}|${p.serviciu}|${p.start.toISOString()}`, {
-        id: rows[0]!.id, articol_id: serviciu.id, pret: p.pret ?? serviciu.pret, se_termina_la,
+        id: rows[0]!.id, articol_id: serviciu.id, pret, se_termina_la,
       })
     }
 
@@ -252,7 +286,7 @@ async function ruleaza(): Promise<void> {
 
   console.log('Date de pornire scrise.\n')
   console.log(`  ${CONTURI.length} conturi, ${SERVICII.length} servicii, ${PRODUSE.length} produse,`)
-  console.log(`  ${CLIENTE.length} cliente, 15 programări, 1 încasare.\n`)
+  console.log(`  ${CLIENTE.length} cliente, 18 programări, 2 tratamente în curs, 1 încasare.\n`)
   console.log(`  Autentificare:  admin@clinica.ro  /  ${PAROLA_DEMO}`)
   console.log('  Schimbă parolele înainte de a pune serverul în folosință.')
 }

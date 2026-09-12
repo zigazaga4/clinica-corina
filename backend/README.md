@@ -28,6 +28,17 @@ npm run dev                   # http://localhost:3000
 Autentificare după `seed`: `admin@clinica.ro` / `parola123`.
 **Schimbă parolele înainte de a pune serverul în folosință.**
 
+### O bază care merge deja
+
+`01_schema.sql` creează ce lipsește, dar nu modifică tabelele existente. Pentru
+o bază pornită înainte de o schimbare de schemă se rulează migrațiile din
+`sql/migratii/`, în ordinea datei din nume — fiecare se poate rula de câte ori
+vrei:
+
+```bash
+for f in sql/migratii/*.sql; do psql -d clinica -v ON_ERROR_STOP=1 -f "$f"; done
+```
+
 `JWT_SECRET` trebuie să aibă cel puțin 32 de caractere, altfel serverul refuză
 să pornească — verificat la pornire, nu la primul login, ca să nu descoperi
 lipsa lui prin `500` la ora de vârf:
@@ -81,11 +92,26 @@ intră în constrângerea de suprapunere — sunt informative — și sunt singu
 lucru din calendar care se poate șterge, cu urmă în jurnal. Fără tabela asta,
 recepția ar fi inventat un client „Concediu” și un serviciu de zero lei.
 
+**Tratamentul ține doar înțelegerea.** Un serviciu cu `articol.numar_sedinte`
+peste 1 se face în mai multe veniri. Prima lui programare deschide un rând în
+`tratament` — câte ședințe, cât în total — iar fiecare ședință îl referă prin
+`programare.tratament_id`. Nimic altceva nu se scrie acolo: câte s-au făcut,
+cât s-a încasat, cât mai e de împărțit sunt coloane ale `v_tratament_detaliu`,
+numărate din programări. Prețul total se împarte la programarea fiecărei
+ședințe (restul neplanificat la ședințele rămase) și devine `programare.pret`,
+de unde banii merg pe drumul obișnuit; corectat la o ședință, restul se
+reîmparte singur. Un client are cel mult un tratament în curs la același
+serviciu (`tratament_in_curs_uk`); ultima ședință onorată îl încheie de la
+sine. Tabelele `abonament`/`plata` din versiunea inițială NU se folosesc
+pentru asta: ar fi însemnat contoare ținute de mână și un al doilea drum al
+banilor.
+
 ### Vederile
 
 | Vedere | Pentru |
 | --- | --- |
-| `v_programare_detaliu` | ședința cu nume, denumiri și starea plății |
+| `v_programare_detaliu` | ședința cu nume, denumiri, starea plății și „ședința 3 din 8” |
+| `v_tratament_detaliu` | tratamentul cu tot ce se numără din ședințe: făcute, programate, rămase, încasat, de încasat, partea următoarei |
 | `v_notita_detaliu` | notița, cu numele persoanei (NULL = toată clinica) |
 | `v_vanzare_detaliu` | antetul încasării, hidratat |
 | `v_vanzare_linie_detaliu` | linia, cu articolul și data ședinței stinse |
@@ -115,18 +141,25 @@ GET    /clienti/:id/istoric
 GET    /clienti/:id/note
 POST   /clienti/:id/note
 
-GET    /programari              ?de_la= &pana_la= &executant_id= &client_id= &stare= &neachitate=
-GET    /programari/pret-sugerat ?client_id= &articol_id=
-POST   /programari
+GET    /programari              ?de_la= &pana_la= &executant_id= &client_id= &tratament_id= &stare= &neachitate=
+GET    /programari/pret-sugerat ?client_id= &articol_id=      (+ tratament: în care ar intra, a câta ședință)
+POST   /programari              tratament_id? — lipsă: serverul alege singur tratamentul în curs
 GET    /programari/:id
 PATCH  /programari/:id
-PATCH  /programari/:id/stare    { stare, achitat? }
+PATCH  /programari/:id/stare    { stare, achitat?, pret? }
 
 GET    /notite                  ?de_la= &pana_la= &executant_id=   (persoana + toată clinica)
 POST   /notite                  { titlu, detalii?, executant_id?, incepe_la, se_termina_la }
 GET    /notite/:id
 PATCH  /notite/:id              executant_id: null = toată clinica
 DELETE /notite/:id
+
+GET    /tratamente              ?client_id= &articol_id= &in_curs= &q= &pagina= &pe_pagina=
+POST   /tratamente              { client_id, articol_id, numar_sedinte?, pret_total?, nota? }
+GET    /tratamente/:id
+PATCH  /tratamente/:id          { numar_sedinte?, pret_total?, nota? }
+POST   /tratamente/:id/incheiere
+POST   /tratamente/:id/redeschidere
 
 GET    /vanzari                 ?client_id= &operator_id= &articol_id= &de_la= &pana_la=
 POST   /vanzari
@@ -216,7 +249,7 @@ la prima instalare în clinică. `CORS_ORIGINS` adaugă la listă, nu o înlocui
 Verificarea că cele două chiar se înțeleg:
 
 ```bash
-npm run test:api                       # 106 verificări, din partea serverului
+npm run test:api                       # 130 de verificări, din partea serverului
 # și, din proiectul de interfață:
 API_LIVE=http://localhost:3001 npx vitest run src/api/http
 ```

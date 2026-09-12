@@ -20,6 +20,7 @@ import type {
   FiltruJurnal,
   FiltruNotite,
   FiltruProgramari,
+  FiltruTratamente,
   FiltruVanzari,
   Paginat,
   PretSugerat,
@@ -43,6 +44,7 @@ import type {
   NotitaDetaliu,
   ProgramareDetaliu,
   PunctLucru,
+  TratamentDetaliu,
   Utilizator,
   VanzareDetaliu,
 } from '@/domain/types'
@@ -247,16 +249,31 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
       create: (date) => cerere<ProgramareDetaliu>('POST', '/programari', { corp: date }),
       update: (id, date) =>
         cerere<ProgramareDetaliu>('PATCH', `/programari/${id}`, { corp: date }),
-      schimbaStarea: (id, stare, achitat) =>
+      schimbaStarea: (id, stare, optiuni) =>
         cerere<ProgramareDetaliu>('PATCH', `/programari/${id}/stare`, {
-          // `achitat` se trimite doar când a fost cerut: un `false` explicit ar
-          // sugera serverului o decizie de plată acolo unde nu s-a luat niciuna.
-          corp: achitat === undefined ? { stare } : { stare, achitat },
+          // `achitat` și `pret` se trimit doar când au fost cerute: un `false`
+          // explicit ar sugera serverului o decizie de plată acolo unde nu s-a
+          // luat niciuna.
+          corp: {
+            stare,
+            ...(optiuni?.achitat === undefined ? {} : { achitat: optiuni.achitat }),
+            ...(optiuni?.pret === undefined ? {} : { pret: optiuni.pret }),
+          },
         }),
       pretSugerat: (client_id, articol_id) =>
         cerere<PretSugerat>('GET', '/programari/pret-sugerat', {
           parametri: { client_id, articol_id },
         }),
+    },
+
+    tratamente: {
+      list: (filtru?: FiltruTratamente) =>
+        cerere<Paginat<TratamentDetaliu>>('GET', '/tratamente', { parametri: filtru }),
+      get: (id) => cerere<TratamentDetaliu>('GET', `/tratamente/${id}`),
+      create: (date) => cerere<TratamentDetaliu>('POST', '/tratamente', { corp: date }),
+      update: (id, date) => cerere<TratamentDetaliu>('PATCH', `/tratamente/${id}`, { corp: date }),
+      incheie: (id) => cerere<TratamentDetaliu>('POST', `/tratamente/${id}/incheiere`),
+      redeschide: (id) => cerere<TratamentDetaliu>('POST', `/tratamente/${id}/redeschidere`),
     },
 
     notite: {

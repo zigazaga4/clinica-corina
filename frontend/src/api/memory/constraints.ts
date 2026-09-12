@@ -109,6 +109,28 @@ export function verificaPret(pret: number, camp = 'pret_lista'): void {
   }
 }
 
+/**
+ * CONSTRAINT articol_sedinte_ck:
+ *   numar_sedinte >= 1 AND (tip = 'serviciu' OR numar_sedinte = 1)
+ * și tratament.numar_sedinte CHECK (>= 1).
+ *
+ * Ca la durată, valoarea se verifică așa cum a fost TRIMISĂ: un produs „în
+ * patru ședințe” este o greșeală a apelantului, nu o valoare de curățat.
+ */
+export function verificaNumarSedinte(
+  valoare: number,
+  tip: TipArticol = 'serviciu',
+  camp = 'numar_sedinte',
+): number {
+  if (!Number.isInteger(valoare) || valoare < 1) {
+    throw eroareValidare('Numărul de ședințe trebuie să fie un întreg, cel puțin 1.', camp)
+  }
+  if (tip === 'produs' && valoare !== 1) {
+    throw eroareValidare('Un produs nu se face în ședințe.', camp)
+  }
+  return valoare
+}
+
 // ---------------------------------------------------------------------------
 // programare
 // ---------------------------------------------------------------------------

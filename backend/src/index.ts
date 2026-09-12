@@ -48,6 +48,7 @@ import clientiRouter from './routes/clienti.js'
 import consimtaminteRouter from './routes/consimtaminte.js'
 import notiteRouter from './routes/notite.js'
 import programariRouter from './routes/programari.js'
+import tratamenteRouter from './routes/tratamente.js'
 import vanzariRouter from './routes/vanzari.js'
 import abonamenteRouter from './routes/abonamente.js'
 import articoleRouter from './routes/articole.js'
@@ -347,6 +348,7 @@ app.use('/clienti', clientiRouter)
 app.use('/consimtaminte', consimtaminteRouter)
 app.use('/programari', programariRouter)
 app.use('/notite', notiteRouter)
+app.use('/tratamente', tratamenteRouter)
 app.use('/vanzari', vanzariRouter)
 app.use('/articole', articoleRouter)
 app.use('/puncte-lucru', puncteLucruRouter)

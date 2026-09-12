@@ -46,7 +46,15 @@ function coloaneArticol(tip: TipArticol): Coloana<Articol>[] {
     {
       cheie: 'denumire',
       antet: 'Denumire',
-      celula: (articol) => <span className="font-medium text-ink">{articol.denumire}</span>,
+      celula: (articol) => (
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <span className="font-medium text-ink">{articol.denumire}</span>
+          {/* Serviciul în mai multe ședințe: prețul de alături e al tuturor. */}
+          {articol.numar_sedinte > 1 && (
+            <Badge ton="primary">{articol.numar_sedinte} ședințe</Badge>
+          )}
+        </span>
+      ),
     },
     ...(tip === 'serviciu' ? [durata] : []),
     {

@@ -644,7 +644,7 @@ describe('prețul ședinței și încasarea', () => {
       ...interval(9, 10),
       pret: 137.5,
     })
-    const dupa = await api.programari.schimbaStarea(programare.id, 'onorat', true)
+    const dupa = await api.programari.schimbaStarea(programare.id, 'onorat', { achitat: true })
 
     expect(dupa.achitat).toBe(true)
     expect(dupa.vanzare_id).not.toBeNull()
@@ -666,7 +666,7 @@ describe('prețul ședinței și încasarea', () => {
     // Bifa de plată are efect doar la onorare; altfel s-ar putea încasa o
     // ședință anulată.
     const programare = await api.programari.create({ ...context, ...interval(9, 10) })
-    const dupa = await api.programari.schimbaStarea(programare.id, 'anulat', true)
+    const dupa = await api.programari.schimbaStarea(programare.id, 'anulat', { achitat: true })
     expect(dupa.achitat).toBe(false)
   })
 
@@ -697,7 +697,7 @@ describe('prețul ședinței și încasarea', () => {
 
   it('refuză încasarea de două ori a aceleiași ședințe', async () => {
     const programare = await api.programari.create({ ...context, ...interval(9, 10) })
-    await api.programari.schimbaStarea(programare.id, 'onorat', true)
+    await api.programari.schimbaStarea(programare.id, 'onorat', { achitat: true })
 
     const eroare = await api.vanzari
       .incaseaza({ client_id: context.client_id, programare_ids: [programare.id] })
@@ -742,7 +742,7 @@ describe('prețul ședinței și încasarea', () => {
 
   it('nu mai lasă prețul să fie schimbat după încasare', async () => {
     const programare = await api.programari.create({ ...context, ...interval(9, 10) })
-    await api.programari.schimbaStarea(programare.id, 'onorat', true)
+    await api.programari.schimbaStarea(programare.id, 'onorat', { achitat: true })
 
     const eroare = await api.programari.update(programare.id, { pret: 1 }).catch((e) => e)
     expect(esteEroareApi(eroare) && eroare.camp).toBe('pret')
@@ -767,7 +767,7 @@ describe('prețul ședinței și încasarea', () => {
     const inainte = await deIncasat()
 
     const platita = await api.programari.create({ ...context, ...interval(9, 10), pret: 80 })
-    await api.programari.schimbaStarea(platita.id, 'onorat', true)
+    await api.programari.schimbaStarea(platita.id, 'onorat', { achitat: true })
 
     const restanta = await api.programari.create({ ...context, ...interval(11, 12), pret: 120 })
     await api.programari.schimbaStarea(restanta.id, 'onorat')
@@ -810,6 +810,221 @@ describe('prețul ședinței și încasarea', () => {
     // Interfața nu mai are câmpul; serverul trebuie să îl pună.
     const programare = await api.programari.create({ ...context, ...interval(9, 10) })
     expect(programare.punct_lucru_id).toBeTruthy()
+  })
+})
+
+describe('tratamente — servicii în mai multe ședințe (tabela tratament)', () => {
+  let client_id: Uuid
+  let executant_id: Uuid
+  /** Serviciu propriu testului: 3 ședințe, 300 lei în total. */
+  let cura_id: Uuid
+
+  beforeEach(async () => {
+    const utilizator = await autentificaCa(ADMIN)
+    executant_id = utilizator.id
+    client_id = (await api.clienti.create({ nume: 'Client Tratament' })).id
+    cura_id = (
+      await api.articole.create({
+        tip: 'serviciu',
+        denumire: 'Cură test',
+        durata_minute: 30,
+        pret_lista: 300,
+        numar_sedinte: 3,
+      })
+    ).id
+  })
+
+  /** Un interval liber, în viitor, la o zi distanță de celelalte ale testului. */
+  const cand = (ziua: number, ora = 9) => {
+    const zi = new Date()
+    zi.setFullYear(zi.getFullYear() + 2)
+    zi.setDate(zi.getDate() + ziua)
+    const inceput = new Date(zi)
+    inceput.setHours(ora, 0, 0, 0)
+    const sfarsit = new Date(inceput.getTime() + 30 * 60_000)
+    return { incepe_la: inceput.toISOString(), se_termina_la: sfarsit.toISOString() }
+  }
+  const sedinta = (ziua: number) => ({ client_id, articol_id: cura_id, executant_id, ...cand(ziua) })
+
+  it('articol_sedinte_ck: un produs nu se face în ședințe', async () => {
+    const eroare = await api.articole
+      .create({ tip: 'produs', denumire: 'Cremă în rate', pret_lista: 10, numar_sedinte: 4 })
+      .catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.cod).toBe('validare')
+  })
+
+  it('propune a treia parte din preț și anunță că ședința ar deschide un tratament', async () => {
+    const sugestie = await api.programari.pretSugerat(client_id, cura_id)
+    expect(sugestie.pret).toBe(100)
+    expect(sugestie.tratament).toMatchObject({ id: null, numar_sedinte: 3, sedinta_nr: 1, pret_total: 300 })
+  })
+
+  it('prima ședință deschide tratamentul singură și e „ședința 1 din 3”', async () => {
+    const inainte = magazin.tratament.size
+    const p = await api.programari.create(sedinta(0))
+    expect(magazin.tratament.size).toBe(inainte + 1)
+    expect(p.tratament_id).not.toBeNull()
+    expect(p.sedinta_nr).toBe(1)
+    expect(p.tratament_numar_sedinte).toBe(3)
+    expect(p.pret).toBe(100)
+
+    const t = await api.tratamente.get(p.tratament_id!)
+    expect(t).toMatchObject({
+      client_id, articol_id: cura_id, numar_sedinte: 3, pret_total: 300, incheiat_la: null,
+      sedinte_programate: 1, sedinte_onorate: 0, sedinte_ramase: 2, alocat: 100, incasat: 0, pret_urmatoarea: 100,
+    })
+  })
+
+  it('suma corectată la închidere reface partea ședințelor următoare', async () => {
+    const p1 = await api.programari.create(sedinta(0))
+    // S-a luat 130 în loc de 100: (300 - 130) / 2 = 85 pentru fiecare dintre următoarele.
+    const onorata = await api.programari.schimbaStarea(p1.id, 'onorat', { achitat: true, pret: 130 })
+    expect(onorata.pret).toBe(130)
+    expect(onorata.achitat).toBe(true)
+
+    const t = await api.tratamente.get(p1.tratament_id!)
+    expect(t.incasat).toBe(130)
+    expect(t.pret_urmatoarea).toBe(85)
+
+    const sugestie = await api.programari.pretSugerat(client_id, cura_id)
+    expect(sugestie.pret).toBe(85)
+    expect(sugestie.tratament?.id).toBe(p1.tratament_id)
+    expect(sugestie.tratament?.sedinta_nr).toBe(2)
+
+    const p2 = await api.programari.create(sedinta(1))
+    expect(p2.tratament_id).toBe(p1.tratament_id)
+    expect(p2.pret).toBe(85)
+    expect(p2.sedinta_nr).toBe(2)
+  })
+
+  it('nu schimbă prețul unei ședințe deja încasate, nici de la închidere', async () => {
+    const p = await api.programari.create(sedinta(0))
+    await api.programari.schimbaStarea(p.id, 'onorat', { achitat: true })
+    const eroare = await api.programari.schimbaStarea(p.id, 'onorat', { pret: 50 }).catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.cod).toBe('validare')
+  })
+
+  it('refuză o ședință peste numărul convenit — a patra într-un tratament de trei', async () => {
+    await api.programari.create(sedinta(0))
+    await api.programari.create(sedinta(1))
+    await api.programari.create(sedinta(2))
+    const eroare = await api.programari.create(sedinta(3)).catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.cod).toBe('conflict')
+  })
+
+  it('o ședință anulată nu ocupă un loc și nu are număr', async () => {
+    const p1 = await api.programari.create(sedinta(0))
+    await api.programari.create(sedinta(1))
+    const p3 = await api.programari.create(sedinta(2))
+    const anulata = await api.programari.schimbaStarea(p3.id, 'anulat')
+    expect(anulata.sedinta_nr).toBeNull()
+
+    const t = await api.tratamente.get(p1.tratament_id!)
+    expect(t.sedinte_ramase).toBe(1)
+    // Locul eliberat se poate programa din nou.
+    const p4 = await api.programari.create(sedinta(3))
+    expect(p4.sedinta_nr).toBe(3)
+  })
+
+  it('ședința unui tratament nu se mută pe alt client sau alt serviciu', async () => {
+    const p = await api.programari.create(sedinta(0))
+    const altul = await api.clienti.create({ nume: 'Altcineva' })
+    const eroare = await api.programari.update(p.id, { client_id: altul.id }).catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.cod).toBe('validare')
+    // Reprogramarea (ora) rămâne permisă.
+    const mutata = await api.programari.update(p.id, cand(5))
+    expect(mutata.tratament_id).toBe(p.tratament_id)
+  })
+
+  it('ultima ședință onorată încheie tratamentul singură', async () => {
+    const p1 = await api.programari.create(sedinta(0))
+    const p2 = await api.programari.create(sedinta(1))
+    const p3 = await api.programari.create(sedinta(2))
+    for (const p of [p1, p2]) await api.programari.schimbaStarea(p.id, 'onorat')
+    expect((await api.tratamente.get(p1.tratament_id!)).incheiat_la).toBeNull()
+
+    await api.programari.schimbaStarea(p3.id, 'onorat', { achitat: true })
+    const t = await api.tratamente.get(p1.tratament_id!)
+    expect(t.incheiat_la).not.toBeNull()
+    expect(t.sedinte_onorate).toBe(3)
+    expect(t.de_incasat).toBe(200)
+    expect(t.incasat).toBe(100)
+  })
+
+  it('după încheiere, o ședință nouă deschide alt tratament', async () => {
+    const p1 = await api.programari.create(sedinta(0))
+    await api.tratamente.incheie(p1.tratament_id!)
+    const p2 = await api.programari.create(sedinta(1))
+    expect(p2.tratament_id).not.toBe(p1.tratament_id)
+    expect(p2.sedinta_nr).toBe(1)
+
+    // Cel vechi nu se mai poate redeschide cât timp există altul în curs.
+    const eroare = await api.tratamente.redeschide(p1.tratament_id!).catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.cod).toBe('conflict')
+  })
+
+  it('ține minte prețul total convenit — la același număr de ședințe', async () => {
+    const p1 = await api.programari.create(sedinta(0))
+    await api.tratamente.update(p1.tratament_id!, { pret_total: 270 })
+    await api.tratamente.incheie(p1.tratament_id!)
+
+    const sugestie = await api.programari.pretSugerat(client_id, cura_id)
+    expect(sugestie.pret).toBe(90)
+    expect(sugestie.din_istoric).toBe(true)
+    expect(sugestie.tratament?.pret_total).toBe(270)
+  })
+
+  it('nu coboară numărul de ședințe sub cele deja programate sau făcute', async () => {
+    const p1 = await api.programari.create(sedinta(0))
+    await api.programari.create(sedinta(1))
+    const eroare = await api.tratamente.update(p1.tratament_id!, { numar_sedinte: 1 }).catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.cod).toBe('validare')
+
+    const marit = await api.tratamente.update(p1.tratament_id!, { numar_sedinte: 4, pret_total: 400 })
+    expect(marit.sedinte_ramase).toBe(2)
+    // (400 - 200) / 2
+    expect(marit.pret_urmatoarea).toBe(100)
+  })
+
+  it('un client are cel mult un tratament în curs la același serviciu', async () => {
+    await api.tratamente.create({ client_id, articol_id: cura_id })
+    const eroare = await api.tratamente.create({ client_id, articol_id: cura_id }).catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.cod).toBe('conflict')
+  })
+
+  it('un tratament deschis de mână prinde și ședințele unui serviciu dintr-o venire', async () => {
+    const simplu = gaseste(magazin.articol, (a) => a.tip === 'serviciu' && a.numar_sedinte === 1, 'servicii simple')
+    const t = await api.tratamente.create({ client_id, articol_id: simplu.id, numar_sedinte: 2, pret_total: 100 })
+    const p = await api.programari.create({ client_id, articol_id: simplu.id, executant_id, ...cand(0) })
+    expect(p.tratament_id).toBe(t.id)
+    expect(p.pret).toBe(50)
+  })
+
+  it('lista: în curs întâi, cele fără ședință programată primele; filtrul pe client', async () => {
+    const p = await api.programari.create(sedinta(0))
+    const deschis = await api.tratamente.create({
+      client_id, articol_id: gaseste(magazin.articol, (a) => a.tip === 'serviciu' && a.numar_sedinte === 1 && a.activ, 'servicii simple').id,
+      numar_sedinte: 2,
+    })
+    const lista = await api.tratamente.list({ client_id, in_curs: true })
+    expect(lista.total).toBe(2)
+    expect(lista.randuri[0]?.id).toBe(deschis.id)
+    expect(lista.randuri[1]?.id).toBe(p.tratament_id)
+
+    const sedintele = await api.programari.list({ tratament_id: p.tratament_id! })
+    expect(sedintele.map((s) => s.id)).toEqual([p.id])
+  })
+
+  it('datele demo conțin tratamente în curs, cu ședințe numărate din programări', async () => {
+    const lista = await api.tratamente.list({ in_curs: true })
+    expect(lista.total).toBeGreaterThan(0)
+    for (const t of lista.randuri) {
+      const contate = [...magazin.programare.values()].filter(
+        (p) => p.tratament_id === t.id && (p.stare === 'programat' || p.stare === 'onorat'),
+      ).length
+      expect(t.sedinte_programate + t.sedinte_onorate).toBe(contate)
+      expect(contate).toBeLessThanOrEqual(t.numar_sedinte)
+    }
   })
 })
 

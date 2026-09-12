@@ -69,6 +69,7 @@ export const etichetaEntitate: Record<string, string> = {
   consimtamant: 'Acord GDPR',
   programare: 'Programare',
   notita: 'Notiță în calendar',
+  tratament: 'Tratament',
   vanzare: 'Vânzare',
   vanzare_linie: 'Linie vânzare',
   sesiune: 'Sesiune',

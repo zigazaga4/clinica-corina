@@ -17,7 +17,7 @@ import {
   useNotificari,
 } from '@/ui'
 
-type CampArticol = 'denumire' | 'durata_minute' | 'pret_lista'
+type CampArticol = 'denumire' | 'durata_minute' | 'pret_lista' | 'numar_sedinte'
 
 /**
  * Adăugarea și modificarea unui articol (serviciu sau produs).
@@ -49,6 +49,7 @@ export function FormularArticol({
     articol && articol.durata_minute !== null ? String(articol.durata_minute) : '',
   )
   const [pret, setPret] = useState(articol ? String(articol.pret_lista) : '')
+  const [numarSedinte, setNumarSedinte] = useState(articol ? String(articol.numar_sedinte) : '1')
   const [activ, setActiv] = useState(articol?.activ ?? true)
 
   const seTrimite = creeaza.isPending || modifica.isPending
@@ -58,11 +59,17 @@ export function FormularArticol({
     // articol_durata_ck cere durată NULL la produs. Golim câmpul chiar la
     // comutare: o valoare rămasă pe ecran ar pleca spre server și ar fi
     // respinsă acolo, deși utilizatorul nu mai vede unde a greșit.
+    // La fel numărul de ședințe: un produs se vinde dintr-o bucată.
     if (nou === 'produs') {
       setDurata('')
+      setNumarSedinte('1')
       erori.setCamp('durata_minute', null)
+      erori.setCamp('numar_sedinte', null)
     }
   }
+
+  const sedinteNumar = parseNumar(numarSedinte)
+  const esteTratament = tip === 'serviciu' && sedinteNumar !== null && sedinteNumar > 1
 
   const trimite = async (e: FormEvent) => {
     e.preventDefault()
@@ -95,6 +102,9 @@ export function FormularArticol({
       } else if (!Number.isInteger(durataNumar)) {
         problemele.push(['durata_minute', 'Durata se exprimă în minute întregi.'])
       }
+      if (sedinteNumar === null || !Number.isInteger(sedinteNumar) || sedinteNumar < 1) {
+        problemele.push(['numar_sedinte', 'Numărul de ședințe trebuie să fie un întreg, cel puțin 1.'])
+      }
     }
 
     if (problemele.length > 0 || pretNumar === null) {
@@ -108,6 +118,7 @@ export function FormularArticol({
       durata_minute: tip === 'serviciu' ? durataNumar : null,
       pret_lista: pretNumar,
       activ,
+      numar_sedinte: tip === 'serviciu' ? (sedinteNumar ?? 1) : 1,
     }
 
     try {
@@ -226,9 +237,32 @@ export function FormularArticol({
             eroare={erori.peCamp.pret_lista}
             sufix="RON"
             className="pr-13"
-            ajutor="Separatorul zecimal poate fi virgulă sau punct."
+            ajutor={
+              esteTratament
+                ? `Pentru toate cele ${sedinteNumar} ședințe împreună; fiecare programare primește o parte.`
+                : 'Separatorul zecimal poate fi virgulă sau punct.'
+            }
             placeholder="150"
           />
+
+          {/*
+            Peste 1, serviciul devine tratament: prima programare a lui deschide
+            un tratament pe fișa clientului, iar următoarele intră în el.
+          */}
+          {tip === 'serviciu' && (
+            <Input
+              eticheta="Număr de ședințe"
+              obligatoriu
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1}
+              value={numarSedinte}
+              onChange={(e) => setNumarSedinte(e.target.value)}
+              eroare={erori.peCamp.numar_sedinte}
+              ajutor="1 = o singură venire. Peste 1, serviciul se face ca tratament, în mai multe programări."
+            />
+          )}
 
           <PeToataLatimea>
             <Comutator

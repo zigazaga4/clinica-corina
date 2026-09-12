@@ -181,6 +181,21 @@ export function verificaDurataArticol(tip: TipArticol, durata_minute: number | n
   }
 }
 
+/**
+ * CONSTRAINT articol_sedinte_ck / tratament.numar_sedinte CHECK (>= 1).
+ *
+ * „În câte ședințe se face”: un întreg de la 1 în sus. Un produs nu se face
+ * în ședințe — pentru el valoarea rămâne 1 și nu se verifică aici.
+ */
+export function verificaNumarSedinte(valoare: unknown, camp = 'numar_sedinte'): number {
+  const n = numarCerut(valoare, camp, 'Numărul de ședințe')
+  verificaIntreg(n, camp, 'Numărul de ședințe')
+  if (n < 1) {
+    throw eroareValidare('Numărul de ședințe trebuie să fie cel puțin 1.', camp)
+  }
+  return n
+}
+
 // ---------------------------------------------------------------------------
 // programare
 // ---------------------------------------------------------------------------

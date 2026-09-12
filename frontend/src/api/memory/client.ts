@@ -24,6 +24,8 @@ import type {
   DatePunctLucruNou,
   DateProgramareModificata,
   DateProgramareNoua,
+  DateTratamentModificat,
+  DateTratamentNou,
   DateUtilizatorModificat,
   DateUtilizatorNou,
   DateVanzareModificata,
@@ -34,7 +36,9 @@ import type {
   FiltruJurnal,
   FiltruNotite,
   FiltruProgramari,
+  FiltruTratamente,
   FiltruVanzari,
+  OptiuniStare,
   Paginat,
   PretSugerat,
   RaspunsLogin,
@@ -62,6 +66,8 @@ import type {
   PunctLucru,
   StareProgramare,
   Timestamptz,
+  Tratament,
+  TratamentDetaliu,
   Utilizator,
   Uuid,
   Vanzare,
@@ -70,7 +76,7 @@ import type {
 } from '@/domain/types'
 import { acum, addDays, laTimestamptz } from '@/lib/dates'
 import { uuid } from '@/lib/id'
-import { totalLinie } from '@/lib/money'
+import { rotunjeste, totalLinie } from '@/lib/money'
 import { contine, doarCifre, normalizeaza } from '@/lib/text'
 import {
   ceruta,
@@ -83,6 +89,7 @@ import {
   verificaEmailUnic,
   verificaFormatEmail,
   verificaIntervalProgramare,
+  verificaNumarSedinte,
   verificaParola,
   verificaPret,
   verificaStergereClient,
@@ -95,6 +102,7 @@ import {
   hidrateazaNota,
   hidrateazaNotita,
   hidrateazaProgramare,
+  hidrateazaTratament,
   hidrateazaVanzare,
   incasareaProgramarii,
   utilizatorPublic,
@@ -710,6 +718,7 @@ export function creeazaApiInMemorie(): ApiClient {
           if (filtru.executant_id && p.executant_id !== filtru.executant_id) continue
           if (filtru.punct_lucru_id && p.punct_lucru_id !== filtru.punct_lucru_id) continue
           if (filtru.client_id && p.client_id !== filtru.client_id) continue
+          if (filtru.tratament_id && p.tratament_id !== filtru.tratament_id) continue
           if (stari && !stari.has(p.stare)) continue
           const detaliu = hidrateazaProgramare(p)
           if (filtru.neachitate && (detaliu.achitat || p.stare !== 'onorat')) continue
@@ -742,10 +751,14 @@ export function creeazaApiInMemorie(): ApiClient {
         verificaIntervalProgramare(date.incepe_la, date.se_termina_la)
         verificaSuprapunere(date.executant_id, date.incepe_la, date.se_termina_la, 'programat')
 
+        // Tratamentul, înaintea prețului: la un serviciu în mai multe ședințe,
+        // prețul ședinței este partea ei din tratament.
+        const inTratament = tratamentulSedintei(date.client_id, serviciu, date.tratament_id, autor.id)
+
         // Prețul lipsă se completează din memoria clientului, nu direct din
         // nomenclator: dacă i s-a mai făcut acest serviciu la un preț anume,
-        // acela este prețul lui.
-        const pret = date.pret ?? pretPentru(date.client_id, serviciu.id).pret
+        // acela este prețul lui. Într-un tratament, memoria e chiar tratamentul.
+        const pret = date.pret ?? inTratament?.pret ?? pretPentru(date.client_id, serviciu.id).pret
         verificaPret(pret, 'pret')
 
         const rand: Programare = {
@@ -763,6 +776,7 @@ export function creeazaApiInMemorie(): ApiClient {
           creat_de: autor.id,
           creat_la: acum(),
           actualizat_la: acum(),
+          tratament_id: inTratament?.tratament.id ?? null,
         }
         magazin.programare.set(rand.id, rand)
 
@@ -783,6 +797,20 @@ export function creeazaApiInMemorie(): ApiClient {
         const autor = cereUtilizator()
         const rand = ceruta(magazin.programare, id, 'Programarea')
         const inainte = { ...rand }
+
+        // Într-un tratament, clientul și serviciul sunt ale tratamentului:
+        // mutată, ședința ar rămâne numărată în tratamentul primului client sau
+        // ar lua o parte din prețul altui serviciu. Se anulează și se face alta.
+        if (rand.tratament_id !== null) {
+          const schimbaClientul = date.client_id !== undefined && date.client_id !== rand.client_id
+          const schimbaServiciul = date.articol_id !== undefined && date.articol_id !== rand.articol_id
+          if (schimbaClientul || schimbaServiciul) {
+            throw eroareValidare(
+              'Ședința face parte dintr-un tratament; clientul și serviciul nu se pot schimba. Anuleaz-o și fă alta.',
+              schimbaClientul ? 'client_id' : 'articol_id',
+            )
+          }
+        }
 
         if (date.client_id !== undefined) {
           ceruta(magazin.client, date.client_id, 'Clientul')
@@ -846,11 +874,35 @@ export function creeazaApiInMemorie(): ApiClient {
       async schimbaStarea(
         id,
         stare: StareProgramare,
-        achitat?: boolean,
+        optiuni: OptiuniStare = {},
       ): Promise<ProgramareDetaliu> {
         await intarziere()
         const autor = cereUtilizator()
         const rand = ceruta(magazin.programare, id, 'Programarea')
+        const { achitat, pret } = optiuni
+
+        // Suma corectată la închidere — cât s-a luat de fapt. Pe o ședință
+        // deja încasată nu se mai atinge, ca la PATCH.
+        if (pret !== undefined && pret !== rand.pret) {
+          verificaPret(pret, 'pret')
+          if (incasareaProgramarii(rand.id) !== null) {
+            throw eroareValidare(
+              'Ședința este deja încasată; prețul ei nu se mai poate schimba.',
+              'pret',
+            )
+          }
+          const vechi = rand.pret
+          rand.pret = pret
+          atinge(rand)
+          scrieJurnal({
+            utilizator_id: autor.id,
+            actiune: 'modificare',
+            entitate: 'programare',
+            entitate_id: rand.id,
+            date_vechi: { pret: vechi },
+            date_noi: { pret },
+          })
+        }
 
         if (rand.stare !== stare) {
           // Reactivarea unei programări anulate o readuce sub constrângerea de
@@ -880,6 +932,9 @@ export function creeazaApiInMemorie(): ApiClient {
           inregistreazaIncasare(autor.id, rand.client_id, [rand], [], rand.se_termina_la, null)
         }
 
+        // Ultima ședință onorată încheie tratamentul de la sine.
+        incheieDacaEComplet(rand.tratament_id, autor.id)
+
         return hidrateazaProgramare(rand)
       },
 
@@ -890,6 +945,119 @@ export function creeazaApiInMemorie(): ApiClient {
         ceruta(magazin.client, client_id, 'Clientul')
         const articol = verificaArticolProgramabil(articol_id)
         return pretPentru(client_id, articol.id)
+      },
+    },
+
+    // =======================================================================
+    // Tratamente — servicii în mai multe ședințe
+    // =======================================================================
+    tratamente: {
+      /** GET /tratamente — orice rol */
+      async list(filtru: FiltruTratamente = {}): Promise<Paginat<TratamentDetaliu>> {
+        await intarziere()
+        cereUtilizator()
+
+        const randuri: TratamentDetaliu[] = []
+        for (const t of magazin.tratament.values()) {
+          if (filtru.client_id && t.client_id !== filtru.client_id) continue
+          if (filtru.articol_id && t.articol_id !== filtru.articol_id) continue
+          if (filtru.in_curs === true && t.incheiat_la !== null) continue
+          if (filtru.in_curs === false && t.incheiat_la === null) continue
+          const detaliu = hidrateazaTratament(t)
+          if (
+            filtru.q
+            && !contine(detaliu.client_nume, filtru.q)
+            && !contine(detaliu.articol_denumire, filtru.q)
+          ) continue
+          randuri.push(detaliu)
+        }
+
+        // Cele în curs întâi; între ele, cele fără nicio ședință programată —
+        // clienții de sunat — apoi după cât de curând vine următoarea.
+        randuri.sort(
+          (a, b) =>
+            Number(a.incheiat_la !== null) - Number(b.incheiat_la !== null)
+            || (a.urmatoarea_la ?? '').localeCompare(b.urmatoarea_la ?? '')
+            || b.creat_la.localeCompare(a.creat_la)
+            || a.id.localeCompare(b.id),
+        )
+        return pagineaza(randuri, filtru.pagina, filtru.pe_pagina)
+      },
+
+      /** GET /tratamente/:id — orice rol */
+      async get(id): Promise<TratamentDetaliu> {
+        await intarziere()
+        cereUtilizator()
+        return hidrateazaTratament(ceruta(magazin.tratament, id, 'Tratamentul'))
+      },
+
+      /** POST /tratamente — orice rol */
+      async create(date: DateTratamentNou): Promise<TratamentDetaliu> {
+        await intarziere()
+        const autor = cereUtilizator()
+
+        const client = ceruta(magazin.client, date.client_id, 'Clientul')
+        if (client.arhivat_la !== null) {
+          throw eroareValidare('Clientul este arhivat; dezarhivează-l înainte.', 'client_id')
+        }
+        const articol = ceruta(magazin.articol, date.articol_id, 'Serviciul')
+
+        return hidrateazaTratament(deschideTratament(client.id, articol, date, autor.id))
+      },
+
+      /** PATCH /tratamente/:id — orice rol */
+      async update(id, date: DateTratamentModificat): Promise<TratamentDetaliu> {
+        await intarziere()
+        const autor = cereUtilizator()
+        const rand = ceruta(magazin.tratament, id, 'Tratamentul')
+        const inainte = { ...rand }
+        const detaliu = hidrateazaTratament(rand)
+
+        if (date.numar_sedinte !== undefined) {
+          verificaNumarSedinte(date.numar_sedinte)
+          const ocupate = detaliu.sedinte_programate + detaliu.sedinte_onorate
+          if (date.numar_sedinte < ocupate) {
+            throw eroareValidare(
+              `Tratamentul are deja ${ocupate} ședințe programate sau făcute; numărul nu poate fi mai mic.`,
+              'numar_sedinte',
+            )
+          }
+          rand.numar_sedinte = date.numar_sedinte
+        }
+        if (date.pret_total !== undefined) {
+          verificaPret(date.pret_total, 'pret_total')
+          rand.pret_total = date.pret_total
+        }
+        if (date.nota !== undefined) rand.nota = textOptional(date.nota)
+        atinge(rand)
+
+        const dif = diferenta(
+          inainte as unknown as Record<string, unknown>,
+          rand as unknown as Record<string, unknown>,
+        )
+        if (dif) {
+          scrieJurnal({
+            utilizator_id: autor.id,
+            actiune: 'modificare',
+            entitate: 'tratament',
+            entitate_id: rand.id,
+            ...dif,
+          })
+        }
+
+        return hidrateazaTratament(rand)
+      },
+
+      /** POST /tratamente/:id/incheiere — orice rol */
+      async incheie(id): Promise<TratamentDetaliu> {
+        await intarziere()
+        return comutaIncheierea(id, true, cereUtilizator().id)
+      },
+
+      /** POST /tratamente/:id/redeschidere — orice rol */
+      async redeschide(id): Promise<TratamentDetaliu> {
+        await intarziere()
+        return comutaIncheierea(id, false, cereUtilizator().id)
       },
     },
 
@@ -1248,6 +1416,8 @@ export function creeazaApiInMemorie(): ApiClient {
         verificaDurataArticol(date.tip, date.durata_minute ?? null)
         verificaPret(date.pret_lista)
         const durata = date.tip === 'serviciu' ? (date.durata_minute ?? null) : null
+        const numar_sedinte =
+          date.numar_sedinte === undefined ? 1 : verificaNumarSedinte(date.numar_sedinte, date.tip)
 
         const rand: Articol = {
           id: uuid(),
@@ -1258,6 +1428,7 @@ export function creeazaApiInMemorie(): ApiClient {
           activ: date.activ ?? true,
           creat_la: acum(),
           actualizat_la: acum(),
+          numar_sedinte,
         }
         magazin.articol.set(rand.id, rand)
 
@@ -1293,9 +1464,16 @@ export function creeazaApiInMemorie(): ApiClient {
             : null
         verificaDurataArticol(tip, durata ?? null)
         if (date.pret_lista !== undefined) verificaPret(date.pret_lista)
+        // Ca durata: un serviciu devenit produs coboară la o singură ședință,
+        // iar o valoare trimisă explicit pe un produs se refuză.
+        const numar_sedinte =
+          date.numar_sedinte !== undefined
+            ? verificaNumarSedinte(date.numar_sedinte, tip)
+            : tip === 'produs' ? 1 : rand.numar_sedinte
 
         rand.tip = tip
         rand.durata_minute = durata ?? null
+        rand.numar_sedinte = numar_sedinte
         if (date.denumire !== undefined) {
           rand.denumire = ceruteText(date.denumire, 'denumire', 'Denumirea')
         }
@@ -1620,6 +1798,180 @@ function executantOptional(executant_id: Uuid | null | undefined): Uuid | null {
   return executant.id
 }
 
+// ---------------------------------------------------------------------------
+// Tratamente — aceleași reguli ca `lib/tratamente.ts` de pe server
+// ---------------------------------------------------------------------------
+
+/** Tratamentul ÎN CURS al unui client la un serviciu — cel mult unul (`tratament_in_curs_uk`). */
+function tratamentInCurs(client_id: Uuid, articol_id: Uuid): Tratament | null {
+  for (const t of magazin.tratament.values()) {
+    if (t.client_id === client_id && t.articol_id === articol_id && t.incheiat_la === null) return t
+  }
+  return null
+}
+
+/**
+ * Prețul cu care se deschide un tratament nou: ce s-a convenit data trecută
+ * cu acest client, la același număr de ședințe — altfel nomenclatorul.
+ */
+function pretTotalPentru(client_id: Uuid, articol: Articol): { pret_total: number; din_istoric: boolean } {
+  let precedent: Tratament | null = null
+  for (const t of magazin.tratament.values()) {
+    if (t.client_id !== client_id || t.articol_id !== articol.id) continue
+    if (precedent === null || t.creat_la > precedent.creat_la) precedent = t
+  }
+  if (
+    precedent === null
+    || precedent.numar_sedinte !== articol.numar_sedinte
+    || precedent.pret_total === articol.pret_lista
+  ) {
+    return { pret_total: articol.pret_lista, din_istoric: false }
+  }
+  return { pret_total: precedent.pret_total, din_istoric: true }
+}
+
+/** Deschide un tratament; 409 dacă omul are deja unul în curs la același serviciu. */
+function deschideTratament(
+  client_id: Uuid,
+  articol: Articol,
+  date: Pick<DateTratamentNou, 'numar_sedinte' | 'pret_total' | 'nota'>,
+  autor_id: Uuid,
+): Tratament {
+  if (articol.tip !== 'serviciu') {
+    throw eroareValidare('Un tratament se face dintr-un serviciu, nu dintr-un produs.', 'articol_id')
+  }
+  const existent = tratamentInCurs(client_id, articol.id)
+  if (existent) {
+    throw eroareConflict(
+      'Clientul are deja un tratament în curs pentru acest serviciu; ședințele noi intră în el.',
+      { camp: 'articol_id', tratament_id: existent.id },
+    )
+  }
+
+  const numar_sedinte =
+    date.numar_sedinte === undefined ? articol.numar_sedinte : verificaNumarSedinte(date.numar_sedinte)
+  const pret_total = date.pret_total ?? pretTotalPentru(client_id, articol).pret_total
+  verificaPret(pret_total, 'pret_total')
+
+  const rand: Tratament = {
+    id: uuid(),
+    client_id,
+    articol_id: articol.id,
+    articol_tip: 'serviciu',
+    numar_sedinte,
+    pret_total,
+    nota: textOptional(date.nota),
+    incheiat_la: null,
+    creat_de: autor_id,
+    creat_la: acum(),
+    actualizat_la: acum(),
+  }
+  magazin.tratament.set(rand.id, rand)
+
+  scrieJurnal({
+    utilizator_id: autor_id,
+    actiune: 'creare',
+    entitate: 'tratament',
+    entitate_id: rand.id,
+    date_noi: instantaneu(rand as unknown as Record<string, unknown>),
+  })
+  return rand
+}
+
+/**
+ * Tratamentul în care intră o ședință nouă, cu partea ei de preț — sau null
+ * la un serviciu dintr-o venire fără tratament deschis. Vezi
+ * `tratamentulSedintei` de pe server pentru cele trei drumuri.
+ */
+function tratamentulSedintei(
+  client_id: Uuid,
+  articol: Articol,
+  tratament_id: Uuid | null | undefined,
+  autor_id: Uuid,
+): { tratament: TratamentDetaliu; pret: number } | null {
+  let tratament: Tratament | null = null
+
+  if (tratament_id) {
+    tratament = ceruta(magazin.tratament, tratament_id, 'Tratamentul')
+    if (tratament.client_id !== client_id) {
+      throw eroareValidare('Tratamentul ales aparține altui client.', 'tratament_id')
+    }
+    if (tratament.articol_id !== articol.id) {
+      throw eroareValidare('Tratamentul ales este pentru alt serviciu.', 'tratament_id')
+    }
+    if (tratament.incheiat_la !== null) {
+      throw eroareValidare('Tratamentul este încheiat; redeschide-l sau începe unul nou.', 'tratament_id')
+    }
+  } else {
+    tratament = tratamentInCurs(client_id, articol.id)
+    if (!tratament && articol.numar_sedinte > 1) {
+      tratament = deschideTratament(client_id, articol, {}, autor_id)
+    }
+  }
+
+  if (!tratament) return null
+
+  const detaliu = hidrateazaTratament(tratament)
+  if (detaliu.sedinte_ramase <= 0) {
+    throw eroareConflict(
+      `Tratamentul are deja toate cele ${detaliu.numar_sedinte} ședințe programate sau făcute. ` +
+        'Mărește numărul de ședințe pe tratament sau încheie-l și începe altul.',
+      { camp: 'tratament_id', tratament_id: detaliu.id },
+    )
+  }
+  return { tratament: detaliu, pret: detaliu.pret_urmatoarea }
+}
+
+/** Ultima ședință onorată încheie tratamentul singură; drumul invers e de mână. */
+function incheieDacaEComplet(tratament_id: Uuid | null, autor_id: Uuid): void {
+  if (tratament_id === null) return
+  const rand = magazin.tratament.get(tratament_id)
+  if (!rand || rand.incheiat_la !== null) return
+  const detaliu = hidrateazaTratament(rand)
+  if (detaliu.sedinte_onorate < detaliu.numar_sedinte) return
+
+  rand.incheiat_la = acum()
+  atinge(rand)
+  scrieJurnal({
+    utilizator_id: autor_id,
+    actiune: 'modificare',
+    entitate: 'tratament',
+    entitate_id: rand.id,
+    date_vechi: { incheiat_la: null },
+    date_noi: { incheiat_la: rand.incheiat_la, motiv: 'toate ședințele onorate' },
+  })
+}
+
+/** Încheierea și redeschiderea, cu semn schimbat — ca arhivarea fișei. */
+function comutaIncheierea(id: Uuid, incheie: boolean, autor_id: Uuid): TratamentDetaliu {
+  const rand = ceruta(magazin.tratament, id, 'Tratamentul')
+  const deja = incheie ? rand.incheiat_la !== null : rand.incheiat_la === null
+  if (deja) return hidrateazaTratament(rand)
+
+  if (!incheie) {
+    const altul = tratamentInCurs(rand.client_id, rand.articol_id)
+    if (altul) {
+      throw eroareConflict(
+        'Clientul are între timp alt tratament în curs pentru acest serviciu; încheie-l pe acela întâi.',
+        { tratament_id: altul.id },
+      )
+    }
+  }
+
+  const vechi = rand.incheiat_la
+  rand.incheiat_la = incheie ? acum() : null
+  atinge(rand)
+  scrieJurnal({
+    utilizator_id: autor_id,
+    actiune: 'modificare',
+    entitate: 'tratament',
+    entitate_id: rand.id,
+    date_vechi: { incheiat_la: vechi },
+    date_noi: { incheiat_la: rand.incheiat_la },
+  })
+  return hidrateazaTratament(rand)
+}
+
 /**
  * Prețul cu care se deschide formularul pentru un client și un serviciu.
  *
@@ -1627,9 +1979,38 @@ function executantOptional(executant_id: Uuid | null | undefined): Uuid | null {
  * preț pe care clientul l-a avut la acest serviciu. O tabelă în plus ar fi
  * trebuit ținută în sincron cu programările și ar fi putut rămâne în urmă;
  * aici, o singură modificare de preț în formular devine automat prețul lui.
+ *
+ * Într-un tratament, memoria este chiar tratamentul: prețul este partea
+ * ședinței din el, iar răspunsul spune și a câta ședință ar fi.
  */
 function pretPentru(client_id: Uuid, articol_id: Uuid): PretSugerat {
   const articol = ceruta(magazin.articol, articol_id, 'Serviciul')
+
+  const inCurs = tratamentInCurs(client_id, articol.id)
+  if (inCurs) {
+    const t = hidrateazaTratament(inCurs)
+    return {
+      pret: t.pret_urmatoarea,
+      din_istoric: false,
+      pret_lista: articol.pret_lista,
+      tratament: {
+        id: t.id,
+        numar_sedinte: t.numar_sedinte,
+        sedinta_nr: t.sedinte_programate + t.sedinte_onorate + 1,
+        pret_total: t.pret_total,
+      },
+    }
+  }
+
+  if (articol.numar_sedinte > 1) {
+    const { pret_total, din_istoric } = pretTotalPentru(client_id, articol)
+    return {
+      pret: rotunjeste(pret_total / articol.numar_sedinte),
+      din_istoric,
+      pret_lista: articol.pret_lista,
+      tratament: { id: null, numar_sedinte: articol.numar_sedinte, sedinta_nr: 1, pret_total },
+    }
+  }
 
   let ultima: Programare | null = null
   for (const p of magazin.programare.values()) {

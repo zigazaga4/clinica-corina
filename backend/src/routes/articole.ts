@@ -8,23 +8,38 @@
 
 import { Router, Response } from 'express'
 import pool, { alege, dynamicInsert, dynamicUpdate, multe, tranzactie, unu, type Executor } from '../lib/db.js'
-import { eroareConflict, ruta } from '../lib/erori.js'
+import { eroareConflict, eroareValidare, ruta } from '../lib/erori.js'
 import { boolDin, Conditii, textDin } from '../lib/filtre.js'
 import { adresaCererii, diferenta, instantaneu, scrieJurnal } from '../lib/jurnal.js'
 import {
   ceruteText,
   numarCerut,
   verificaDurataArticol,
+  verificaNumarSedinte,
   verificaPret,
   verificaTipArticol,
 } from '../lib/validare.js'
 import { requireAuth, requireRole, AuthRequest, cont } from '../middleware/auth.js'
-import type { Articol } from '../types/database.js'
+import type { Articol, TipArticol } from '../types/database.js'
 
 const router = Router()
 router.use(requireAuth)
 
-const CAMPURI = ['tip', 'denumire', 'durata_minute', 'pret_lista', 'activ'] as const
+const CAMPURI = ['tip', 'denumire', 'durata_minute', 'pret_lista', 'activ', 'numar_sedinte'] as const
+
+/**
+ * CONSTRAINT articol_sedinte_ck: un serviciu se face în cel puțin o ședință,
+ * un produs în exact una. Lipsa înseamnă „o singură venire”; o valoare pusă
+ * pe un produs se refuză, nu se curăță în tăcere — ca la durată.
+ */
+function numarSedintePentru(tip: TipArticol, trimis: unknown, implicit = 1): number {
+  if (trimis === undefined || trimis === null) return tip === 'produs' ? 1 : implicit
+  const n = verificaNumarSedinte(trimis)
+  if (tip === 'produs' && n !== 1) {
+    throw eroareValidare('Un produs nu se face în ședințe.', 'numar_sedinte')
+  }
+  return n
+}
 
 // GET /articole?tip=serviciu&activ=true&q=
 router.get('/', ruta(async (req: AuthRequest, res: Response) => {
@@ -65,6 +80,7 @@ router.post('/', requireRole('administrator'), ruta(async (req: AuthRequest, res
   const trimisa = corp['durata_minute']
   const durata_minute = trimisa === undefined || trimisa === null ? null : Number(trimisa)
   verificaDurataArticol(tip, durata_minute)
+  const numar_sedinte = numarSedintePentru(tip, corp['numar_sedinte'])
 
   const articol = await tranzactie(async (ex: Executor) => {
     const q = dynamicInsert('articol', {
@@ -73,6 +89,7 @@ router.post('/', requireRole('administrator'), ruta(async (req: AuthRequest, res
       durata_minute: tip === 'serviciu' ? durata_minute : null,
       pret_lista,
       activ: corp['activ'] === undefined ? true : Boolean(corp['activ']),
+      numar_sedinte,
     })
     const { rows } = await ex.query<Articol>(q.text, q.values)
     const rand = rows[0]!
@@ -124,6 +141,8 @@ router.patch('/:id', requireRole('administrator'), ruta(async (req: AuthRequest,
 
     date['tip'] = tip
     date['durata_minute'] = durata
+    // Ca durata: un serviciu devenit produs coboară la o singură ședință.
+    date['numar_sedinte'] = numarSedintePentru(tip, date['numar_sedinte'], inainte.numar_sedinte)
     if (date['denumire'] !== undefined) {
       date['denumire'] = ceruteText(date['denumire'], 'denumire', 'Denumirea')
     }

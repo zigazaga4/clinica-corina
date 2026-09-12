@@ -23,6 +23,11 @@ const PaginaClienti = lazy(() =>
 const PaginaFisaClient = lazy(() =>
   import('@/features/clienti/PaginaFisaClient').then((m) => ({ default: m.PaginaFisaClient })),
 )
+const PaginaTratamente = lazy(() =>
+  import('@/features/tratamente/PaginaTratamente').then((m) => ({
+    default: m.PaginaTratamente,
+  })),
+)
 const PaginaVanzari = lazy(() =>
   import('@/features/vanzari/PaginaVanzari').then((m) => ({ default: m.PaginaVanzari })),
 )
@@ -56,6 +61,7 @@ export function Rute() {
         <Route path="/programari" element={<CuIncarcare><PaginaProgramari /></CuIncarcare>} />
         <Route path="/clienti" element={<CuIncarcare><PaginaClienti /></CuIncarcare>} />
         <Route path="/clienti/:id" element={<CuIncarcare><PaginaFisaClient /></CuIncarcare>} />
+        <Route path="/tratamente" element={<CuIncarcare><PaginaTratamente /></CuIncarcare>} />
         <Route path="/incasari" element={<CuIncarcare><PaginaVanzari /></CuIncarcare>} />
         <Route path="/nomenclator" element={<CuIncarcare><PaginaNomenclator /></CuIncarcare>} />
 

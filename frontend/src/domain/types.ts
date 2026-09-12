@@ -96,11 +96,20 @@ export interface Articol {
   denumire: string
   /** Obligatoriu > 0 la servicii, NULL la produse (articol_durata_ck). */
   durata_minute: number | null
-  /** Preț de referință; prețul efectiv se copiază pe linia de vânzare. */
+  /**
+   * Preț de referință; prețul efectiv se copiază pe linia de vânzare.
+   * La un serviciu în mai multe ședințe este prețul ÎNTREGULUI tratament.
+   */
   pret_lista: number
   activ: boolean
   creat_la: Timestamptz
   actualizat_la: Timestamptz
+  /**
+   * În câte ședințe se face serviciul (articol_sedinte_ck: >= 1; produsele 1).
+   * Peste 1, fiecare programare a lui intră într-un `Tratament` și primește
+   * o parte din `pret_lista`.
+   */
+  numar_sedinte: number
 }
 
 /** Tabela `client` — fișa de client. */
@@ -191,6 +200,46 @@ export interface Programare {
    */
   pret: number
   nota: string | null
+  creat_de: Uuid | null
+  creat_la: Timestamptz
+  actualizat_la: Timestamptz
+  /** Tratamentul din care face parte ședința; NULL la serviciile dintr-o venire. */
+  tratament_id: Uuid | null
+}
+
+/**
+ * Tabela `tratament` — un serviciu făcut în mai multe ședințe, pentru un client.
+ *
+ * „Epilare IPL axile, 6 ședințe”: serviciul se cumpără o dată și se face în
+ * mai multe veniri, fiecare o `Programare` obișnuită legată prin
+ * `tratament_id`. Rândul ține DOAR ce s-a convenit la început — câte ședințe
+ * și cât în total. Câte s-au făcut, cât s-a încasat, cât mai e de programat
+ * se NUMĂRĂ din ședințe (`TratamentDetaliu`); nu există contoare ținute de
+ * mână, care ar ajunge să se contrazică cu ședințele pe care le rezumă.
+ *
+ * Banii nu stau aici. `pret_total` se împarte pe ședințe la crearea fiecăreia
+ * — restul neplanificat, la ședințele rămase — și devine `Programare.pret`,
+ * de unde urmează drumul obișnuit: onorat → achitat → linie de vânzare.
+ * Recepția corectează suma la fiecare ședință, iar următoarele își refac
+ * partea din ce a rămas.
+ *
+ * `incheiat_la` se pune singur la onorarea ultimei ședințe sau de mână, când
+ * clientul renunță. Un client are cel mult un tratament ÎN CURS pentru același
+ * serviciu: o programare nouă la acel serviciu intră în el, nu deschide altul.
+ */
+export interface Tratament {
+  id: Uuid
+  client_id: Uuid
+  articol_id: Uuid
+  /** Fixat pe 'serviciu' prin CHECK, ca la programare. */
+  articol_tip: 'serviciu'
+  /** CHECK (numar_sedinte >= 1). Copiat din nomenclator, editabil aici. */
+  numar_sedinte: number
+  /** CHECK (pret_total >= 0). Prețul întregului tratament, convenit cu clientul. */
+  pret_total: number
+  nota: string | null
+  /** NULL = în curs. */
+  incheiat_la: Timestamptz | null
   creat_de: Uuid | null
   creat_la: Timestamptz
   actualizat_la: Timestamptz
@@ -335,6 +384,47 @@ export interface ProgramareDetaliu extends Programare {
    * aug.” și bonul nu mai are ce căuta în cronologie.
    */
   achitat_la: Timestamptz | null
+  /** Câte ședințe are tratamentul din care face parte; NULL în afara unuia. */
+  tratament_numar_sedinte: number | null
+  /**
+   * DERIVAT: a câta ședință a tratamentului este aceasta — „ședința 3 din 8”.
+   * Se numără doar ședințele programate sau onorate; una anulată sau
+   * neprezentată nu ocupă un loc și are NULL aici.
+   */
+  sedinta_nr: number | null
+}
+
+/**
+ * Tratamentul cu tot ce se numără din ședințele lui — `v_tratament_detaliu`.
+ *
+ * Niciun câmp de mai jos nu este coloană: se numără la fiecare citire, din
+ * programările cu `tratament_id`. Contează doar ședințele programate sau
+ * onorate; cele anulate și neprezentările nu ocupă un loc și nu iau bani.
+ */
+export interface TratamentDetaliu extends Tratament {
+  client_nume: string
+  client_telefon: string | null
+  articol_denumire: string
+  articol_durata_minute: number | null
+  sedinte_programate: number
+  sedinte_onorate: number
+  /** Câte mai sunt de programat: `numar_sedinte` minus cele care contează. */
+  sedinte_ramase: number
+  /** Suma prețurilor ședințelor care contează — cât din `pret_total` e deja împărțit. */
+  alocat: number
+  /** Ședințe onorate și încasate. */
+  incasat: number
+  /** Ședințe onorate și neîncasate — restanța tratamentului. */
+  de_incasat: number
+  /**
+   * Partea propusă ședinței următoare: `(pret_total - alocat) / sedinte_ramase`,
+   * niciodată sub zero. 0 când nu mai e nimic de programat.
+   */
+  pret_urmatoarea: number
+  /** Prima ședință programată (cea mai apropiată); NULL dacă nu e niciuna. */
+  urmatoarea_la: Timestamptz | null
+  /** Ultima ședință onorată. */
+  ultima_la: Timestamptz | null
 }
 
 /**
