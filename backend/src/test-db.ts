@@ -9,16 +9,26 @@
 import 'dotenv/config'
 import pool, { multe } from './lib/db.js'
 
+/*
+  Lista se ține la zi cu `01_schema.sql`.
+
+  Nu este o formalitate: verificarea citește fiecare obiect cu rolul aplicației,
+  deci prinde și tabela care lipsește, și pe cea creată din greșeală de alt rol —
+  cazul în care obiectul există, dar aplicația primește „permission denied”.
+  Un obiect uitat aici înseamnă un ecran care cade abia la client.
+*/
 const TABELE = [
   'utilizator', 'punct_lucru', 'articol', 'client', 'nota_client',
   'programare', 'vanzare', 'vanzare_linie',
   'abonament', 'abonament_sedinta', 'plata',
   'sesiune', 'jurnal_operatiuni',
+  'consimtamant', 'notita', 'tratament',
 ]
 
 const VEDERI = [
   'v_client_detaliu', 'v_programare_detaliu',
   'v_vanzare_detaliu', 'v_vanzare_linie_detaliu',
+  'v_consimtamant_detaliu', 'v_notita_detaliu', 'v_tratament_detaliu',
 ]
 
 /** Adresa de conectare, fără parolă — ieșirea ajunge des într-un e-mail. */
@@ -54,6 +64,8 @@ async function ruleaza(): Promise<void> {
     'vanzare_linie_programare_uk',
     'articol_durata_ck',
     'utilizator_email_uk',
+    'articol_sedinte_ck',
+    'tratament_articol_fk',
   ]
   const gasite = await multe<{ conname: string }>(
     pool,
