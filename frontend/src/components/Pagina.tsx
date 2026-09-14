@@ -131,7 +131,19 @@ export function GrilaFormular({
   )
 }
 
-/** Câmp care ocupă toată lățimea într-o `GrilaFormular`. */
+/**
+ * Câmp care ocupă toată lățimea într-o `GrilaFormular`.
+ *
+ * `col-span-full` înseamnă „de la prima linie la ultima”, oricâte coloane ar
+ * avea grila. Alternativa — un număr fix de coloane — cerea ca aceste două
+ * componente să fie ținute mereu în acord, iar tocmai acolo se stricase:
+ * `lg:col-span-3` cerea trei coloane, dar grila implicită are două. Cerând mai
+ * multe coloane decât există, browserul născocește una în plus; ea rămâne fără
+ * lățime, însă spațiul dintre coloane se adaugă oricum, iar câmpurile late
+ * ieșeau cu exact 14px în afara celor înguste. Marginea din dreapta a
+ * formularelor era zimțată pe orice ecran de cel puțin 1024px — adică pe
+ * calculatorul din clinică, întotdeauna.
+ */
 export function PeToataLatimea({ children }: { children: ReactNode }) {
-  return <div className="sm:col-span-2 lg:col-span-3">{children}</div>
+  return <div className="col-span-full">{children}</div>
 }
