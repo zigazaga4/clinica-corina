@@ -87,10 +87,24 @@ describe.skipIf(!ADRESA)('clientul HTTP împotriva serverului real', () => {
     const servicii = await api.articole.list({ tip: 'serviciu', activ: true })
     const produse = await api.articole.list({ tip: 'produs', activ: true })
     const utilizatori = await api.utilizatori.list({ activ: true })
-    if (!servicii[0] || !produse[0] || !utilizatori[0]) {
+
+    /*
+      Serviciul se alege dintr-o singură ședință, nu primul din listă.
+
+      Testele de mai jos verifică „prețul reținut”: ultima ședință a clientului
+      dictează. La un serviciu în mai multe ședințe regula este alta — prețul
+      este partea ședinței din tratament, deci ce a rămas din `pret_total`
+      împărțit la ședințele rămase. Amândouă sunt corecte; se exclud reciproc.
+
+      Luat cu `servicii[0]`, testul depindea de ce se află în bază: era de ajuns
+      o cură rămasă de la un rulaj al suitei de API ca primul serviciu să aibă
+      trei ședințe, iar „preț din nomenclator” să pice cu a treia parte din el.
+    */
+    const serviciuSimplu = servicii.find((s) => s.numar_sedinte === 1)
+    if (!serviciuSimplu || !produse[0] || !utilizatori[0]) {
       throw new Error('Baza nu are date de pornire. Rulează `npm run seed` în backend.')
     }
-    serviciu = servicii[0]
+    serviciu = serviciuSimplu
     produs = produse[0]
     executant_id = utilizatori[0].id
 
