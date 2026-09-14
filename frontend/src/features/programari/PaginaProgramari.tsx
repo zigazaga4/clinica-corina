@@ -63,7 +63,17 @@ export function PaginaProgramari() {
 
   const [executantId, setExecutantId] = useState<Uuid | null>(null)
   const [clientId, setClientId] = useState<Uuid | null>(null)
-  const [stariAscunse, setStariAscunse] = useState<Set<StareProgramare>>(new Set())
+  /*
+    Ședințele anulate nu se arată în calendar.
+
+    O anulare înseamnă că ora aceea este liberă; lăsată pe ecran, ar arăta ca
+    un interval ocupat și ar încurca tocmai când se caută un loc liber. Nu se
+    șterge nimic: rândul rămâne în bază, se vede pe fișa clientului, iar aici
+    se poate readuce oricând de pe butonul „Anulate”.
+  */
+  const [stariAscunse, setStariAscunse] = useState<Set<StareProgramare>>(
+    () => new Set<StareProgramare>(['anulat']),
+  )
 
   const [formularDeschis, setFormularDeschis] = useState(false)
   const [deModificat, setDeModificat] = useState<ProgramareDetaliu | null>(null)
