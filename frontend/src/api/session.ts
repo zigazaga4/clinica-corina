@@ -65,7 +65,9 @@ export function aExpirat(tokenuri: TokenuriSesiune, marjaSecunde = 30): boolean 
 
 /** Identifică dispozitivul în `sesiune.dispozitiv` — „platformă + versiune”. */
 export function descriereDispozitiv(): string {
-  const versiune = '0.1.0'
+  // Vine din `package.json`, pusă de Vite la compilare (v. `vite.config.ts`).
+  // Scrisă de mână aici, rămânea în urmă: a spus „0.1.0” zece versiuni la rând.
+  const versiune = typeof __VERSIUNE_APP__ === 'string' ? __VERSIUNE_APP__ : 'necunoscută'
   if (typeof navigator === 'undefined') return `necunoscut / ${versiune}`
   const ua = navigator.userAgent
   const platforma = /Android/i.test(ua)

@@ -1,13 +1,29 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { createRequire } from 'node:module'
 import { fileURLToPath, URL } from 'node:url'
 
 // Tauri expects a fixed port and, for mobile, a host reachable from the device.
 const host = process.env.TAURI_DEV_HOST
 
+/*
+  Versiunea, citită din `package.json` la compilare.
+
+  Interfața o trimite la autentificare, ca să se vadă în `sesiune.dispozitiv` ce
+  versiune rulează fiecare calculator. Scrisă de mână, valoarea rămâne în urmă
+  fără ca nimeni să observe — și chiar așa s-a întâmplat: toate intrările spuneau
+  „0.1.0” la luni după ce 0.1.0 nu mai era instalat nicăieri, adică exact câmpul
+  care ar fi răspuns la „de ce nu se actualizează aplicația?” nu răspundea nimic.
+*/
+const versiune = createRequire(import.meta.url)('./package.json').version as string
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+
+  define: {
+    __VERSIUNE_APP__: JSON.stringify(versiune),
+  },
 
   /*
     Unde stă aplicația în adresă.

@@ -11,3 +11,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** Versiunea din `package.json`, pusă de Vite la compilare (v. `vite.config.ts`). */
+declare const __VERSIUNE_APP__: string
