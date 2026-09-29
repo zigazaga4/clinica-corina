@@ -168,6 +168,65 @@ it('păstrează produsele cumpărate, chiar plătite odată cu ședințele', asy
   expect(screen.getAllByText(serviciu)).toHaveLength(2)
 })
 
+it('adună produsele neachitate la „De plată” și le încasează odată cu ședințele', async () => {
+  const { id, total } = await clientCuDouaRestante()
+  const produs = (await api.articole.list({ tip: 'produs', activ: true }))[0]
+  if (!produs) throw new Error('Datele demo nu conțin niciun produs activ.')
+  const datorie = await api.vanzari.create({
+    client_id: id,
+    efectuat_la: new Date().toISOString(),
+    achitat: false,
+    linii: [{ articol_id: produs.id, cantitate: 2, pret_unitar: 250 }],
+  })
+
+  randeazaFisa(id)
+
+  const banda = await screen.findByText(/De plată:/)
+  expect(sumaDinText(banda.textContent ?? '')).toBe(total + 500)
+  // Căutat în bandă: fereastra de încasare, închisă, spune și ea câte sunt.
+  expect(banda.parentElement).toHaveTextContent(
+    /2 ședințe neîncasate · 1 vânzare de produse neachitată/,
+  )
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Încasează' }))
+  const fereastra = within(screen.getByRole('dialog'))
+  // Două ședințe și o vânzare: trei bife, toate bifate.
+  expect(await fereastra.findAllByRole('checkbox')).toHaveLength(3)
+  const confirma = fereastra.getByRole('button', { name: /^Încasează / })
+  expect(sumaDinText(confirma.textContent ?? '')).toBe(total + 500)
+  fireEvent.click(confirma)
+
+  await waitFor(async () => {
+    expect((await api.vanzari.get(datorie.id)).achitat).toBe(true)
+    const lista = await api.clienti.list({ q: 'Ana Restantă', pe_pagina: 500 })
+    expect(lista.randuri.find((c) => c.id === id)?.de_incasat).toBe(0)
+  })
+  await waitFor(() => expect(screen.queryByText(/De plată:/)).toBeNull())
+})
+
+it('trece o vânzare de produse achitată chiar de pe rândul ei din fișă', async () => {
+  await autentifica()
+  const client = await api.clienti.create({ nume: 'Maria Datoare' })
+  const produs = (await api.articole.list({ tip: 'produs', activ: true }))[0]
+  if (!produs) throw new Error('Datele demo nu conțin niciun produs activ.')
+  const datorie = await api.vanzari.create({
+    client_id: client.id,
+    efectuat_la: new Date().toISOString(),
+    achitat: false,
+    linii: [{ articol_id: produs.id, cantitate: 1, pret_unitar: 500 }],
+  })
+
+  randeazaFisa(client.id)
+
+  fireEvent.click(await screen.findByRole('button', { name: /^Achitat$/ }))
+  await waitFor(async () => expect((await api.vanzari.get(datorie.id)).achitat).toBe(true))
+  await waitFor(() => expect(screen.queryByText(/De plată:/)).toBeNull())
+
+  // Și înapoi: „Neachitat” readuce datoria.
+  fireEvent.click(screen.getByRole('button', { name: /^Neachitat$/ }))
+  expect(await screen.findByText(/De plată:/)).toBeInTheDocument()
+})
+
 it('debifarea unei ședințe scade totalul de încasat', async () => {
   const { id } = await clientCuDouaRestante()
   randeazaFisa(id)

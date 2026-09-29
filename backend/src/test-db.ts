@@ -66,6 +66,8 @@ async function ruleaza(): Promise<void> {
     'utilizator_email_uk',
     'articol_sedinte_ck',
     'tratament_articol_fk',
+    // Semnul migrației 2026-09-29: fără ea, vânzările nu pot rămâne neachitate.
+    'vanzare_neachitata_idx',
   ]
   const gasite = await multe<{ conname: string }>(
     pool,

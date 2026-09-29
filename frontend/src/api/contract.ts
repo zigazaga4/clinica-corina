@@ -421,6 +421,8 @@ export interface FiltruVanzari extends IntervalTimp, ParametriPaginare {
   punct_lucru_id?: Uuid
   operator_id?: Uuid
   articol_id?: Uuid
+  /** true = doar cele plătite; false = doar cele neachitate; lipsă = toate. */
+  achitat?: boolean
 }
 
 export interface DateLinieVanzare {
@@ -444,6 +446,12 @@ export interface DateVanzareNoua {
   programare_id?: Uuid | null
   efectuat_la: Timestamptz
   nota?: string | null
+  /**
+   * false = produsele pleacă acum, banii vin mai târziu: suma intră în
+   * `de_incasat` al clientului. Lipsă = achitată pe loc, în `efectuat_la`.
+   * Refuzat (400 pe „achitat”) pe o vânzare care stinge ședințe.
+   */
+  achitat?: boolean
   /** Cel puțin o linie. Antetul și liniile se scriu într-o singură tranzacție. */
   linii: DateLinieVanzare[]
 }
@@ -455,6 +463,11 @@ export interface DateVanzareModificata {
   programare_id?: Uuid | null
   efectuat_la?: Timestamptz
   nota?: string | null
+  /**
+   * Bifa „Achitat”. true pe una neachitată = plătită ACUM; pe una deja
+   * plătită nu mută data. false = datoria revine.
+   */
+  achitat?: boolean
   /** Dacă e prezent, înlocuiește integral setul de linii. */
   linii?: DateLinieVanzare[]
 }

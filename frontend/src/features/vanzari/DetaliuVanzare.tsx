@@ -5,9 +5,13 @@ import type { VanzareDetaliu, VanzareLinieDetaliu } from '@/domain/types'
 import { formateazaData, formateazaDataOra } from '@/lib/dates'
 import { formateazaBani, formateazaCantitate } from '@/lib/money'
 import { Badge, Buton, Modala, Pereche, Tabel, type Coloana } from '@/ui'
+import { PlataVanzarii } from './PlataVanzarii'
 
 /**
- * Încasarea desfășurată: antetul (de la cine, când, de cine) și liniile ei.
+ * Vânzarea desfășurată: antetul (de la cine, când, de cine), plata și liniile.
+ *
+ * Plata se schimbă chiar de aici — „Achitat” când clienta vine cu banii,
+ * „Neachitat” dacă s-a apăsat din greșeală — fără a deschide corecția.
  *
  * Rândul din listă este afișat imediat, dar fereastra reinterogează încasarea:
  * după o corecție, rândul din pagina deschisă dedesubt este cel vechi, iar
@@ -77,7 +81,7 @@ export function DetaliuVanzare({
       deschisa
       onInchide={onInchide}
       dimensiune="lg"
-      titlu="Detaliul încasării"
+      titlu="Detaliul vânzării"
       descriere={formateazaDataOra(vanzare.efectuat_la)}
       subsol={
         <>
@@ -94,7 +98,7 @@ export function DetaliuVanzare({
       <div className="flex flex-col gap-5">
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           <Pereche eticheta="Client">{vanzare.client_nume}</Pereche>
-          <Pereche eticheta="Încasată la">{formateazaDataOra(vanzare.efectuat_la)}</Pereche>
+          <Pereche eticheta="Vândută la">{formateazaDataOra(vanzare.efectuat_la)}</Pereche>
           <Pereche eticheta="Operator">{vanzare.operator_nume}</Pereche>
           <Pereche eticheta="Proveniență">
             {/*
@@ -110,6 +114,9 @@ export function DetaliuVanzare({
             ) : (
               <Badge ton="neutral">Produse la recepție</Badge>
             )}
+          </Pereche>
+          <Pereche eticheta="Plata" className="col-span-2 sm:col-span-2">
+            <PlataVanzarii vanzare={vanzare} className="max-w-sm" />
           </Pereche>
           <Pereche eticheta="Notă" className="col-span-2 sm:col-span-3">
             {vanzare.nota}
@@ -141,7 +148,7 @@ export function DetaliuVanzare({
             )}
           />
           <div className="flex items-center justify-between border-t border-line bg-muted px-4 py-3">
-            <span className="text-sm font-medium text-ink-soft">Total încasare</span>
+            <span className="text-sm font-medium text-ink-soft">Total</span>
             <span className="text-base font-semibold text-ink tabular-nums">
               {formateazaBani(vanzare.total)}
             </span>

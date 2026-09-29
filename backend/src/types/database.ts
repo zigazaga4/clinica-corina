@@ -133,6 +133,8 @@ export interface Vanzare {
   nota: string | null
   creat_la: string
   actualizat_la: string
+  /** Când a plătit clientul; NULL = neachitată (produse date acum, plătite mai târziu). */
+  achitat_la: string | null
 }
 
 export interface VanzareLinie {
@@ -291,6 +293,8 @@ export interface VanzareDetaliu extends Vanzare {
   client_nume: string
   punct_lucru_denumire: string
   operator_nume: string
+  /** DERIVAT: `achitat_la IS NOT NULL`. */
+  achitat: boolean
   linii: VanzareLinieDetaliu[]
   /** Suma liniilor; calculată de server, niciodată editabilă direct. */
   total: number
@@ -451,6 +455,11 @@ export interface CreateVanzareRequest {
   programare_id?: string | null
   efectuat_la: string
   nota?: string | null
+  /**
+   * false = produsele pleacă acum, banii vin mai târziu. Lipsă = true: o
+   * aplicație mai veche, care nu știe de câmp, înregistrează ca până acum.
+   */
+  achitat?: boolean
   linii: DateLinieVanzare[]
 }
 

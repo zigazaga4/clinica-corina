@@ -161,11 +161,11 @@ PATCH  /tratamente/:id          { numar_sedinte?, pret_total?, nota? }
 POST   /tratamente/:id/incheiere
 POST   /tratamente/:id/redeschidere
 
-GET    /vanzari                 ?client_id= &operator_id= &articol_id= &de_la= &pana_la=
-POST   /vanzari
+GET    /vanzari                 ?client_id= &operator_id= &articol_id= &de_la= &pana_la= &achitat=
+POST   /vanzari                 { ..., achitat? }   false = produse pe datorie
 POST   /vanzari/incasare        { client_id, programare_ids[], linii[]? }
 GET    /vanzari/:id
-PATCH  /vanzari/:id
+PATCH  /vanzari/:id             { ..., achitat? }   true = plătită acum, false = datoria revine
 
 GET    /articole                ?tip= &activ= &q=
 POST   /articole                administrator
@@ -249,7 +249,7 @@ la prima instalare în clinică. `CORS_ORIGINS` adaugă la listă, nu o înlocui
 Verificarea că cele două chiar se înțeleg:
 
 ```bash
-npm run test:api                       # 130 de verificări, din partea serverului
+npm run test:api                       # 142 de verificări, din partea serverului
 # și, din proiectul de interfață:
 API_LIVE=http://localhost:3001 npx vitest run src/api/http
 ```

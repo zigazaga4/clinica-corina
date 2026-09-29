@@ -510,6 +510,82 @@ describe('vânzări', () => {
     expect(dupa.linii).toHaveLength(1)
     expect(dupa.linii[0]?.cantitate).toBe(1)
   })
+
+  /*
+    Vânzarea neachitată (vanzare.achitat_la NULL) — cremele date acum, banii
+    mai târziu. Aceleași reguli ca pe server; `backend/src/test-api.ts` le
+    verifică acolo.
+  */
+  describe('achitat / neachitat', () => {
+    const produs = () => gaseste(magazin.articol, (a) => a.activ && a.tip === 'produs', 'produse active')
+    // `de_incasat` stă pe rândul din lista de clienți, nu pe clientul simplu.
+    const deIncasat = async (): Promise<number> => {
+      const lista = await api.clienti.list({ pe_pagina: 500 })
+      return lista.randuri.find((c) => c.id === baza.client_id)?.de_incasat ?? Number.NaN
+    }
+
+    it('fără alegere, vânzarea e achitată în momentul ei', async () => {
+      const vanzare = await api.vanzari.create({
+        ...baza,
+        linii: [{ articol_id: produs().id, cantitate: 1 }],
+      })
+      expect(vanzare.achitat).toBe(true)
+      expect(vanzare.achitat_la).toBe(baza.efectuat_la)
+    })
+
+    it('neachitată intră în de_incasat al clientului, achitată iese', async () => {
+      const inainte = await deIncasat()
+      const vanzare = await api.vanzari.create({
+        ...baza,
+        achitat: false,
+        linii: [{ articol_id: produs().id, cantitate: 2, pret_unitar: 75.5 }],
+      })
+      expect(vanzare.achitat).toBe(false)
+      expect(vanzare.achitat_la).toBeNull()
+      expect(await deIncasat()).toBeCloseTo(inainte + 151, 2)
+
+      const achitata = await api.vanzari.update(vanzare.id, { achitat: true })
+      expect(achitata.achitat).toBe(true)
+      expect(achitata.achitat_la).not.toBeNull()
+      expect(await deIncasat()).toBeCloseTo(inainte, 2)
+
+      // A doua bifă nu mută data plății; debifarea readuce datoria.
+      const iar = await api.vanzari.update(vanzare.id, { achitat: true })
+      expect(iar.achitat_la).toBe(achitata.achitat_la)
+      await api.vanzari.update(vanzare.id, { achitat: false })
+      expect(await deIncasat()).toBeCloseTo(inainte + 151, 2)
+    })
+
+    it('filtrează lista pe achitat', async () => {
+      const vanzare = await api.vanzari.create({
+        ...baza,
+        achitat: false,
+        linii: [{ articol_id: produs().id, cantitate: 1 }],
+      })
+      const neachitate = await api.vanzari.list({ achitat: false, pe_pagina: 500 })
+      expect(neachitate.randuri.some((v) => v.id === vanzare.id)).toBe(true)
+      expect(neachitate.randuri.every((v) => !v.achitat)).toBe(true)
+      const achitate = await api.vanzari.list({ achitat: true, pe_pagina: 500 })
+      expect(achitate.randuri.some((v) => v.id === vanzare.id)).toBe(false)
+    })
+
+    it('refuză să lase neachitată o încasare de ședințe', async () => {
+      const linie = gaseste(magazin.vanzare_linie, (l) => l.programare_id !== null, 'ședințe încasate')
+      const eroare = await api.vanzari.update(linie.vanzare_id, { achitat: false }).catch((e) => e)
+      expect(esteEroareApi(eroare) && eroare.camp).toBe('achitat')
+      expect((await api.vanzari.get(linie.vanzare_id)).achitat).toBe(true)
+    })
+
+    it('mută plata pe loc odată cu data vânzării', async () => {
+      const vanzare = await api.vanzari.create({
+        ...baza,
+        linii: [{ articol_id: produs().id, cantitate: 1 }],
+      })
+      const ieri = new Date(Date.parse(baza.efectuat_la) - 86_400_000).toISOString()
+      const mutata = await api.vanzari.update(vanzare.id, { efectuat_la: ieri })
+      expect(mutata.achitat_la).toBe(ieri)
+    })
+  })
 })
 
 /*

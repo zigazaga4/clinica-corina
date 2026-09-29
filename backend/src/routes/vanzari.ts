@@ -10,12 +10,16 @@
  * clientului îl arată altfel — acolo ședința este evenimentul, iar bonul care
  * doar o plătește nu are ce adăuga. Un bon din care lipsesc ședințele ar fi
  * însă un bon fals, iar aici se numără banii.
+ *
+ * O vânzare de produse poate rămâne NEACHITATĂ (`achitat_la` NULL): clienta ia
+ * cremele acum și plătește săptămâna viitoare. Suma intră în `de_incasat` al
+ * ei, iar `PATCH { achitat: true }` o trece plătită în momentul apăsării.
  */
 
 import { Router, Response } from 'express'
 import pool, { alege, multe, tranzactie, unu, type Executor } from '../lib/db.js'
 import { eroareValidare, ruta } from '../lib/erori.js'
-import { Conditii, impacheteaza, paginareDin, textDin } from '../lib/filtre.js'
+import { boolDin, Conditii, impacheteaza, paginareDin, textDin } from '../lib/filtre.js'
 import {
   inregistreazaIncasare,
   pregatesteLinie,
@@ -52,6 +56,47 @@ function liniiCerute(valoare: unknown, obligatorii: boolean): DateLinieVanzare[]
     throw eroareValidare('Adaugă cel puțin un serviciu sau produs.', 'linii')
   }
   return valoare as DateLinieVanzare[]
+}
+
+/**
+ * `achitat` din corpul cererii: lipsă = neschimbat, altfel neapărat boolean.
+ *
+ * Strict, nu „orice e adevărat”: un `"false"` venit ca text ar fi trecut drept
+ * plătită exact vânzarea pe care cineva voia s-o lase datorie.
+ */
+function achitatDin(valoare: unknown): boolean | undefined {
+  if (valoare === undefined) return undefined
+  if (typeof valoare !== 'boolean') {
+    throw eroareValidare('„Achitat” trebuie să fie da sau nu.', 'achitat')
+  }
+  return valoare
+}
+
+/**
+ * O vânzare care stinge ședințe nu poate rămâne neachitată.
+ *
+ * Ședința se socotește plătită după linia care o indică (`v_programare_detaliu`),
+ * iar o linie pe un bon neplătit ar fi spus deodată „achitată” pe ședință și
+ * „de plată” pe bon. Pentru o ședință neplătită drumul este altul: ea rămâne
+ * „de plată” la onorare și se încasează de pe fișă.
+ *
+ * Se verifică DUPĂ scriere, în tranzacție: prinde deopotrivă bonul nou, bonul
+ * debifat și bonul neachitat căruia i se adaugă o ședință.
+ */
+async function refuzaSedintePeDatorie(ex: Executor, vanzare_id: string): Promise<void> {
+  const { rows } = await ex.query<{ refuzat: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM vanzare v JOIN vanzare_linie vl ON vl.vanzare_id = v.id
+       WHERE v.id = $1 AND v.achitat_la IS NULL AND vl.programare_id IS NOT NULL
+     ) AS refuzat`,
+    [vanzare_id],
+  )
+  if (rows[0]?.refuzat) {
+    throw eroareValidare(
+      'O încasare de ședințe nu poate rămâne neachitată. Doar vânzările de produse se pot lăsa pe datorie.',
+      'achitat',
+    )
+  }
 }
 
 /**
@@ -149,6 +194,11 @@ router.get('/', ruta(async (req: AuthRequest, res: Response) => {
   unde.egal('punct_lucru_id', textDin(req.query['punct_lucru_id']))
   unde.egal('operator_id', textDin(req.query['operator_id']))
 
+  // `achitat=false` = „cine îmi datorează produse?”; lipsă = toate.
+  const achitat = boolDin(req.query['achitat'])
+  if (achitat === true) unde.brut('achitat_la IS NOT NULL')
+  if (achitat === false) unde.brut('achitat_la IS NULL')
+
   // Filtrarea pe articol privește liniile: antetul singur nu știe ce s-a vândut.
   const articol_id = textDin(req.query['articol_id'])
   if (articol_id) {
@@ -197,6 +247,8 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
   const autor = cont(req)
   const corp = req.body as CreateVanzareRequest
   const linii = liniiCerute(corp.linii, true)
+  // Lipsă = achitată: aplicațiile care nu știu încă de câmp scriu ca înainte.
+  const achitat = achitatDin(corp.achitat) ?? true
 
   const vanzare = await tranzactie(async (ex: Executor) => {
     // Ca la programări: o fișă arhivată nu mai primește mișcări noi.
@@ -212,29 +264,38 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
     const operator_id = corp.operator_id ?? autor.id
     await unu(ex, `SELECT id FROM utilizator WHERE id = $1`, [operator_id], 'Operatorul')
     const punct_lucru_id = corp.punct_lucru_id ?? (await punctImplicit(ex))
+    const efectuat_la = momentCerut(corp.efectuat_la, 'efectuat_la', 'Data încasării')
 
     const { rows } = await ex.query<Vanzare>(
-      `INSERT INTO vanzare (client_id, punct_lucru_id, operator_id, programare_id, efectuat_la, nota)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      `INSERT INTO vanzare (client_id, punct_lucru_id, operator_id, programare_id, efectuat_la, nota, achitat_la)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [
         corp.client_id,
         punct_lucru_id,
         operator_id,
         corp.programare_id ?? null,
-        momentCerut(corp.efectuat_la, 'efectuat_la', 'Data încasării'),
+        efectuat_la,
         textOptional(corp.nota),
+        // Plătită pe loc = plătită în momentul vânzării, nu al introducerii.
+        achitat ? efectuat_la : null,
       ],
     )
     const antet = rows[0]!
 
     await scrieLinii(ex, antet.id, corp.client_id, linii)
+    await refuzaSedintePeDatorie(ex, antet.id)
 
     await scrieJurnal(ex, {
       utilizator_id: autor.id,
       actiune: 'creare',
       entitate: 'vanzare',
       entitate_id: antet.id,
-      date_noi: { client_id: antet.client_id, efectuat_la: antet.efectuat_la, numar_linii: linii.length },
+      date_noi: {
+        client_id: antet.client_id,
+        efectuat_la: antet.efectuat_la,
+        achitat_la: antet.achitat_la,
+        numar_linii: linii.length,
+      },
       adresa_ip: adresaCererii(req),
     })
 
@@ -264,6 +325,31 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
     }
     if (date['nota'] !== undefined) date['nota'] = textOptional(date['nota'])
 
+    /*
+      Bifa „Achitat”.
+
+      Trecută pe da, vânzarea se socotește plătită ACUM: banii intră când îi
+      primește recepția, nu când au plecat cremele. Pe una deja plătită nu se
+      atinge nimic — a doua apăsare nu are voie să mute data plății. Trecută pe
+      nu, datoria revine pe fișa clientei.
+
+      Fără bifă, dar cu data vânzării mutată: o plată făcută PE LOC o urmează.
+      Altfel o vânzare corectată de pe 3 pe 2 septembrie ar fi rămas „achitată
+      pe 3”, iar fișa ar fi spus „plătit altă zi” despre o plată pe loc.
+    */
+    const achitat = achitatDin(corp['achitat'])
+    if (achitat === false && inainte.achitat_la !== null) {
+      date['achitat_la'] = null
+    } else if (achitat === true && inainte.achitat_la === null) {
+      date['achitat_la'] = new Date().toISOString()
+    } else if (
+      date['efectuat_la'] !== undefined &&
+      inainte.achitat_la !== null &&
+      new Date(inainte.achitat_la).getTime() === new Date(inainte.efectuat_la).getTime()
+    ) {
+      date['achitat_la'] = date['efectuat_la']
+    }
+
     let dupa = inainte
     if (Object.keys(date).length > 0) {
       const coloane = Object.keys(date)
@@ -291,6 +377,8 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
       // alt client, ședințele trebuie să fie ale aceluia, nu ale celui vechi.
       await scrieLinii(ex, id, dupa.client_id, linii)
     }
+
+    await refuzaSedintePeDatorie(ex, id)
 
     const dif = diferenta(
       inainte as unknown as Record<string, unknown>,

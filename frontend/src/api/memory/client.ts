@@ -1194,6 +1194,7 @@ export function creeazaApiInMemorie(): ApiClient {
           if (filtru.client_id && v.client_id !== filtru.client_id) continue
           if (filtru.punct_lucru_id && v.punct_lucru_id !== filtru.punct_lucru_id) continue
           if (filtru.operator_id && v.operator_id !== filtru.operator_id) continue
+          if (filtru.achitat !== undefined && (v.achitat_la !== null) !== filtru.achitat) continue
 
           const detaliu = hidrateazaVanzare(v)
           // Filtrarea pe articol se face după hidratare: liniile sunt într-o
@@ -1233,6 +1234,9 @@ export function creeazaApiInMemorie(): ApiClient {
         // Liniile se validează ÎNAINTE de a scrie antetul: pe server totul este
         // o tranzacție, deci nu poate rămâne o vânzare fără linii.
         const pregatite = date.linii.map(pregatesteLinie)
+        // Lipsă = achitată pe loc, ca înainte să existe alegerea.
+        const achitat = achitatDin(date.achitat) ?? true
+        refuzaSedintePeDatorie(achitat, pregatite)
 
         const rand: Vanzare = {
           id: uuid(),
@@ -1244,6 +1248,7 @@ export function creeazaApiInMemorie(): ApiClient {
           nota: textOptional(date.nota),
           creat_la: acum(),
           actualizat_la: acum(),
+          achitat_la: achitat ? date.efectuat_la : null,
         }
         magazin.vanzare.set(rand.id, rand)
         for (const linie of pregatite) {
@@ -1272,6 +1277,12 @@ export function creeazaApiInMemorie(): ApiClient {
         const rand = ceruta(magazin.vanzare, id, 'Vânzarea')
         const inainte = { ...rand }
 
+        const achitat = achitatDin(date.achitat)
+        refuzaSedintePeDatorie(
+          achitat ?? rand.achitat_la !== null,
+          date.linii ?? [...magazin.vanzare_linie.values()].filter((l) => l.vanzare_id === id),
+        )
+
         if (date.client_id !== undefined) {
           ceruta(magazin.client, date.client_id, 'Clientul')
           rand.client_id = date.client_id
@@ -1290,6 +1301,20 @@ export function creeazaApiInMemorie(): ApiClient {
         }
         if (date.efectuat_la !== undefined) rand.efectuat_la = date.efectuat_la
         if (date.nota !== undefined) rand.nota = textOptional(date.nota)
+
+        // Bifa „Achitat”, cu aceleași trei cazuri ca pe server: plătită ACUM,
+        // datoria revenită, sau plata pe loc care urmează data mutată.
+        if (achitat === false && inainte.achitat_la !== null) {
+          rand.achitat_la = null
+        } else if (achitat === true && inainte.achitat_la === null) {
+          rand.achitat_la = acum()
+        } else if (
+          date.efectuat_la !== undefined &&
+          inainte.achitat_la !== null &&
+          Date.parse(inainte.achitat_la) === Date.parse(inainte.efectuat_la)
+        ) {
+          rand.achitat_la = date.efectuat_la
+        }
 
         if (date.linii !== undefined) {
           if (date.linii.length === 0) {
@@ -1764,6 +1789,32 @@ function pregatesteLinie(linie: DateLinieVanzare): Omit<VanzareLinie, 'id' | 'va
   }
 }
 
+/** `achitat` din cerere: lipsă = neschimbat, altfel neapărat boolean — ca pe server. */
+function achitatDin(valoare: unknown): boolean | undefined {
+  if (valoare === undefined) return undefined
+  if (typeof valoare !== 'boolean') {
+    throw eroareValidare('„Achitat” trebuie să fie da sau nu.', 'achitat')
+  }
+  return valoare
+}
+
+/**
+ * O vânzare care stinge ședințe nu poate rămâne neachitată: ședința se
+ * socotește plătită după linia care o indică, iar pe un bon neplătit linia ar
+ * spune două lucruri deodată. Se cheamă cu starea DE DUPĂ, înaintea oricărei
+ * scrieri — aici nu există tranzacție care s-o anuleze.
+ */
+function refuzaSedintePeDatorie(
+  achitata: boolean,
+  linii: readonly { programare_id?: Uuid | null }[],
+): void {
+  if (achitata || !linii.some((l) => l.programare_id)) return
+  throw eroareValidare(
+    'O încasare de ședințe nu poate rămâne neachitată. Doar vânzările de produse se pot lăsa pe datorie.',
+    'achitat',
+  )
+}
+
 /**
  * Punctul de lucru implicit.
  *
@@ -2056,6 +2107,8 @@ function inregistreazaIncasare(
     nota: textOptional(nota),
     creat_la: acum(),
     actualizat_la: acum(),
+    // Încasarea este chiar plata, în momentul ei.
+    achitat_la: efectuat_la,
   }
   magazin.vanzare.set(vanzare.id, vanzare)
 

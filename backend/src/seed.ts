@@ -254,8 +254,8 @@ async function ruleaza(): Promise<void> {
     const crema = articole.get('Cremă anticelulitică')!
 
     const { rows: bon } = await ex.query<{ id: string }>(
-      `INSERT INTO vanzare (client_id, punct_lucru_id, operator_id, efectuat_la, nota)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      `INSERT INTO vanzare (client_id, punct_lucru_id, operator_id, efectuat_la, nota, achitat_la)
+       VALUES ($1, $2, $3, $4, $5, $4) RETURNING id`,
       [
         cliente.get('Alexandra Petrescu'), punct_lucru_id,
         conturi.get('raluca.ionescu@clinica.ro'), pedichiura.se_termina_la,
@@ -274,6 +274,29 @@ async function ruleaza(): Promise<void> {
       )
     }
 
+    /*
+      Produse luate acum și plătite mai târziu: vânzarea NEACHITATĂ. Fără ea,
+      banda „De plată” de pe fișă ar arăta doar ședințe, iar bifa „Achitat” de
+      pe bon n-ar avea pe ce să fie încercată.
+    */
+    const { rows: datorie } = await ex.query<{ id: string }>(
+      `INSERT INTO vanzare (client_id, punct_lucru_id, operator_id, efectuat_la, nota, achitat_la)
+       VALUES ($1, $2, $3, $4, $5, NULL) RETURNING id`,
+      [
+        cliente.get('Gabriela Nistor'), punct_lucru_id,
+        conturi.get('mihaela.stan@clinica.ro'), la(-2, 17, 30),
+        'Plătește săptămâna viitoare.',
+      ],
+    )
+    for (const [denumire, cantitate] of [['Ser cu vitamina C 30 ml', 1], ['Loțiune tonică', 2]] as const) {
+      const produs = articole.get(denumire)!
+      await ex.query(
+        `INSERT INTO vanzare_linie (vanzare_id, articol_id, cantitate, pret_unitar)
+         VALUES ($1, $2, $3, $4)`,
+        [datorie[0]!.id, produs.id, cantitate, produs.pret],
+      )
+    }
+
     await ex.query(
       `INSERT INTO nota_client (client_id, autor_id, text) VALUES ($1, $2, $3), ($4, $5, $6)`,
       [
@@ -286,7 +309,8 @@ async function ruleaza(): Promise<void> {
 
   console.log('Date de pornire scrise.\n')
   console.log(`  ${CONTURI.length} conturi, ${SERVICII.length} servicii, ${PRODUSE.length} produse,`)
-  console.log(`  ${CLIENTE.length} cliente, 18 programări, 2 tratamente în curs, 1 încasare.\n`)
+  console.log(`  ${CLIENTE.length} cliente, 18 programări, 2 tratamente în curs, 1 încasare,`)
+  console.log(`  1 vânzare de produse neachitată.\n`)
   console.log(`  Autentificare:  admin@clinica.ro  /  ${PAROLA_DEMO}`)
   console.log('  Schimbă parolele înainte de a pune serverul în folosință.')
 }

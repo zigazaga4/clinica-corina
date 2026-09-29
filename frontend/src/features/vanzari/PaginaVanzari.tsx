@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Plus, Receipt, Wallet } from 'lucide-react'
+import { Clock3, Receipt, ShoppingBag, Wallet } from 'lucide-react'
 import type { FiltruVanzari } from '@/api/contract'
 import { mesajEroare } from '@/api/errors'
 import { useVanzari } from '@/app/queries'
 import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
+import { InsemnPlata } from '@/components/insemne'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
 import type { Uuid, VanzareDetaliu } from '@/domain/types'
 import {
@@ -19,8 +20,10 @@ import { formateazaBani, sumaTotal } from '@/lib/money'
 import { plural } from '@/lib/text'
 import {
   Buton,
+  ButonGrup,
   Card,
   CelulaDubla,
+  GrupButoane,
   Input,
   Paginare,
   StareGoala,
@@ -55,6 +58,8 @@ interface StareFiltre {
   /** Zile „YYYY-MM-DD”, cum le dă `<input type="date">`. */
   de_la: string
   pana_la: string
+  /** null = toate; false = doar cele neachitate — „cine îmi datorează produse?”. */
+  achitat: boolean | null
 }
 
 const FILTRE_GOALE: StareFiltre = {
@@ -63,7 +68,14 @@ const FILTRE_GOALE: StareFiltre = {
   articol_id: null,
   de_la: '',
   pana_la: '',
+  achitat: null,
 }
+
+const FILTRE_PLATA: { valoare: boolean | null; eticheta: string }[] = [
+  { valoare: null, eticheta: 'Toate' },
+  { valoare: true, eticheta: 'Achitate' },
+  { valoare: false, eticheta: 'Neachitate' },
+]
 
 export function PaginaVanzari() {
   const [filtre, setFiltre] = useState<StareFiltre>(FILTRE_GOALE)
@@ -81,6 +93,7 @@ export function PaginaVanzari() {
       // nopții ca limită, tot ce s-a încasat după-amiaza în ultima zi aleasă ar
       // lipsi din listă — și nimeni nu ar bănui de ce nu se potrivesc totalurile.
       ...(filtre.pana_la ? { pana_la: laTimestamptz(endOfDay(laData(filtre.pana_la))) } : {}),
+      ...(filtre.achitat === null ? {} : { achitat: filtre.achitat }),
     }),
     [filtre],
   )
@@ -93,7 +106,10 @@ export function PaginaVanzari() {
   const randuri = lista.data?.randuri ?? []
   const numar = lista.data?.total ?? 0
   const randuriRezumat = rezumat.data?.randuri ?? []
-  const total = sumaTotal(randuriRezumat.map((v) => v.total))
+  // Încasat înseamnă bani intrați: vânzările neachitate își au rândul lor,
+  // altfel casa de seară ar căuta bani care n-au venit încă.
+  const total = sumaTotal(randuriRezumat.filter((v) => v.achitat).map((v) => v.total))
+  const deIncasat = sumaTotal(randuriRezumat.filter((v) => !v.achitat).map((v) => v.total))
   const rezumatPartial = (rezumat.data?.total ?? 0) > randuriRezumat.length
 
   const areFiltre = useMemo(
@@ -141,6 +157,12 @@ export function PaginaVanzari() {
       celula: (v) => <span className="text-ink-soft">{v.operator_nume}</span>,
     },
     {
+      cheie: 'plata',
+      antet: 'Plata',
+      className: 'w-28',
+      celula: (v) => <InsemnPlata achitat={v.achitat} />,
+    },
+    {
       cheie: 'total',
       antet: 'Total',
       laDreapta: true,
@@ -153,16 +175,16 @@ export function PaginaVanzari() {
     <Pagina>
       <AntetPagina
         titlu="Încasări"
-        descriere="Banii intrați: ședințele achitate și produsele vândute, cu clientul, momentul și operatorul lor."
+        descriere="Ședințele achitate și produsele vândute — plătite sau rămase de plată — cu clientul, momentul și operatorul lor."
         actiuni={
           <Buton varianta="primar" onClick={() => setFormular({})}>
-            <Plus className="size-4" />
-            Încasare nouă
+            <ShoppingBag className="size-4" />
+            Vinde produse
           </Buton>
         }
       />
 
-      <div className="mb-3 grid grid-cols-2 gap-3 sm:max-w-lg">
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:max-w-2xl sm:grid-cols-3">
         <Statistica
           eticheta="Încasări"
           valoare={numar}
@@ -174,6 +196,12 @@ export function PaginaVanzari() {
           valoare={formateazaBani(total)}
           pictograma={<Wallet className="size-4" />}
           detaliu={rezumatPartial ? `primele ${LIMITA_REZUMAT} încasări` : undefined}
+        />
+        <Statistica
+          eticheta="De încasat"
+          valoare={formateazaBani(deIncasat)}
+          pictograma={<Clock3 className="size-4" />}
+          detaliu="produse neachitate"
         />
       </div>
 
@@ -215,6 +243,18 @@ export function PaginaVanzari() {
           placeholder="Toate articolele"
           className="w-52"
         />
+        <GrupButoane eticheta="Plata" className="mt-6">
+          {FILTRE_PLATA.map((optiune) => (
+            <ButonGrup
+              key={optiune.eticheta}
+              activ={filtre.achitat === optiune.valoare}
+              onClick={() => schimba('achitat', optiune.valoare)}
+              className="h-11 px-3 sm:h-8"
+            >
+              {optiune.eticheta}
+            </ButonGrup>
+          ))}
+        </GrupButoane>
         {areFiltre && (
           <Buton varianta="discret" onClick={goleste} className="mt-6">
             Golește filtrele
@@ -240,9 +280,12 @@ export function PaginaVanzari() {
                   {formateazaDataOra(v.efectuat_la)} · {v.operator_nume}
                 </p>
               </div>
-              <span className="shrink-0 text-sm font-semibold text-ink tabular-nums">
-                {formateazaBani(v.total)}
-              </span>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <span className="text-sm font-semibold text-ink tabular-nums">
+                  {formateazaBani(v.total)}
+                </span>
+                {!v.achitat && <InsemnPlata achitat={false} />}
+              </div>
             </div>
           )}
           stareGoala={
@@ -257,8 +300,8 @@ export function PaginaVanzari() {
               <StareGoala
                 pictograma={<Receipt className="size-5" />}
                 titlu="Nicio încasare înregistrată"
-                descriere="Aici ajung banii intrați: ședințele achitate din programare și produsele vândute la recepție."
-                actiune={{ eticheta: 'Încasare nouă', onClick: () => setFormular({}) }}
+                descriere="Aici ajung ședințele achitate din programare și produsele vândute la recepție."
+                actiune={{ eticheta: 'Vinde produse', onClick: () => setFormular({}) }}
               />
             )
           }

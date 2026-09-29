@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Info, Plus, Tags } from 'lucide-react'
+import { Info, Plus, ShoppingBag, Tags } from 'lucide-react'
 import { mesajEroare } from '@/api/errors'
 import { useAutentificare } from '@/app/auth'
 import { useArticole } from '@/app/queries'
@@ -16,6 +16,7 @@ import {
   StareGoala,
   type Fila,
 } from '@/ui'
+import { FormularVanzare } from '../vanzari/FormularVanzare'
 import { FormularArticol } from './FormularArticol'
 import { ListaArticole } from './liste'
 
@@ -34,6 +35,11 @@ import { ListaArticole } from './liste'
   absența butoanelor să nu pară o defecțiune.
 
   Punctele de lucru nu mai au filă: clinica are o singură locație.
+
+  Pe fila „Produse” stă și „Vinde produse”, pentru ORICE cont: acolo caută
+  recepția când îi dă unei cliente niște creme (așa a desenat-o clinica:
+  „Nomenclator → Produse → Maria → Cremă 50 ml / 150 RON”). Formularul este
+  cel din „Încasări”, nu o copie.
 */
 
 type FilaNomenclator = 'servicii' | 'produse'
@@ -54,6 +60,7 @@ export function PaginaNomenclator() {
 
   // `'nou'` distinge „formular deschis pentru o înregistrare nouă” de „închis”.
   const [articolEditat, setArticolEditat] = useState<Articol | 'nou' | null>(null)
+  const [vanzareNoua, setVanzareNoua] = useState(false)
 
   // Starea merge în filtrul cererii (are trei valori, deci cel mult trei chei în
   // memoria cache), denumirea se filtrează local: nomenclatorul unei clinici are
@@ -115,12 +122,27 @@ export function PaginaNomenclator() {
         titlu="Nomenclator"
         descriere="Serviciile și produsele din ofertă."
         actiuni={
-          esteAdministrator ? (
-            <Buton varianta="primar" onClick={actiuneNoua.porneste}>
-              <Plus className="size-4" />
-              <span className="hidden sm:inline">{actiuneNoua.eticheta}</span>
-              <span className="sm:hidden">Adaugă</span>
-            </Buton>
+          esteAdministrator || fila === 'produse' ? (
+            <>
+              {esteAdministrator && (
+                <Buton
+                  // Pe „Produse”, vânzarea e gestul de zi cu zi; adăugarea în
+                  // nomenclator trece pe planul doi.
+                  varianta={fila === 'produse' ? 'secundar' : 'primar'}
+                  onClick={actiuneNoua.porneste}
+                >
+                  <Plus className="size-4" />
+                  <span className="hidden sm:inline">{actiuneNoua.eticheta}</span>
+                  <span className="sm:hidden">Adaugă</span>
+                </Buton>
+              )}
+              {fila === 'produse' && (
+                <Buton varianta="primar" onClick={() => setVanzareNoua(true)}>
+                  <ShoppingBag className="size-4" />
+                  Vinde produse
+                </Buton>
+              )}
+            </>
           ) : undefined
         }
       />
@@ -197,6 +219,8 @@ export function PaginaNomenclator() {
           onInchide={() => setArticolEditat(null)}
         />
       )}
+
+      {vanzareNoua && <FormularVanzare onInchide={() => setVanzareNoua(false)} />}
     </Pagina>
   )
 }

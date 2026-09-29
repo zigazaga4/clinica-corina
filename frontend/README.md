@@ -255,6 +255,7 @@ nicio coloană existentă nu își schimbă înțelesul.
 | `punct_lucru` nu mai apare în interfață | — | Clinica are o singură locație. Coloanele și rutele rămân neatinse; serverul completează punctul implicit când cererea nu îl trimite. |
 | tabela `notita` | nouă | Însemnări în calendar care nu sunt programări. |
 | `articol.numar_sedinte`, tabela `tratament`, `programare.tratament_id` | nomenclator + nouă + `programare` | Serviciile în mai multe ședințe: înțelegerea (câte, cât) stă în `tratament`; ședințele o referă. Tot ce se vede în ecranul „Tratamente” se numără din programări (`v_tratament_detaliu`). |
+| `vanzare.achitat_la timestamptz NULL` | tabela `vanzare` | Produse date acum, plătite mai târziu: NULL = neachitată, suma intră în `de_incasat`. Se bifează „Achitat” / „Neachitat” din formular, din detaliul vânzării și de pe fișă. O vânzare care stinge ședințe nu poate rămâne neachitată. |
 
 Din a doua modificare rezultă două câmpuri **derivate**, pe care serverul le
 calculează și interfața doar le citește — nu există coloană `achitat`, pentru
@@ -262,7 +263,8 @@ că două locuri pentru același adevăr ajung să se contrazică:
 
 - `ProgramareDetaliu.achitat` — `EXISTS (SELECT 1 FROM vanzare_linie WHERE programare_id = programare.id)`
 - `ProgramareDetaliu.achitat_la` — `efectuat_la` al încasării care a stins-o
-- `ClientListItem.de_incasat` — suma `pret` a ședințelor onorate fără linie de încasare
+- `ClientListItem.de_incasat` — suma `pret` a ședințelor onorate fără linie de încasare, plus totalul vânzărilor de produse neachitate
+- `VanzareDetaliu.achitat` — `achitat_la IS NOT NULL`
 
 Coloana `vanzare.programare_id` din §3 rămâne neatinsă, dar **nu este citită de
 interfață** și se scrie `NULL`. Într-un antet încape o singură ședință, iar o

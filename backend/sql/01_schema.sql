@@ -461,11 +461,25 @@ CREATE TABLE IF NOT EXISTS vanzare (
   efectuat_la     timestamptz NOT NULL DEFAULT now(),
   nota            text,
   creat_la        timestamptz NOT NULL DEFAULT now(),
-  actualizat_la   timestamptz NOT NULL DEFAULT now()
+  actualizat_la   timestamptz NOT NULL DEFAULT now(),
+  -- Când a plătit clientul. NULL = NEACHITATĂ: produsele au plecat acasă cu
+  -- clienta, banii vin mai târziu. Se bifează și se debifează de pe bon.
+  --
+  -- O vânzare care stinge ședințe este ÎNSĂȘI plata lor, deci nu poate fi
+  -- neachitată (serverul refuză): ședința se socotește plătită după linia care
+  -- o indică, iar o linie pe un bon neplătit ar fi spus două lucruri deodată.
+  --
+  -- Implicit `now()`, nu NULL: un drum care uită coloana scrie o vânzare
+  -- plătită, adică ce se întâmpla înainte să existe coloana — nu o datorie
+  -- inventată pe fișa cuiva. Ultima coloană dinadins, ca `v.*` din vederi să
+  -- iasă la fel pe o bază nouă și pe una migrată.
+  achitat_la      timestamptz DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS vanzare_client_idx ON vanzare (client_id, efectuat_la DESC);
 CREATE INDEX IF NOT EXISTS vanzare_efectuat_idx ON vanzare (efectuat_la DESC);
+-- „Ce produse mi-a rămas datoare?” — puține rânduri, căutate des.
+CREATE INDEX IF NOT EXISTS vanzare_neachitata_idx ON vanzare (client_id) WHERE achitat_la IS NULL;
 
 DROP TRIGGER IF EXISTS vanzare_actualizat_la ON vanzare;
 CREATE TRIGGER vanzare_actualizat_la BEFORE UPDATE ON vanzare
@@ -777,7 +791,8 @@ SELECT
   v.*,
   COALESCE(c.nume, '—')       AS client_nume,
   COALESCE(pl.denumire, '—')  AS punct_lucru_denumire,
-  COALESCE(o.nume, '—')       AS operator_nume
+  COALESCE(o.nume, '—')       AS operator_nume,
+  (v.achitat_la IS NOT NULL)  AS achitat
 FROM vanzare v
 LEFT JOIN client      c  ON c.id  = v.client_id
 LEFT JOIN punct_lucru pl ON pl.id = v.punct_lucru_id
@@ -788,14 +803,14 @@ LEFT JOIN utilizator  o  ON o.id  = v.operator_id;
 --
 -- `de_incasat` stă în listă ca recepția să vadă cine are de plătit fără să
 -- deschidă fișa. Se adună din ședințele onorate pe care nu le indică nicio
--- linie de vânzare.
+-- linie de vânzare și din produsele vândute neachitate.
 CREATE OR REPLACE VIEW v_client_detaliu AS
 SELECT
   c.*,
   COALESCE(p.numar, 0)        AS numar_programari,
   COALESCE(v.numar, 0)        AS numar_vanzari,
   GREATEST(p.ultima_onorata, v.ultima_incasare) AS ultima_vizita,
-  COALESCE(p.de_incasat, 0)   AS de_incasat
+  COALESCE(p.de_incasat, 0) + COALESCE(n.de_incasat, 0) AS de_incasat
 FROM client c
 LEFT JOIN LATERAL (
   SELECT
@@ -810,7 +825,13 @@ LEFT JOIN LATERAL (
 LEFT JOIN LATERAL (
   SELECT count(*) AS numar, max(vz.efectuat_la) AS ultima_incasare
   FROM vanzare vz WHERE vz.client_id = c.id
-) v ON true;
+) v ON true
+LEFT JOIN LATERAL (
+  SELECT round(sum(vl.total_linie), 2) AS de_incasat
+  FROM vanzare vz
+  JOIN vanzare_linie vl ON vl.vanzare_id = vz.id
+  WHERE vz.client_id = c.id AND vz.achitat_la IS NULL
+) n ON true;
 
 
 -- ---------------------------------------------------------------------------

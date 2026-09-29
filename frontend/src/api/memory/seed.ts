@@ -551,6 +551,7 @@ export function populeaza(): void {
       nota: alege(rnd, NOTE_VANZARE),
       creat_la: programare.se_termina_la,
       actualizat_la: programare.se_termina_la,
+      achitat_la: programare.se_termina_la,
     }
     magazin.vanzare.set(vanzare.id, vanzare)
 
@@ -566,7 +567,12 @@ export function populeaza(): void {
   }
 
   // Vânzări de produse la recepție, fără programare.
+  //
+  // Câteva rămân NEACHITATE — cremele au plecat, banii vin data viitoare — ca
+  // banda „De plată” și bifa „Achitat” să aibă pe ce să se vadă. Alese după
+  // poziție, nu cu `rnd`: o tragere în plus ar muta tot restul datelor demo.
   for (let i = 0; i < 45; i++) {
+    const neachitata = i % 9 === 4
     const cand = addMinutes(
       addDays(azi, -intreg(rnd, 0, ZILE_TRECUT)),
       intreg(rnd, ORA_DESCHIDERE * 60, ORA_INCHIDERE * 60),
@@ -581,6 +587,7 @@ export function populeaza(): void {
       nota: alege(rnd, NOTE_VANZARE),
       creat_la: laTimestamptz(cand),
       actualizat_la: laTimestamptz(cand),
+      achitat_la: neachitata ? null : laTimestamptz(cand),
     }
     magazin.vanzare.set(vanzare.id, vanzare)
 

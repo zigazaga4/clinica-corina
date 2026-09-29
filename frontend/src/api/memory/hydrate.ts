@@ -204,6 +204,7 @@ export function hidrateazaVanzare(v: Vanzare): VanzareDetaliu {
     client_nume: magazin.client.get(v.client_id)?.nume ?? '—',
     punct_lucru_denumire: magazin.punct_lucru.get(v.punct_lucru_id)?.denumire ?? '—',
     operator_nume: magazin.utilizator.get(v.operator_id)?.nume ?? '—',
+    achitat: v.achitat_la !== null,
     linii,
     total: sumaTotal(linii.map((l) => l.total_linie)),
   }
@@ -269,6 +270,10 @@ export function hidrateazaClient(c: Client): ClientListItem {
     numar_vanzari++
     if (ultima_vizita === null || v.efectuat_la > ultima_vizita) {
       ultima_vizita = v.efectuat_la
+    }
+    // Produsele luate pe datorie se adună la ședințele neplătite.
+    if (v.achitat_la === null) {
+      restante.push(sumaTotal(liniiVanzare(v.id).map((l) => l.total_linie)))
     }
   }
 

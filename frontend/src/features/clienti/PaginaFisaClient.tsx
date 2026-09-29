@@ -5,6 +5,7 @@ import {
   ArchiveRestore,
   MoreVertical,
   Pencil,
+  ShoppingBag,
   StickyNote,
   Trash2,
   UserRound,
@@ -63,6 +64,8 @@ import {
 import { PanouAcorduri } from '../consimtamant/PanouAcorduri'
 import { FormularProgramare, type ProgramareInitiala } from '../programari/FormularProgramare'
 import { TratamenteleClientului } from '../tratamente/TratamenteleClientului'
+import { FormularVanzare } from '../vanzari/FormularVanzare'
+import { PlataVanzarii } from '../vanzari/PlataVanzarii'
 import { FormularClient } from './FormularClient'
 import { ModalaIncasare } from './ModalaIncasare'
 
@@ -102,6 +105,7 @@ export function PaginaFisaClient() {
   const [fila, setFila] = useState<FilaFisa>('istoric')
   const [formularDeschis, setFormularDeschis] = useState(false)
   const [incasareDeschisa, setIncasareDeschisa] = useState(false)
+  const [vanzareNoua, setVanzareNoua] = useState(false)
   const [cereConfirmareStergere, setCereConfirmareStergere] = useState(false)
   // Ședința următoare a unui tratament, programată de pe fișă.
   const [programareDinTratament, setProgramareDinTratament] = useState<ProgramareInitiala | null>(null)
@@ -126,7 +130,19 @@ export function PaginaFisaClient() {
       ),
     [cronologie],
   )
-  const deIncasat = sumaTotal(sedinteNeachitate.map((programare) => programare.pret))
+  // Produsele luate pe datorie. O vânzare neachitată are doar produse — una
+  // care stinge ședințe este chiar plata lor — deci toate sunt în cronologie.
+  const vanzariNeachitate = useMemo(
+    () =>
+      cronologie.flatMap((intrare) =>
+        intrare.fel === 'produse' && !intrare.vanzare.achitat ? [intrare.vanzare] : [],
+      ),
+    [cronologie],
+  )
+  const deIncasat = sumaTotal([
+    ...sedinteNeachitate.map((programare) => programare.pret),
+    ...vanzariNeachitate.map((vanzare) => vanzare.total),
+  ])
 
   // Identificatorul lipsă se tratează înaintea încărcării: interogarea este
   // oprită fără el (`enabled`), deci ecranul ar rămâne în așteptare la infinit.
@@ -213,6 +229,13 @@ export function PaginaFisaClient() {
         descriere={arhivat ? `Arhivat la ${formateazaData(client.arhivat_la)}` : undefined}
         actiuni={
           <>
+            {/* Arhivată, fișa nu mai primește vânzări noi — serverul le refuză. */}
+            {!arhivat && (
+              <Buton onClick={() => setVanzareNoua(true)} className="tinta-atingere">
+                <ShoppingBag className="size-4" />
+                Vinde produse
+              </Buton>
+            )}
             <Buton onClick={() => setFormularDeschis(true)} className="tinta-atingere">
               <Pencil className="size-4" />
               Modifică
@@ -312,20 +335,26 @@ export function PaginaFisaClient() {
         {/*
           Banda de plată.
 
-          Apare doar când există ședințe onorate și neîncasate, iar tonul este
-          de avertizare, nu de eroare: banii se așteaptă, nu s-a stricat nimic.
-          Stă deasupra filelor pentru că este singurul lucru de pe fișă care
-          cere o acțiune acum, în fața clientului.
+          Apare doar când există ședințe onorate și neîncasate sau produse
+          luate pe datorie, iar tonul este de avertizare, nu de eroare: banii se
+          așteaptă, nu s-a stricat nimic. Stă deasupra filelor pentru că este
+          singurul lucru de pe fișă care cere o acțiune acum, în fața clientului.
         */}
-        {sedinteNeachitate.length > 0 && (
+        {(sedinteNeachitate.length > 0 || vanzariNeachitate.length > 0) && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-warning-soft px-4 py-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-warning tabular-nums">
                 De plată: {formateazaBani(deIncasat)}
               </p>
               <p className="mt-0.5 text-[13px] text-warning/80 tabular-nums">
-                {sedinteNeachitate.length}{' '}
-                {plural(sedinteNeachitate.length, 'ședință neîncasată', 'ședințe neîncasate')}
+                {[
+                  sedinteNeachitate.length > 0 &&
+                    `${sedinteNeachitate.length} ${plural(sedinteNeachitate.length, 'ședință neîncasată', 'ședințe neîncasate')}`,
+                  vanzariNeachitate.length > 0 &&
+                    `${vanzariNeachitate.length} ${plural(vanzariNeachitate.length, 'vânzare de produse neachitată', 'vânzări de produse neachitate')}`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </p>
             </div>
             <Buton
@@ -362,7 +391,12 @@ export function PaginaFisaClient() {
         clientId={client.id}
         clientNume={client.nume}
         sedinte={sedinteNeachitate}
+        vanzari={vanzariNeachitate}
       />
+
+      {vanzareNoua && (
+        <FormularVanzare clientInitial={client.id} onInchide={() => setVanzareNoua(false)} />
+      )}
 
       <FormularProgramare
         deschisa={programareDinTratament !== null}
@@ -427,7 +461,11 @@ function PanouIstoric({ clientId }: { clientId: Uuid }) {
               <span
                 className={cn(
                   'mt-1.5 size-2.5 shrink-0 rounded-full',
-                  intrare.fel === 'programare' ? 'bg-primary-400' : 'bg-success',
+                  intrare.fel === 'programare'
+                    ? 'bg-primary-400'
+                    : intrare.vanzare.achitat
+                      ? 'bg-success'
+                      : 'bg-warning',
                 )}
               />
               {indice < intrari.length - 1 && <span className="w-px flex-1 bg-line" />}
@@ -613,6 +651,9 @@ function IntrareProduse({
       </ul>
 
       <p className="mt-1 text-[12px] text-ink-faint">Operator: {vanzare.operator_nume}</p>
+
+      {/* „Achitat” / „Neachitat” chiar pe rând: se bifează când clienta plătește. */}
+      <PlataVanzarii vanzare={vanzare} compact className="mt-2 items-start" />
     </>
   )
 }

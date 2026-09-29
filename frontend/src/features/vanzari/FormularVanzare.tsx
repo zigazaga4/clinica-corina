@@ -10,15 +10,20 @@ import { dinInputDatetime, formateazaData, laInputDatetime } from '@/lib/dates'
 import { useEroriFormular } from '@/lib/formular'
 import { uuid } from '@/lib/id'
 import { formateazaBani, parseNumar, sumaTotal, totalLinie } from '@/lib/money'
-import { Buton, Input, Modala, Textarea, useNotificari } from '@/ui'
+import { Buton, Camp, Input, Modala, Textarea, useNotificari } from '@/ui'
+import { AlegerePlata } from './PlataVanzarii'
 
 /*
-  Încasarea manuală de la recepție — și corectarea uneia existente.
+  Vânzarea de produse de la recepție — și corectarea uneia existente.
 
   Aici se vând DOAR produse. Serviciile se încasează din programare, după ce
   ședința e marcată ca efectuată: prețul convenit atunci este singurul adevăr,
   iar o a doua cale de a vinde același serviciu ar produce ședințe plătite de
   două ori și programări rămase veșnic „de plată”.
+
+  Drumul este cel desenat de clinică: clientul („Maria”), produsele cu prețul
+  lor, câte vrei, totalul la final — și „Achitat” sau „Neachitat”. Neachitată,
+  suma ajunge la „De plată” pe fișa clientei și se bifează când plătește.
 
   Aceeași fereastră servește și corecția, pentru că este exact aceeași hârtie
   completată din nou: antetul (cui, când, de cine) și liniile (ce). PATCH-ul
@@ -32,6 +37,7 @@ type CampVanzare =
   | 'operator_id'
   | 'nota'
   | 'linii'
+  | 'achitat'
   // Erorile venite de la server pentru o linie nu spun CARE linie (§7 întoarce
   // un singur `camp`), așa că le afișăm deasupra editorului de linii.
   | 'cantitate'
@@ -68,10 +74,13 @@ interface LinieFormular {
 
 export function FormularVanzare({
   vanzare,
+  clientInitial,
   onInchide,
 }: {
-  /** Prezentă = se corectează o încasare existentă; absentă = una nouă. */
+  /** Prezentă = se corectează o vânzare existentă; absentă = una nouă. */
   vanzare?: VanzareDetaliu
+  /** Clientul deja ales la o vânzare nouă — deschisă de pe fișa lui. */
+  clientInitial?: Uuid
   onInchide: () => void
 }) {
   const utilizator = useUtilizator()
@@ -85,7 +94,13 @@ export function FormularVanzare({
 
   const { peCamp, general, goleste, preia, setCamp } = useEroriFormular<CampVanzare>()
 
-  const [clientId, setClientId] = useState<Uuid | null>(vanzare?.client_id ?? null)
+  const [clientId, setClientId] = useState<Uuid | null>(
+    vanzare?.client_id ?? clientInitial ?? null,
+  )
+  // Achitat e cazul obișnuit — și cel care nu inventează o datorie din greșeală.
+  const [achitat, setAchitat] = useState(vanzare?.achitat ?? true)
+  // Un bon care stinge ședințe este chiar plata lor: nu are ce alegere să arate.
+  const stingeSedinte = vanzare?.linii.some((l) => l.programare_id !== null) ?? false
   const [operatorId, setOperatorId] = useState<Uuid | null>(vanzare?.operator_id ?? utilizator.id)
   // `efectuat_la` este momentul REAL al încasării, nu al introducerii ei: o
   // plată de dimineață trecută în registru seara trebuie să rămână la ora ei.
@@ -193,6 +208,8 @@ export function FormularVanzare({
     }
     if (!valid || !clientId) return
 
+    const plata = stingeSedinte ? {} : { achitat }
+
     try {
       if (vanzare) {
         await modifica.mutateAsync({
@@ -202,19 +219,26 @@ export function FormularVanzare({
             ...(operatorId ? { operator_id: operatorId } : {}),
             efectuat_la: dinInputDatetime(efectuatLa),
             nota: nota.trim() === '' ? null : nota.trim(),
+            ...plata,
             linii: pregatite,
           },
         })
-        notificari.succes('Încasare corectată', `Total ${formateazaBani(total)}.`)
+        notificari.succes('Vânzare corectată', `Total ${formateazaBani(total)}.`)
       } else {
         await creeaza.mutateAsync({
           client_id: clientId,
           ...(operatorId ? { operator_id: operatorId } : {}),
           efectuat_la: dinInputDatetime(efectuatLa),
           nota: nota.trim() === '' ? null : nota.trim(),
+          ...plata,
           linii: pregatite,
         })
-        notificari.succes('Încasare înregistrată', `Total ${formateazaBani(total)}.`)
+        notificari.succes(
+          achitat ? 'Vânzare achitată' : 'Vânzare neachitată',
+          achitat
+            ? `Total ${formateazaBani(total)}.`
+            : `${formateazaBani(total)} rămân de plată, pe fișa clientului.`,
+        )
       }
       onInchide()
     } catch (err) {
@@ -230,11 +254,11 @@ export function FormularVanzare({
       onInchide={onInchide}
       blocata={seTrimite}
       dimensiune="lg"
-      titlu={vanzare ? 'Corectează încasarea' : 'Încasare nouă'}
+      titlu={vanzare ? 'Corectează vânzarea' : 'Vânzare de produse'}
       descriere={
         vanzare
-          ? 'Corecția înlocuiește integral liniile încasării și rămâne în jurnalul operațiunilor.'
-          : 'Antetul răspunde la de la cine și când; liniile spun ce produse s-au vândut.'
+          ? 'Corecția înlocuiește integral liniile vânzării și rămâne în jurnalul operațiunilor.'
+          : 'Clientul, produsele cu prețul lor și, la final, dacă s-a plătit.'
       }
       subsol={
         <>
@@ -249,27 +273,29 @@ export function FormularVanzare({
             plin
             className="sm:w-auto"
           >
-            {vanzare ? 'Salvează corecția' : 'Înregistrează încasarea'}
+            {vanzare ? 'Salvează corecția' : 'Salvează vânzarea'}
           </Buton>
         </>
       }
     >
       <form id={idFormular} onSubmit={trimite} className="flex flex-col gap-5" noValidate>
         <GrilaFormular>
+          {/* „Maria” nouă se adaugă de aici, doar cu numele — ca la programare. */}
           <SelectorClient
             valoare={clientId}
             onSchimba={setClientId}
             obligatoriu
+            cuCreare
             eroare={peCamp.client_id ?? null}
           />
           <Input
             type="datetime-local"
-            eticheta="Încasată la"
+            eticheta="Vândută la"
             obligatoriu
             value={efectuatLa}
             onChange={(e) => setEfectuatLa(e.target.value)}
             eroare={peCamp.efectuat_la ?? null}
-            ajutor="Momentul real al încasării, nu cel al introducerii."
+            ajutor="Momentul real al vânzării, nu cel al introducerii."
           />
           {esteAdministrator ? (
             <SelectorUtilizator
@@ -286,7 +312,7 @@ export function FormularVanzare({
               value={vanzare?.operator_nume ?? utilizator.nume}
               readOnly
               disabled
-              ajutor="Încasarea se înregistrează pe contul tău."
+              ajutor="Vânzarea se înregistrează pe contul tău."
             />
           )}
           <PeToataLatimea>
@@ -295,7 +321,7 @@ export function FormularVanzare({
               rows={2}
               value={nota}
               onChange={(e) => setNota(e.target.value)}
-              placeholder="Observații despre încasare (opțional)"
+              placeholder="Observații despre vânzare (opțional)"
             />
           </PeToataLatimea>
         </GrilaFormular>
@@ -336,7 +362,7 @@ export function FormularVanzare({
             className="tinta-atingere self-start"
           >
             <Plus className="size-4" />
-            Adaugă linie
+            Adaugă produs
           </Buton>
 
           {/*
@@ -350,11 +376,27 @@ export function FormularVanzare({
         </div>
 
         <div className="flex items-center justify-between rounded-xl bg-muted px-3.5 py-3">
-          <span className="text-sm font-medium text-ink-soft">Total încasare</span>
+          <span className="text-sm font-medium text-ink-soft">Total de plată</span>
           <span className="text-base font-semibold text-ink tabular-nums">
             {formateazaBani(total)}
           </span>
         </div>
+
+        {!stingeSedinte && (
+          <Camp
+            eticheta="S-a plătit?"
+            eroare={peCamp.achitat ?? null}
+            ajutor={
+              achitat
+                ? undefined
+                : 'Suma apare la „De plată” pe fișa clientului. Când plătește, apeși „Achitat”.'
+            }
+          >
+            {() => (
+              <AlegerePlata achitat={achitat} onSchimba={setAchitat} disabled={seTrimite} />
+            )}
+          </Camp>
+        )}
 
         {general && (
           <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger">
@@ -421,11 +463,16 @@ function RandLinie({
   return (
     <div className="rounded-xl border border-line bg-surface p-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-2.5">
-        {/* Doar produse: serviciile intră în încasare din programarea efectuată. */}
+        {/*
+          Doar produse: serviciile intră în încasare din programarea efectuată.
+          Un produs care lipsește din nomenclator („Cremă 50 ml”) se adaugă de
+          aici, de administrator; prețul se scrie apoi pe linie.
+        */}
         <SelectorArticol
           valoare={linie.articol_id}
           onSchimba={onArticol}
           tip="produs"
+          cuCreare
           eticheta="Produs"
           eroare={eroareArticol}
           className="min-w-0 sm:flex-1"

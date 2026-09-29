@@ -294,6 +294,12 @@ export interface Vanzare {
   nota: string | null
   creat_la: Timestamptz
   actualizat_la: Timestamptz
+  /**
+   * Când a plătit clientul. NULL = NEACHITATĂ: produsele au plecat acum, banii
+   * vin mai târziu. Doar vânzările de produse pot rămâne așa; una care stinge
+   * ședințe este chiar plata lor (serverul refuză altfel).
+   */
+  achitat_la: Timestamptz | null
 }
 
 /** Tabela `vanzare_linie` — ce s-a vândut, în cadrul unei vânzări. */
@@ -352,8 +358,9 @@ export interface ClientListItem extends Client {
   numar_vanzari: number
   ultima_vizita: Timestamptz | null
   /**
-   * Suma ședințelor onorate și neîncasate. 0 = nu datorează nimic.
-   * Stă în listă ca recepția să vadă cine are de plătit fără să deschidă fișa.
+   * Suma ședințelor onorate și neîncasate, plus produsele vândute neachitate.
+   * 0 = nu datorează nimic. Stă în listă ca recepția să vadă cine are de
+   * plătit fără să deschidă fișa.
    */
   de_incasat: number
 }
@@ -449,6 +456,8 @@ export interface VanzareDetaliu extends Vanzare {
   client_nume: string
   punct_lucru_denumire: string
   operator_nume: string
+  /** DERIVAT: `achitat_la !== null`. Se schimbă prin `update(id, { achitat })`. */
+  achitat: boolean
   linii: VanzareLinieDetaliu[]
   /** Suma liniilor; calculată de server, niciodată editabilă direct. */
   total: number

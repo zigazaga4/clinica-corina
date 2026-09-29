@@ -452,6 +452,78 @@ async function ruleaza(): Promise<void> {
     `${dupaArticol.corp?.randuri?.length} bonuri`)
 
   // -------------------------------------------------------------------------
+  console.log('\nProduse pe datorie — vânzări neachitate')
+
+  verifica('încasarea ședințelor este achitată în momentul ei',
+    incasare.corp?.achitat === true && incasare.corp?.achitat_la === incasare.corp?.efectuat_la,
+    JSON.stringify({ achitat: incasare.corp?.achitat, la: incasare.corp?.achitat_la }))
+
+  const datorie = await cere('POST', '/vanzari', {
+    token: admin,
+    corp: {
+      client_id,
+      efectuat_la: new Date().toISOString(),
+      achitat: false,
+      linii: [{ articol_id: produs.id, cantitate: 2, pret_unitar: 150 }],
+    },
+  })
+  verifica('POST /vanzari cu achitat:false -> 201, neachitată',
+    datorie.status === 201 && datorie.corp?.achitat === false && datorie.corp?.achitat_la === null,
+    JSON.stringify(datorie.corp))
+  const datorie_id = datorie.corp?.id
+
+  const fisaDatoare = await cere('GET', `/clienti/${client_id}`, { token: admin })
+  verifica('produsele neachitate intră în de_incasat', fisaDatoare.corp?.de_incasat === 300,
+    JSON.stringify(fisaDatoare.corp?.de_incasat))
+
+  const doarDatorii = await cere('GET', `/vanzari?client_id=${client_id}&achitat=false`, { token: admin })
+  verifica('GET /vanzari?achitat=false aduce doar datoriile',
+    doarDatorii.corp?.total === 1 && doarDatorii.corp?.randuri?.[0]?.id === datorie_id,
+    JSON.stringify(doarDatorii.corp?.randuri?.map((v: any) => v.id)))
+  const doarAchitate = await cere('GET', `/vanzari?client_id=${client_id}&achitat=true`, { token: admin })
+  verifica('GET /vanzari?achitat=true le lasă deoparte',
+    doarAchitate.corp?.randuri?.every((v: any) => v.achitat === true)
+      && !doarAchitate.corp?.randuri?.some((v: any) => v.id === datorie_id))
+
+  const achitatText = await cere('POST', '/vanzari', {
+    token: admin,
+    corp: {
+      client_id, efectuat_la: new Date().toISOString(), achitat: 'false',
+      linii: [{ articol_id: produs.id, cantitate: 1 }],
+    },
+  })
+  verifica('„achitat” trimis ca text -> 400 pe „achitat”',
+    achitatText.status === 400 && achitatText.corp?.camp === 'achitat',
+    JSON.stringify(achitatText.corp))
+
+  const sedintePeDatorie = await cere('PATCH', `/vanzari/${incasare.corp?.id}`, {
+    token: admin, corp: { achitat: false },
+  })
+  verifica('încasarea unor ședințe nu poate rămâne neachitată -> 400',
+    sedintePeDatorie.status === 400 && sedintePeDatorie.corp?.camp === 'achitat',
+    JSON.stringify(sedintePeDatorie.corp))
+  verifica('ședința a rămas achitată după refuz',
+    (await cere('GET', `/programari/${programare_id}`, { token: admin })).corp?.achitat === true)
+
+  const achitata = await cere('PATCH', `/vanzari/${datorie_id}`, { token: admin, corp: { achitat: true } })
+  verifica('PATCH { achitat: true } -> achitată acum',
+    achitata.status === 200 && achitata.corp?.achitat === true
+      && new Date(achitata.corp?.achitat_la) >= new Date(datorie.corp?.efectuat_la),
+    JSON.stringify(achitata.corp?.achitat_la))
+  verifica('datoria a dispărut de pe fișă',
+    (await cere('GET', `/clienti/${client_id}`, { token: admin })).corp?.de_incasat === 0)
+
+  const aDouaOara = await cere('PATCH', `/vanzari/${datorie_id}`, { token: admin, corp: { achitat: true } })
+  verifica('a doua bifă nu mută data plății',
+    aDouaOara.corp?.achitat_la === achitata.corp?.achitat_la)
+
+  const debifata = await cere('PATCH', `/vanzari/${datorie_id}`, { token: admin, corp: { achitat: false } })
+  verifica('PATCH { achitat: false } -> datoria revine',
+    debifata.corp?.achitat === false
+      && (await cere('GET', `/clienti/${client_id}`, { token: admin })).corp?.de_incasat === 300)
+  await cere('PATCH', `/vanzari/${datorie_id}`, { token: admin, corp: { achitat: true } })
+
+  // -------------------------------------------------------------------------
   console.log('\nCorecții — reprogramare, bon editat, nomenclator')
 
   const mutata = interval(32, 14)

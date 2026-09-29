@@ -115,9 +115,11 @@ export async function inregistreazaIncasare(
 
   const punct_lucru_id = date.programari[0]?.punct_lucru_id ?? (await punctImplicit(ex))
 
+  // Achitată în momentul ei, `$5` de două ori: încasarea este chiar plata, iar
+  // cea trecută seara pentru dimineață a intrat dimineața, nu la introducere.
   const { rows } = await ex.query<{ id: string }>(
-    `INSERT INTO vanzare (client_id, punct_lucru_id, operator_id, programare_id, efectuat_la, nota)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    `INSERT INTO vanzare (client_id, punct_lucru_id, operator_id, programare_id, efectuat_la, nota, achitat_la)
+     VALUES ($1, $2, $3, $4, $5, $6, $5) RETURNING id`,
     [
       date.client_id,
       punct_lucru_id,
