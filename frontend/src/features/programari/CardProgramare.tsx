@@ -6,6 +6,7 @@ import { formateazaBani } from '@/lib/money'
 import { InsemnStareProgramare } from '@/components/insemne'
 import { etichetaSedinta, marcajSedinta } from '@/features/tratamente/ProgresTratament'
 import { useCuloarePersoana } from './culoriExecutanti'
+import { denumireaServiciilor, pretulProgramarii } from './vizite'
 
 /** Primul cuvânt din nume — tot ce încape pe un chip de 30 de minute. */
 function prenume(nume: string): string {
@@ -19,6 +20,10 @@ function prenume(nume: string): string {
  * într-o celulă de 30 de minute încap două rânduri de text, într-un rând de
  * listă încap toate detaliile. Ambele trăiesc aici, ca starea „anulat” să
  * arate la fel în calendar și în agendă.
+ *
+ * Amândouă arată programarea ÎNTREAGĂ: `programare` dă ora, clientul,
+ * persoana și starea, `servicii` — toate rândurile ei, cu ședința fiecăruia.
+ * Fără `servicii`, programarea are un singur serviciu: pe `programare`.
  */
 
 /**
@@ -49,12 +54,15 @@ const banda: Record<StareProgramare, string> = {
 
 export function ChipProgramare({
   programare,
+  servicii = [programare],
   onClick,
   compact = false,
   className,
   style,
 }: {
   programare: ProgramareDetaliu
+  /** Toate serviciile programării; implicit doar `programare`. */
+  servicii?: ProgramareDetaliu[]
   onClick: (programare: ProgramareDetaliu) => void
   /** Sub 40px înălțime se afișează doar ora și clientul, pe un rând. */
   compact?: boolean
@@ -63,13 +71,12 @@ export function ChipProgramare({
 }) {
   const anulata = programare.stare === 'anulat'
   const culoare = useCuloarePersoana(programare.executant_id)
-  const marcaj = marcajSedinta(programare)
 
   return (
     <button
       type="button"
       onClick={() => onClick(programare)}
-      title={`${formateazaInterval(programare.incepe_la, programare.se_termina_la)} · ${programare.client_nume} · ${programare.articol_denumire}${marcaj ? ` (${marcaj})` : ''} · ${programare.executant_nume}`}
+      title={`${formateazaInterval(programare.incepe_la, programare.se_termina_la)} · ${programare.client_nume} · ${denumireaServiciilor(servicii)} · ${programare.executant_nume}`}
       style={style}
       className={cn(
         'relative flex w-full flex-col overflow-hidden rounded-md border py-1 pr-1.5 text-left',
@@ -102,9 +109,18 @@ export function ChipProgramare({
       {!compact && (
         <span className="truncate text-[11px] leading-tight opacity-80">
           {/* „3/8”: a câta ședință a tratamentului e — recepția vede din grilă
-              cât mai are clienta de venit. */}
-          {marcaj && <span className="font-semibold">{marcaj} · </span>}
-          {programare.articol_denumire}
+              cât mai are clienta de venit. Lângă serviciul ei: o programare
+              poate avea ședințe din două tratamente deodată. */}
+          {servicii.map((serviciu, i) => {
+            const marcaj = marcajSedinta(serviciu)
+            return (
+              <span key={serviciu.id}>
+                {i > 0 && ' + '}
+                {marcaj && <span className="font-semibold">{marcaj} · </span>}
+                {serviciu.articol_denumire}
+              </span>
+            )
+          })}
           {' · '}
           <span className="font-medium">{prenume(programare.executant_nume)}</span>
         </span>
@@ -119,16 +135,20 @@ export function ChipProgramare({
 
 export function RandProgramare({
   programare,
+  servicii = [programare],
   onClick,
   cuExecutant = true,
 }: {
   programare: ProgramareDetaliu
+  /** Toate serviciile programării; implicit doar `programare`. */
+  servicii?: ProgramareDetaliu[]
   onClick: (programare: ProgramareDetaliu) => void
   /** Ascuns când lista este deja filtrată pe o singură persoană. */
   cuExecutant?: boolean
 }) {
   const anulata = programare.stare === 'anulat'
   const culoare = useCuloarePersoana(programare.executant_id)
+  const maiMulte = servicii.length > 1
 
   return (
     <button
@@ -154,15 +174,20 @@ export function RandProgramare({
           {programare.client_nume}
         </span>
         <span className="mt-0.5 block truncate text-[12px] text-ink-soft">
-          {programare.articol_denumire}
+          {servicii.map((s) => s.articol_denumire).join(' + ')}
         </span>
         <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-ink-faint">
-          {etichetaSedinta(programare) && (
-            <span className="inline-flex items-center gap-1 font-medium text-primary-600">
-              <Layers className="size-3" aria-hidden />
-              {etichetaSedinta(programare)}
-            </span>
-          )}
+          {servicii.map((serviciu) => {
+            const eticheta = etichetaSedinta(serviciu)
+            if (!eticheta) return null
+            return (
+              <span key={serviciu.id} className="inline-flex items-center gap-1 font-medium text-primary-600">
+                <Layers className="size-3" aria-hidden />
+                {/* Cu mai multe servicii, „Ședința 3 din 6” trebuie să spună din care. */}
+                {maiMulte ? `${serviciu.articol_denumire}: ${eticheta.toLowerCase()}` : eticheta}
+              </span>
+            )
+          })}
           {cuExecutant && (
             // Punctul colorat repetă banda din calendar, ca aceeași persoană să
             // fie aceeași culoare în ambele vederi.
@@ -196,7 +221,7 @@ export function RandProgramare({
             anulata && 'text-ink-faint line-through',
           )}
         >
-          {formateazaBani(programare.pret)}
+          {formateazaBani(pretulProgramarii(servicii))}
         </span>
       </span>
     </button>

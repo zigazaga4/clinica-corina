@@ -71,6 +71,8 @@ export function PaginaTratamente() {
   const [programareDeschisa, setProgramareDeschisa] = useState<ProgramareDetaliu | null>(null)
   const [formularProgramare, setFormularProgramare] = useState<{
     programare?: ProgramareDetaliu
+    /** Toate serviciile programării de modificat — ședința poate avea tovarăși. */
+    servicii?: ProgramareDetaliu[]
     initial?: ProgramareInitiala
   } | null>(null)
 
@@ -359,9 +361,9 @@ export function PaginaTratamente() {
       <DetaliuProgramare
         programare={programareDeschisa}
         onInchide={() => setProgramareDeschisa(null)}
-        onModifica={(p) => {
+        onModifica={(p, servicii) => {
           setProgramareDeschisa(null)
-          setFormularProgramare({ programare: p })
+          setFormularProgramare({ programare: p, servicii })
         }}
       />
 
@@ -369,6 +371,7 @@ export function PaginaTratamente() {
         deschisa={formularProgramare !== null}
         onInchide={() => setFormularProgramare(null)}
         programare={formularProgramare?.programare ?? null}
+        servicii={formularProgramare?.servicii}
         initial={formularProgramare?.initial ?? null}
       />
     </Pagina>

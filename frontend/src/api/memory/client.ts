@@ -42,8 +42,11 @@ import type {
   Paginat,
   PretSugerat,
   RaspunsLogin,
+  ServiciuProgramare,
 } from '@/api/contract'
 import {
+  campVinovat,
+  EroareApi,
   eroareConflict,
   eroareInterzis,
   eroareNeautentificat,
@@ -110,6 +113,7 @@ import {
 import { diferenta, instantaneu, scrieJurnal } from './journal'
 import { populeaza } from './seed'
 import {
+  inTranzactie,
   magazin,
   type RandConsimtamant,
   type RandSesiune,
@@ -719,6 +723,7 @@ export function creeazaApiInMemorie(): ApiClient {
           if (filtru.punct_lucru_id && p.punct_lucru_id !== filtru.punct_lucru_id) continue
           if (filtru.client_id && p.client_id !== filtru.client_id) continue
           if (filtru.tratament_id && p.tratament_id !== filtru.tratament_id) continue
+          if (filtru.vizita_id && p.vizita_id !== filtru.vizita_id) continue
           if (stari && !stari.has(p.stare)) continue
           const detaliu = hidrateazaProgramare(p)
           if (filtru.neachitate && (detaliu.achitat || p.stare !== 'onorat')) continue
@@ -735,142 +740,231 @@ export function creeazaApiInMemorie(): ApiClient {
         return hidrateazaProgramare(ceruta(magazin.programare, id, 'Programarea'))
       },
 
-      /** POST /programari — orice rol */
+      /**
+       * POST /programari — orice rol. Cu `servicii`, programarea le are pe
+       * toate; fără, unul singur, din `articol_id`. Întoarce primul serviciu.
+       */
       async create(date: DateProgramareNoua): Promise<ProgramareDetaliu> {
         await intarziere()
         const autor = cereUtilizator()
+        const lista = serviciiDin(date.servicii)
+        const servicii: ServiciuProgramare[] = lista ?? [{
+          articol_id: date.articol_id as Uuid,
+          ...(date.pret === undefined ? {} : { pret: date.pret }),
+          tratament_id: date.tratament_id ?? null,
+        }]
+        const locul = (i: number) => (lista ? i : null)
 
-        ceruta(magazin.client, date.client_id, 'Clientul')
-        const serviciu = verificaArticolProgramabil(date.articol_id)
-        const executant = ceruta(magazin.utilizator, date.executant_id, 'Executantul')
-        if (!executant.activ) {
-          throw eroareValidare('Contul selectat ca executant este dezactivat.', 'executant_id')
-        }
-        const punct_lucru_id = date.punct_lucru_id ?? punctImplicit()
-        ceruta(magazin.punct_lucru, punct_lucru_id, 'Punctul de lucru')
-        verificaIntervalProgramare(date.incepe_la, date.se_termina_la)
-        verificaSuprapunere(date.executant_id, date.incepe_la, date.se_termina_la, 'programat')
-
-        // Tratamentul, înaintea prețului: la un serviciu în mai multe ședințe,
-        // prețul ședinței este partea ei din tratament.
-        const inTratament = tratamentulSedintei(date.client_id, serviciu, date.tratament_id, autor.id)
-
-        // Prețul lipsă se completează din memoria clientului, nu direct din
-        // nomenclator: dacă i s-a mai făcut acest serviciu la un preț anume,
-        // acela este prețul lui. Într-un tratament, memoria e chiar tratamentul.
-        const pret = date.pret ?? inTratament?.pret ?? pretPentru(date.client_id, serviciu.id).pret
-        verificaPret(pret, 'pret')
-
-        const rand: Programare = {
-          id: uuid(),
-          client_id: date.client_id,
-          articol_id: date.articol_id,
-          articol_tip: 'serviciu',
-          executant_id: date.executant_id,
-          punct_lucru_id,
-          incepe_la: date.incepe_la,
-          se_termina_la: date.se_termina_la,
-          stare: 'programat',
-          pret,
-          nota: textOptional(date.nota),
-          creat_de: autor.id,
-          creat_la: acum(),
-          actualizat_la: acum(),
-          tratament_id: inTratament?.tratament.id ?? null,
-        }
-        magazin.programare.set(rand.id, rand)
-
-        scrieJurnal({
-          utilizator_id: autor.id,
-          actiune: 'creare',
-          entitate: 'programare',
-          entitate_id: rand.id,
-          date_noi: instantaneu(rand as unknown as Record<string, unknown>),
-        })
-
-        return hidrateazaProgramare(rand)
-      },
-
-      /** PATCH /programari/:id — orice rol */
-      async update(id, date: DateProgramareModificata): Promise<ProgramareDetaliu> {
-        await intarziere()
-        const autor = cereUtilizator()
-        const rand = ceruta(magazin.programare, id, 'Programarea')
-        const inainte = { ...rand }
-
-        // Într-un tratament, clientul și serviciul sunt ale tratamentului:
-        // mutată, ședința ar rămâne numărată în tratamentul primului client sau
-        // ar lua o parte din prețul altui serviciu. Se anulează și se face alta.
-        if (rand.tratament_id !== null) {
-          const schimbaClientul = date.client_id !== undefined && date.client_id !== rand.client_id
-          const schimbaServiciul = date.articol_id !== undefined && date.articol_id !== rand.articol_id
-          if (schimbaClientul || schimbaServiciul) {
-            throw eroareValidare(
-              'Ședința face parte dintr-un tratament; clientul și serviciul nu se pot schimba. Anuleaz-o și fă alta.',
-              schimbaClientul ? 'client_id' : 'articol_id',
-            )
-          }
-        }
-
-        if (date.client_id !== undefined) {
+        return inTranzactie(() => {
           ceruta(magazin.client, date.client_id, 'Clientul')
-          rand.client_id = date.client_id
-        }
-        if (date.articol_id !== undefined) {
-          verificaArticolProgramabil(date.articol_id)
-          rand.articol_id = date.articol_id
-        }
-        if (date.executant_id !== undefined) {
+          // Toate serviciile se verifică înaintea oricărei scrieri.
+          const articole = servicii.map((s, i) =>
+            peServiciu(locul(i), () => verificaArticolProgramabil(s.articol_id)))
           const executant = ceruta(magazin.utilizator, date.executant_id, 'Executantul')
           if (!executant.activ) {
             throw eroareValidare('Contul selectat ca executant este dezactivat.', 'executant_id')
           }
-          rand.executant_id = date.executant_id
-        }
-        if (date.punct_lucru_id !== undefined && date.punct_lucru_id !== null) {
-          ceruta(magazin.punct_lucru, date.punct_lucru_id, 'Punctul de lucru')
-          rand.punct_lucru_id = date.punct_lucru_id
-        }
-        if (date.incepe_la !== undefined) rand.incepe_la = date.incepe_la
-        if (date.se_termina_la !== undefined) rand.se_termina_la = date.se_termina_la
-        if (date.pret !== undefined) {
-          // Prețul unei ședințe deja încasate nu se mai atinge: ar rămâne
-          // diferit de suma chiar plătită, iar încasarea nu se rescrie.
-          if (incasareaProgramarii(rand.id) !== null) {
-            throw eroareValidare(
-              'Ședința este deja încasată; prețul ei nu se mai poate schimba.',
-              'pret',
-            )
+          const punct_lucru_id = date.punct_lucru_id ?? punctImplicit()
+          ceruta(magazin.punct_lucru, punct_lucru_id, 'Punctul de lucru')
+          verificaIntervalProgramare(date.incepe_la, date.se_termina_la)
+
+          const vizita: VizitaNoua = {
+            vizita_id: uuid(),
+            client_id: date.client_id,
+            executant_id: date.executant_id,
+            punct_lucru_id,
+            incepe_la: date.incepe_la,
+            se_termina_la: date.se_termina_la,
+            stare: 'programat',
+            nota: textOptional(date.nota),
           }
-          verificaPret(date.pret, 'pret')
-          rand.pret = date.pret
-        }
-        if (date.nota !== undefined) rand.nota = textOptional(date.nota)
+          verificaSuprapunere(vizita.executant_id, vizita.incepe_la, vizita.se_termina_la, 'programat', vizita.vizita_id)
 
-        verificaIntervalProgramare(rand.incepe_la, rand.se_termina_la)
-        // Se exclude pe sine din verificare: altfel o reprogramare care mută
-        // intervalul cu cinci minute s-ar suprapune cu propria variantă veche.
-        verificaSuprapunere(rand.executant_id, rand.incepe_la, rand.se_termina_la, rand.stare, rand.id)
-        atinge(rand)
-
-        const dif = diferenta(
-          inainte as unknown as Record<string, unknown>,
-          rand as unknown as Record<string, unknown>,
-        )
-        if (dif) {
-          scrieJurnal({
-            utilizator_id: autor.id,
-            actiune: 'modificare',
-            entitate: 'programare',
-            entitate_id: rand.id,
-            ...dif,
-          })
-        }
-
-        return hidrateazaProgramare(rand)
+          const randuri = servicii.map((s, i) =>
+            peServiciu(locul(i), () => adaugaServiciu(autor.id, vizita, articole[i]!, s)))
+          return hidrateazaProgramare(randuri[0]!)
+        })
       },
 
-      /** PATCH /programari/:id/stare — orice rol */
+      /**
+       * PATCH /programari/:id — orice rol. Ce e comun (client, persoană,
+       * interval, notă) se schimbă pe toată programarea; `servicii` este lista
+       * ei completă de acum încolo. Aceleași reguli ca `routes/programari.ts`.
+       */
+      async update(id, date: DateProgramareModificata): Promise<ProgramareDetaliu> {
+        await intarziere()
+        const autor = cereUtilizator()
+        const lista = serviciiDin(date.servicii)
+
+        return inTranzactie(() => {
+          const { ancora, randuri } = serviciileProgramarii(id)
+
+          // Ce se schimbă pe fiecare serviciu. Fără listă, doar pe rândul cerut.
+          const proprii = new Map<Uuid, { index: number | null; articol_id?: Uuid; pret?: number }>()
+          const deAdaugat: { index: number; serviciu: ServiciuProgramare }[] = []
+          let deScos: Programare[] = []
+          if (!lista) {
+            proprii.set(ancora.id, { index: null, articol_id: date.articol_id, pret: date.pret })
+          } else {
+            const pastrate = new Set<Uuid>()
+            lista.forEach((s, i) => {
+              if (!s.id) {
+                deAdaugat.push({ index: i, serviciu: s })
+                return
+              }
+              const rand = randuri.find((r) => r.id === s.id)
+              if (!rand || pastrate.has(rand.id)) {
+                throw eroareValidare('Serviciul nu face parte din această programare.', `servicii.${i}.id`)
+              }
+              pastrate.add(rand.id)
+              proprii.set(rand.id, { index: i, articol_id: s.articol_id, pret: s.pret })
+            })
+            deScos = randuri.filter((r) => !pastrate.has(r.id))
+          }
+          const ramase = randuri.filter((r) => !deScos.includes(r))
+
+          // Într-un tratament, clientul este al tratamentului: mutată, ședința
+          // ar rămâne numărată la primul client. Se anulează și se face alta.
+          if (date.client_id !== undefined && date.client_id !== ancora.client_id) {
+            if (ramase.some((r) => r.tratament_id !== null)) {
+              throw eroareValidare(
+                'Ședința face parte dintr-un tratament; clientul nu se poate schimba. Anuleaz-o și fă alta.',
+                'client_id',
+              )
+            }
+            ceruta(magazin.client, date.client_id, 'Clientul')
+          }
+          if (date.executant_id !== undefined) {
+            const executant = ceruta(magazin.utilizator, date.executant_id, 'Executantul')
+            if (!executant.activ) {
+              throw eroareValidare('Contul selectat ca executant este dezactivat.', 'executant_id')
+            }
+          }
+          if (date.punct_lucru_id !== undefined && date.punct_lucru_id !== null) {
+            ceruta(magazin.punct_lucru, date.punct_lucru_id, 'Punctul de lucru')
+          }
+
+          // Serviciul și prețul fiecărui rând păstrat, comparate cu ce era:
+          // formularul retrimite toată lista, iar un serviciu încasat, trimis
+          // neschimbat, nu are de ce să cadă.
+          for (const [randId, m] of proprii) {
+            const rand = randuri.find((r) => r.id === randId)!
+            peServiciu(m.index, () => {
+              if (m.articol_id !== undefined && m.articol_id !== rand.articol_id) {
+                if (rand.tratament_id !== null) {
+                  throw eroareValidare(
+                    'Ședința face parte dintr-un tratament; serviciul nu se poate schimba. Anuleaz-o și fă alta.',
+                    'articol_id',
+                  )
+                }
+                if (incasareaProgramarii(rand.id) !== null) {
+                  throw eroareValidare('Serviciul este deja încasat; nu se mai poate schimba.', 'articol_id')
+                }
+                verificaArticolProgramabil(m.articol_id)
+              } else {
+                m.articol_id = undefined
+              }
+              if (m.pret !== undefined) {
+                verificaPret(m.pret, 'pret')
+                if (m.pret === rand.pret) {
+                  m.pret = undefined
+                } else if (incasareaProgramarii(rand.id) !== null) {
+                  // Prețul unei ședințe deja încasate nu se mai atinge: ar
+                  // rămâne diferit de suma chiar plătită.
+                  throw eroareValidare('Ședința este deja încasată; prețul ei nu se mai poate schimba.', 'pret')
+                }
+              }
+            })
+          }
+
+          // Un serviciu încasat nu se scoate: bonul ar arăta plătit ceva ce nu s-a făcut.
+          if (deScos.some((r) => incasareaProgramarii(r.id) !== null)) {
+            throw eroareValidare(
+              'Un serviciu deja încasat nu se poate scoate din programare; scoate-l mai întâi de pe bon.',
+              'servicii',
+            )
+          }
+          const articoleNoi = deAdaugat.map(({ index, serviciu }) =>
+            peServiciu(index, () => verificaArticolProgramabil(serviciu.articol_id)))
+
+          const dupa: VizitaNoua = {
+            vizita_id: ancora.vizita_id,
+            client_id: date.client_id ?? ancora.client_id,
+            executant_id: date.executant_id ?? ancora.executant_id,
+            punct_lucru_id: date.punct_lucru_id ?? ancora.punct_lucru_id,
+            incepe_la: date.incepe_la ?? ancora.incepe_la,
+            se_termina_la: date.se_termina_la ?? ancora.se_termina_la,
+            stare: ancora.stare,
+            nota: date.nota !== undefined ? textOptional(date.nota) : ancora.nota,
+          }
+          verificaIntervalProgramare(dupa.incepe_la, dupa.se_termina_la)
+          // Serviciile programării nu se numără: o reprogramare cu cinci minute
+          // mai târziu nu se ciocnește de propria ei variantă veche.
+          verificaSuprapunere(dupa.executant_id, dupa.incepe_la, dupa.se_termina_la, dupa.stare, dupa.vizita_id)
+
+          // 1. Serviciile păstrate: ce e comun pe toate, plus ce e al fiecăruia.
+          for (const rand of ramase) {
+            const inainte = { ...rand }
+            const m = proprii.get(rand.id)
+            rand.client_id = dupa.client_id
+            rand.executant_id = dupa.executant_id
+            rand.punct_lucru_id = dupa.punct_lucru_id
+            rand.incepe_la = dupa.incepe_la
+            rand.se_termina_la = dupa.se_termina_la
+            rand.nota = dupa.nota
+            if (m?.articol_id !== undefined) rand.articol_id = m.articol_id
+            if (m?.pret !== undefined) rand.pret = m.pret
+
+            const dif = diferenta(
+              inainte as unknown as Record<string, unknown>,
+              rand as unknown as Record<string, unknown>,
+            )
+            if (dif) {
+              atinge(rand)
+              scrieJurnal({
+                utilizator_id: autor.id,
+                actiune: 'modificare',
+                entitate: 'programare',
+                entitate_id: rand.id,
+                ...dif,
+              })
+            }
+          }
+
+          // 2. Cele scoase: o programare a lor, anulată — locul e al celorlalte.
+          for (const rand of deScos) {
+            const inainte = { stare: rand.stare, vizita_id: rand.vizita_id }
+            rand.stare = 'anulat'
+            rand.vizita_id = uuid()
+            atinge(rand)
+            scrieJurnal({
+              utilizator_id: autor.id,
+              actiune: 'modificare',
+              entitate: 'programare',
+              entitate_id: rand.id,
+              date_vechi: inainte,
+              date_noi: { stare: 'anulat', vizita_id: rand.vizita_id, motiv: 'scos din programare' },
+            })
+          }
+
+          // 3. Cele noi, cu starea programării: adăugat la una deja onorată,
+          // serviciul s-a făcut și el — și rămâne de plată.
+          const noi = deAdaugat.map(({ index, serviciu }, k) =>
+            peServiciu(index, () => adaugaServiciu(autor.id, dupa, articoleNoi[k]!, serviciu)))
+          if (dupa.stare === 'onorat') {
+            for (const rand of noi) incheieDacaEComplet(rand.tratament_id, autor.id)
+          }
+
+          // Rândul cerut, dacă a rămas în programare; altfel primul care a rămas.
+          const raspuns = deScos.includes(ancora) ? (ramase[0] ?? noi[0])! : ancora
+          return hidrateazaProgramare(raspuns)
+        })
+      },
+
+      /**
+       * PATCH /programari/:id/stare — orice rol. Starea e a PROGRAMĂRII: se pune
+       * pe toate serviciile ei, iar `achitat` le încasează pe un singur bon.
+       */
       async schimbaStarea(
         id,
         stare: StareProgramare,
@@ -878,64 +972,89 @@ export function creeazaApiInMemorie(): ApiClient {
       ): Promise<ProgramareDetaliu> {
         await intarziere()
         const autor = cereUtilizator()
-        const rand = ceruta(magazin.programare, id, 'Programarea')
-        const { achitat, pret } = optiuni
+        const { achitat, pret, preturi } = optiuni
 
-        // Suma corectată la închidere — cât s-a luat de fapt. Pe o ședință
-        // deja încasată nu se mai atinge, ca la PATCH.
-        if (pret !== undefined && pret !== rand.pret) {
-          verificaPret(pret, 'pret')
-          if (incasareaProgramarii(rand.id) !== null) {
-            throw eroareValidare(
-              'Ședința este deja încasată; prețul ei nu se mai poate schimba.',
-              'pret',
-            )
+        return inTranzactie(() => {
+          const { ancora, randuri } = serviciileProgramarii(id)
+
+          // Sumele corectate la închidere — cât s-a luat de fapt, pe fiecare
+          // serviciu. Pe unul deja încasat nu se mai ating, ca la PATCH.
+          const corectate = new Map<Uuid, { pret: number; camp: string }>()
+          if (pret !== undefined) corectate.set(ancora.id, { pret, camp: 'pret' })
+          for (const [randId, suma] of Object.entries(preturi ?? {})) {
+            const camp = `preturi.${randId}`
+            if (!randuri.some((r) => r.id === randId)) {
+              throw eroareValidare('Serviciul nu face parte din această programare.', camp)
+            }
+            corectate.set(randId, { pret: suma, camp })
           }
-          const vechi = rand.pret
-          rand.pret = pret
-          atinge(rand)
-          scrieJurnal({
-            utilizator_id: autor.id,
-            actiune: 'modificare',
-            entitate: 'programare',
-            entitate_id: rand.id,
-            date_vechi: { pret: vechi },
-            date_noi: { pret },
-          })
-        }
-
-        if (rand.stare !== stare) {
-          // Reactivarea unei programări anulate o readuce sub constrângerea de
-          // suprapunere — între timp, locul putea fi ocupat de altcineva.
-          if (rand.stare === 'anulat' && stare !== 'anulat') {
-            verificaSuprapunere(rand.executant_id, rand.incepe_la, rand.se_termina_la, stare, rand.id)
+          for (const rand of randuri) {
+            const corectat = corectate.get(rand.id)
+            if (!corectat || corectat.pret === rand.pret) continue
+            verificaPret(corectat.pret, corectat.camp)
+            if (incasareaProgramarii(rand.id) !== null) {
+              throw eroareValidare('Ședința este deja încasată; prețul ei nu se mai poate schimba.', corectat.camp)
+            }
+            const vechi = rand.pret
+            rand.pret = corectat.pret
+            atinge(rand)
+            scrieJurnal({
+              utilizator_id: autor.id,
+              actiune: 'modificare',
+              entitate: 'programare',
+              entitate_id: rand.id,
+              date_vechi: { pret: vechi },
+              date_noi: { pret: corectat.pret },
+            })
           }
 
-          const inainte = rand.stare
-          rand.stare = stare
-          atinge(rand)
+          const deSchimbat = randuri.filter((r) => r.stare !== stare)
+          if (deSchimbat.length > 0) {
+            // O ședință încasată nu se anulează: banii ar rămâne agățați de un
+            // serviciu care „nu a avut loc”. Întâi se scoate de pe bon.
+            if (stare === 'anulat' && randuri.some((r) => incasareaProgramarii(r.id) !== null)) {
+              throw eroareValidare(
+                randuri.length === 1
+                  ? 'Ședința este deja încasată; scoate-o mai întâi de pe bon, apoi anuleaz-o.'
+                  : 'Programarea are un serviciu deja încasat; scoate-l mai întâi de pe bon, apoi anulează programarea.',
+                'stare',
+              )
+            }
+            // Reactivarea unei programări anulate o readuce sub constrângerea
+            // de suprapunere — între timp, locul putea fi ocupat de altcineva.
+            if (stare !== 'anulat' && deSchimbat.some((r) => r.stare === 'anulat')) {
+              verificaSuprapunere(ancora.executant_id, ancora.incepe_la, ancora.se_termina_la, stare, ancora.vizita_id)
+            }
+            for (const rand of deSchimbat) {
+              const inainte = rand.stare
+              rand.stare = stare
+              atinge(rand)
+              scrieJurnal({
+                utilizator_id: autor.id,
+                actiune: 'modificare',
+                entitate: 'programare',
+                entitate_id: rand.id,
+                date_vechi: { stare: inainte },
+                date_noi: { stare },
+              })
+            }
+          }
 
-          scrieJurnal({
-            utilizator_id: autor.id,
-            actiune: 'modificare',
-            entitate: 'programare',
-            entitate_id: rand.id,
-            date_vechi: { stare: inainte },
-            date_noi: { stare },
-          })
-        }
+          // Plata se înregistrează doar la onorare, pe toate serviciile încă
+          // neplătite, pe UN bon. Cerută pe o ședință anulată, ar însemna
+          // încasarea unui serviciu care nu a avut loc.
+          const neachitate = randuri.filter((r) => incasareaProgramarii(r.id) === null)
+          if (achitat === true && stare === 'onorat' && neachitate.length > 0) {
+            inregistreazaIncasare(autor.id, ancora.client_id, neachitate, [], ancora.se_termina_la, null)
+          }
 
-        // Plata se înregistrează doar la onorare și doar dacă nu s-a plătit
-        // deja. Cerută pe o ședință anulată, ar însemna încasarea unui serviciu
-        // care nu a avut loc.
-        if (achitat === true && stare === 'onorat' && incasareaProgramarii(rand.id) === null) {
-          inregistreazaIncasare(autor.id, rand.client_id, [rand], [], rand.se_termina_la, null)
-        }
+          // Ultima ședință onorată încheie tratamentul de la sine — al fiecărui serviciu.
+          for (const tratament_id of new Set(randuri.map((r) => r.tratament_id))) {
+            incheieDacaEComplet(tratament_id, autor.id)
+          }
 
-        // Ultima ședință onorată încheie tratamentul de la sine.
-        incheieDacaEComplet(rand.tratament_id, autor.id)
-
-        return hidrateazaProgramare(rand)
+          return hidrateazaProgramare(ancora)
+        })
       },
 
       /** GET /programari/pret-sugerat — orice rol */
@@ -1847,6 +1966,108 @@ function executantOptional(executant_id: Uuid | null | undefined): Uuid | null {
     throw eroareValidare('Contul selectat ca executant este dezactivat.', 'executant_id')
   }
   return executant.id
+}
+
+// ---------------------------------------------------------------------------
+// Serviciile unei programări — aceleași reguli ca `routes/programari.ts`
+// ---------------------------------------------------------------------------
+
+/** Peste atâtea servicii, lista e o greșeală de trimitere, nu o venire la clinică. */
+const SERVICII_MAXIME = 20
+
+/** `servicii` lipsă -> undefined (un singur serviciu, ca până acum); altfel o listă nevidă. */
+function serviciiDin(lista: ServiciuProgramare[] | undefined): ServiciuProgramare[] | undefined {
+  if (lista === undefined) return undefined
+  if (lista.length === 0) {
+    throw eroareValidare('Programarea trebuie să aibă cel puțin un serviciu.', 'servicii')
+  }
+  if (lista.length > SERVICII_MAXIME) {
+    throw eroareValidare(`O programare poate avea cel mult ${SERVICII_MAXIME} de servicii.`, 'servicii')
+  }
+  return lista
+}
+
+/**
+ * Eroarea unui serviciu din listă spune și CARE serviciu: `servicii.2.pret`.
+ * Conflictele își țin câmpul în `detalii` (v. `eroareConflict`), deci se
+ * rescrie acolo unde stă.
+ */
+function peServiciu<T>(index: number | null, fn: () => T): T {
+  if (index === null) return fn()
+  try {
+    return fn()
+  } catch (e) {
+    const camp = campVinovat(e)
+    if (!(e instanceof EroareApi) || !camp || camp.startsWith('servicii.')) throw e
+    const nou = `servicii.${index}.${camp}`
+    throw new EroareApi(e.cod, e.message, e.camp
+      ? { camp: nou, ...(e.detalii ? { detalii: e.detalii } : {}) }
+      : { detalii: { ...e.detalii, camp: nou } })
+  }
+}
+
+/** Rândurile programării din care face parte `id`, în ordinea în care s-au adăugat. */
+function serviciileProgramarii(id: Uuid): { ancora: Programare; randuri: Programare[] } {
+  const ancora = ceruta(magazin.programare, id, 'Programarea')
+  const randuri: Programare[] = []
+  for (const p of magazin.programare.values()) if (p.vizita_id === ancora.vizita_id) randuri.push(p)
+  return { ancora, randuri }
+}
+
+/** Ce scriu la fel toate rândurile aceleiași programări. */
+type VizitaNoua = Pick<
+  Programare,
+  'vizita_id' | 'client_id' | 'executant_id' | 'punct_lucru_id' | 'incepe_la' | 'se_termina_la' | 'stare' | 'nota'
+>
+
+/**
+ * Scrie un serviciu al programării, cu tratamentul și prețul lui.
+ *
+ * Tratamentul, înaintea prețului: la un serviciu în mai multe ședințe, prețul
+ * ședinței este partea ei din tratament. Două ședințe din același tratament în
+ * aceeași programare se scriu pe rând, deci a doua își ia locul și partea după
+ * ce prima și le-a luat pe ale ei.
+ */
+function adaugaServiciu(
+  autor_id: Uuid,
+  vizita: VizitaNoua,
+  articol: Articol,
+  serviciu: ServiciuProgramare,
+): Programare {
+  const inTratament = tratamentulSedintei(vizita.client_id, articol, serviciu.tratament_id, autor_id)
+  // Prețul lipsă se completează din memoria clientului, nu direct din
+  // nomenclator. Într-un tratament, memoria e chiar tratamentul.
+  const pret = serviciu.pret ?? inTratament?.pret ?? pretPentru(vizita.client_id, articol.id).pret
+  verificaPret(pret, 'pret')
+
+  const rand: Programare = {
+    id: uuid(),
+    client_id: vizita.client_id,
+    articol_id: articol.id,
+    articol_tip: 'serviciu',
+    executant_id: vizita.executant_id,
+    punct_lucru_id: vizita.punct_lucru_id,
+    incepe_la: vizita.incepe_la,
+    se_termina_la: vizita.se_termina_la,
+    stare: vizita.stare,
+    pret,
+    nota: vizita.nota,
+    creat_de: autor_id,
+    creat_la: acum(),
+    actualizat_la: acum(),
+    tratament_id: inTratament?.tratament.id ?? null,
+    vizita_id: vizita.vizita_id,
+  }
+  magazin.programare.set(rand.id, rand)
+
+  scrieJurnal({
+    utilizator_id: autor_id,
+    actiune: 'creare',
+    entitate: 'programare',
+    entitate_id: rand.id,
+    date_noi: instantaneu(rand as unknown as Record<string, unknown>),
+  })
+  return rand
 }
 
 // ---------------------------------------------------------------------------

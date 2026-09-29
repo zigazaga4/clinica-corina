@@ -7,6 +7,7 @@ import { StareGoala } from '@/ui'
 import { RandNotita } from './CardNotita'
 import { RandProgramare } from './CardProgramare'
 import { dinZiua, elementeCalendar } from './elemente'
+import { numarProgramari } from './vizite'
 
 /**
  * Agenda, ca listă cronologică.
@@ -47,7 +48,8 @@ export function ListaAgenda({
       const notiteZilei = dinZiua(notite, zi)
       return {
         zi,
-        programari: programariZilei.length,
+        // Programări, nu servicii: trei servicii la aceeași venire sunt o programare.
+        programari: numarProgramari(programariZilei),
         notite: notiteZilei.length,
         aleZilei: elementeCalendar(programariZilei, notiteZilei),
       }
@@ -115,6 +117,7 @@ export function ListaAgenda({
                   <RandProgramare
                     key={element.programare.id}
                     programare={element.programare}
+                    servicii={element.servicii}
                     onClick={onAlegeProgramare}
                     cuExecutant={cuExecutant}
                   />

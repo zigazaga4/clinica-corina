@@ -43,6 +43,7 @@ import { GrilaLuna } from './GrilaLuna'
 import { GrilaOre, type ColoanaGrila, type LocGrila } from './GrilaOre'
 import { ListaAgenda } from './ListaAgenda'
 import { inceputPeZi, type LocAles } from './locAles'
+import { numarProgramari } from './vizite'
 
 /**
  * Calendarul (contract art. 3.1.B).
@@ -77,7 +78,8 @@ export function PaginaProgramari() {
   )
 
   const [formularDeschis, setFormularDeschis] = useState(false)
-  const [deModificat, setDeModificat] = useState<ProgramareDetaliu | null>(null)
+  // Toate serviciile programării de modificat — formularul le arată pe toate.
+  const [deModificat, setDeModificat] = useState<ProgramareDetaliu[] | null>(null)
   // Locul apăsat în calendar, cu care pornește o programare nouă.
   const [locAles, setLocAles] = useState<LocAles | null>(null)
   const [deVazut, setDeVazut] = useState<ProgramareDetaliu | null>(null)
@@ -117,13 +119,20 @@ export function PaginaProgramari() {
   const programari = data ?? []
   const notite = clientId === null ? (dateNotite ?? []) : []
 
+  // Serviciile programării deschise, din ce are deja calendarul: fereastra le
+  // arată pe loc, fără să aștepte să le ceară din nou.
+  const serviciiVazute = useMemo(
+    () => (deVazut && data ? data.filter((p) => p.vizita_id === deVazut.vizita_id) : undefined),
+    [deVazut, data],
+  )
+
   // Coloanele pe persoană din vederea pe zi au nevoie de lista conturilor, care
   // este rută de administrator. Pentru ceilalți, ziua se afișează ca agendă —
   // exact forma cerută de contract pentru „o singură persoană”.
   const { data: utilizatori } = useUtilizatori({ activ: true }, esteAdministrator)
 
-  const deschideFormular = (programare?: ProgramareDetaliu) => {
-    setDeModificat(programare ?? null)
+  const deschideFormular = (servicii?: ProgramareDetaliu[]) => {
+    setDeModificat(servicii ?? null)
     setLocAles(null)
     setFormularDeschis(true)
   }
@@ -328,16 +337,18 @@ export function PaginaProgramari() {
       <FormularProgramare
         deschisa={formularDeschis}
         onInchide={() => setFormularDeschis(false)}
-        programare={deModificat}
+        programare={deModificat?.[0] ?? null}
+        servicii={deModificat ?? undefined}
         loc={locAles}
       />
 
       <DetaliuProgramare
         programare={deVazut}
+        cunoscute={serviciiVazute}
         onInchide={() => setDeVazut(null)}
-        onModifica={(programare) => {
+        onModifica={(_programare, servicii) => {
           setDeVazut(null)
-          deschideFormular(programare)
+          deschideFormular(servicii)
         }}
       />
 
@@ -469,7 +480,7 @@ function Continut({
   const coloane: ColoanaGrila[] = relevante.map((persoana) => ({
     id: persoana.id,
     eticheta: persoana.nume,
-    subeticheta: `${aleZilei.filter((p) => p.executant_id === persoana.id).length} programări`,
+    subeticheta: `${numarProgramari(aleZilei.filter((p) => p.executant_id === persoana.id))} programări`,
     zi,
     executantId: persoana.id,
     programari: aleZilei.filter((p) => p.executant_id === persoana.id),

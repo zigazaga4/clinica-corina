@@ -121,6 +121,7 @@ export function GrilaLuna({
                   <ChipProgramare
                     key={element.programare.id}
                     programare={element.programare}
+                    servicii={element.servicii}
                     onClick={onAlegeProgramare}
                     compact
                     className="shrink-0"

@@ -68,6 +68,8 @@ async function ruleaza(): Promise<void> {
     'tratament_articol_fk',
     // Semnul migrației 2026-09-29: fără ea, vânzările nu pot rămâne neachitate.
     'vanzare_neachitata_idx',
+    // Semnul migrației cu mai multe servicii într-o programare.
+    'programare_vizita_idx',
   ]
   const gasite = await multe<{ conname: string }>(
     pool,
@@ -83,6 +85,26 @@ async function ruleaza(): Promise<void> {
       detaliu: numeGasite.has(c) ? 'prezentă' : 'LIPSEȘTE — rulează sql/01_schema.sql',
     })
   }
+
+  /*
+    Constrângerea de suprapunere trebuie să lase în pace serviciile aceleiași
+    programări. În forma veche — fără `vizita_id` — numele ei e același și
+    verificarea de mai sus trece, dar a doua linie a oricărei programări cu
+    două servicii ar cădea cu 409 pe propria ei soră.
+  */
+  const [suprapunere] = await multe<{ definitie: string }>(
+    pool,
+    `SELECT pg_get_constraintdef(oid) AS definitie FROM pg_constraint
+     WHERE conname = 'programare_fara_suprapunere'`,
+  )
+  const cuVizita = suprapunere?.definitie.includes('vizita_id') ?? false
+  verificari.push({
+    nume: 'suprapunere între programări',
+    ok: cuVizita,
+    detaliu: cuVizita
+      ? 'serviciile aceleiași programări nu se ciocnesc'
+      : 'FORMA VECHE — rulează sql/migratii/2026-09-29-programare-cu-mai-multe-servicii.sql',
+  })
 
   const lat = (s: string, n: number) => s.padEnd(n)
   console.log(lat('Obiect', 32), lat('Stare', 8), 'Detaliu')

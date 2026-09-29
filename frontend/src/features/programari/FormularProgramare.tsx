@@ -1,31 +1,61 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Layers } from 'lucide-react'
+import { Layers, Plus, Trash2 } from 'lucide-react'
 import {
   useArticole,
   useCreeazaProgramare,
   useModificaProgramare,
-  usePretSugerat,
+  usePreturiSugerate,
 } from '@/app/queries'
 import { useAutentificare } from '@/app/auth'
-import type { PretSugerat, SugestieTratament } from '@/api/contract'
+import type { PretSugerat, ServiciuProgramare, SugestieTratament } from '@/api/contract'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
 import { GrilaFormular, PeToataLatimea } from '@/components/Pagina'
-import type { ProgramareDetaliu, Uuid } from '@/domain/types'
+import type { Articol, ProgramareDetaliu, Uuid } from '@/domain/types'
 import { addMinutes, dinInputDatetime, laInputDatetime } from '@/lib/dates'
 import { useEroriFormular } from '@/lib/formular'
-import { formateazaBani, parseNumar } from '@/lib/money'
+import { uuid } from '@/lib/id'
+import { formateazaBani, parseNumar, sumaTotal } from '@/lib/money'
 import { plural } from '@/lib/text'
 import { Buton, Input, Modala, Textarea, useNotificari } from '@/ui'
 import { CampuriInterval, proximulSfertDeOra } from './CampuriInterval'
 import type { LocAles } from './locAles'
 
+/** Ce poate greși la un serviciu din listă. */
+type CampServiciu = 'articol_id' | 'pret' | 'tratament_id' | 'id'
+
+/**
+ * Câmpurile care pot purta o eroare. Cele ale unui serviciu poartă și locul
+ * lui în listă — `servicii.2.pret` —, exact cum le trimite serverul.
+ */
 type CampFormular =
   | 'client_id'
-  | 'articol_id'
   | 'executant_id'
-  | 'pret'
   | 'incepe_la'
   | 'se_termina_la'
+  | 'servicii'
+  | `servicii.${number}.${CampServiciu}`
+
+/** Un serviciu, așa cum stă în formular. */
+interface RandServiciu {
+  /** Cheie locală, stabilă cât e deschis formularul — și după o ștergere. */
+  cheie: string
+  /** Rândul din bază, la modificare; null = serviciu nou. */
+  existent: ProgramareDetaliu | null
+  articolId: Uuid | null
+  /**
+   * Tratamentul în care intră EXPLICIT — ședința pentru care s-a deschis
+   * formularul din fișa tratamentului. Serviciul ei nu se schimbă și nu se
+   * scoate; celelalte servicii ale programării intră singure unde trebuie.
+   */
+  tratamentId: Uuid | null
+  pret: string
+  /**
+   * Cât timp operatoarea nu a scris nimic în câmpul de preț, acesta oglindește
+   * sugestia serverului. După prima tastare, rămâne ce a scris: o schimbare de
+   * client sau de serviciu nu are voie să șteargă o sumă convenită deja.
+   */
+  pretAtins: boolean
+}
 
 /**
  * Ce se completează dinainte când formularul se deschide din fișa unui
@@ -41,12 +71,19 @@ export function FormularProgramare({
   deschisa,
   onInchide,
   programare,
+  servicii: serviciiExistente,
   loc,
   initial,
 }: {
   deschisa: boolean
   onInchide: () => void
   programare?: ProgramareDetaliu | null
+  /**
+   * Toate serviciile programării de modificat, în ordinea lor. Lipsă = doar
+   * `programare`. Formularul le arată pe toate: se pot schimba, scoate sau
+   * completa cu altele.
+   */
+  servicii?: ProgramareDetaliu[]
   /** Locul apăsat în calendar: ziua, ora și ce se mai știe de acolo. */
   loc?: LocAles | null
   /** Ședința următoare a unui tratament — client și serviciu fixate. */
@@ -62,31 +99,28 @@ export function FormularProgramare({
   const modifica = useModificaProgramare()
   const seTrimite = creeaza.isPending || modifica.isPending
 
-  const { data: servicii } = useArticole({ tip: 'serviciu', activ: true })
+  const { data: nomenclator } = useArticole({ tip: 'serviciu', activ: true })
 
   const [clientId, setClientId] = useState<Uuid | null>(null)
-  const [articolId, setArticolId] = useState<Uuid | null>(null)
+  const [randuri, setRanduri] = useState<RandServiciu[]>(() => [randGol()])
   const [executantId, setExecutantId] = useState<Uuid | null>(null)
   const [incepeLa, setIncepeLa] = useState('')
   const [seTerminaLa, setSeTerminaLa] = useState('')
   const [nota, setNota] = useState('')
-  const [pret, setPret] = useState('')
-  // Cât timp operatoarea nu a scris nimic în câmpul de preț, acesta oglindește
-  // sugestia serverului. După prima tastare, indicatorul rămâne ridicat: o
-  // schimbare de client sau de serviciu nu are voie să șteargă o sumă convenită
-  // deja cu clientul.
-  const [pretAtins, setPretAtins] = useState(false)
 
   // Un interval TRAS în calendar este o alegere, nu o propunere: serviciul ales
   // după aceea nu-i mai mută sfârșitul. O simplă apăsare lasă durata serviciului.
   const intervalTras = useRef(false)
 
-  const { data: sugestie } = usePretSugerat(clientId, articolId)
+  const sugestii = usePreturiSugerate(clientId, randuri.map((r) => r.articolId))
 
-  // Valoarea afișată se DERIVĂ, nu se copiază într-un efect: altfel sugestia
+  // Prețul afișat se DERIVĂ, nu se copiază într-un efect: altfel sugestia
   // sosită după o schimbare de client ar putea suprascrie câmpul cu o
   // întârziere de o randare, exact peste ce tocmai s-a tastat.
-  const pretAfisat = pretAtins || !sugestie ? pret : laText(sugestie.pret)
+  const pretAfisat = (rand: RandServiciu, i: number) => {
+    const sugestie = sugestii[i]
+    return rand.pretAtins || !sugestie ? rand.pret : laText(sugestie.pret)
+  }
 
   // Reîncărcarea valorilor la fiecare deschidere: dialogul rămâne montat, deci
   // fără asta o a doua deschidere ar arăta datele programării dinainte.
@@ -99,21 +133,34 @@ export function FormularProgramare({
 
     if (programare) {
       setClientId(programare.client_id)
-      setArticolId(programare.articol_id)
       setExecutantId(programare.executant_id)
       setIncepeLa(laInputDatetime(programare.incepe_la))
       setSeTerminaLa(laInputDatetime(programare.se_termina_la))
       setNota(programare.nota ?? '')
-      // Prețul unei programări existente este deja convenit; sugestia nu are ce
+      // Prețul unui serviciu existent este deja convenit; sugestia nu are ce
       // să corecteze la el, deci câmpul pornește „atins”.
-      setPret(laText(programare.pret))
-      setPretAtins(true)
+      setRanduri(
+        (serviciiExistente?.length ? serviciiExistente : [programare]).map((s) => ({
+          cheie: s.id,
+          existent: s,
+          articolId: s.articol_id,
+          tratamentId: null,
+          pret: laText(s.pret),
+          pretAtins: true,
+        })),
+      )
       return
     }
 
     const inceput = loc?.inceput ?? proximulSfertDeOra()
     setClientId(initial?.client_id ?? loc?.clientId ?? null)
-    setArticolId(initial?.articol_id ?? null)
+    // Cheia primului rând rămâne aceeași: altfel selectorul lui s-ar remonta
+    // sub degetul cuiva care tocmai l-a deschis, iar lista s-ar închide singură.
+    setRanduri((precedente) => [{
+      ...randGol(),
+      cheie: precedente[0]?.cheie ?? uuid(),
+      ...(initial ? { articolId: initial.articol_id, tratamentId: initial.tratament_id } : {}),
+    }])
     // Operatorul se programează cel mai des pe sine; e punctul de plecare cel
     // mai probabil, iar schimbarea costă un clic. Apăsat în coloana altei
     // persoane, locul e al ei — dar numai pentru administrator: un operator
@@ -125,12 +172,10 @@ export function FormularProgramare({
     setIncepeLa(laInputDatetime(inceput))
     setSeTerminaLa(laInputDatetime(loc?.sfarsit ?? addMinutes(inceput, 60)))
     setNota('')
-    setPret('')
-    setPretAtins(false)
     // `erori` lipsește intenționat dintre dependențe: funcțiile lui sunt stabile
     // prin useCallback, iar obiectul se recreează la fiecare randare, deci
     // includerea lui ar reporni efectul și ar șterge ce tocmai s-a completat.
-  }, [deschisa, programare, loc, initial, utilizator, esteAdministrator])
+  }, [deschisa, programare, serviciiExistente, loc, initial, utilizator, esteAdministrator])
 
   /*
     Durata serviciului fixat dinainte.
@@ -145,43 +190,69 @@ export function FormularProgramare({
     if (!deschisa) durataAplicata.current = false
   }, [deschisa])
   useEffect(() => {
-    if (!deschisa || !initial || !servicii || durataAplicata.current) return
-    const serviciu = servicii.find((s) => s.id === initial.articol_id)
+    if (!deschisa || !initial || !nomenclator || durataAplicata.current) return
+    const serviciu = nomenclator.find((s) => s.id === initial.articol_id)
     if (!serviciu?.durata_minute) return
     durataAplicata.current = true
     if (intervalTras.current) return
     const inceput = loc?.inceput ?? proximulSfertDeOra()
     setSeTerminaLa(laInputDatetime(addMinutes(inceput, serviciu.durata_minute)))
-  }, [deschisa, initial, servicii, loc])
+  }, [deschisa, initial, nomenclator, loc])
 
   /**
-   * Alegerea serviciului mută ora de sfârșit după `durata_minute`.
+   * Lista de servicii se schimbă — și, odată cu ea, ora de sfârșit: cât
+   * durează TOATE serviciile, după `durata_minute` din nomenclator.
    *
    * Este singurul loc în care durata din nomenclator ajunge în programare:
    * `programare` nu are coloană de durată, ci două capete de interval. Ora de
    * sfârșit rămâne editabilă — o ședință poate dura mai mult decât standardul.
+   * Un interval tras în calendar rămâne cum l-a tras recepția.
    */
-  const alegeServiciu = (id: Uuid | null) => {
-    setArticolId(id)
-    if (!id || incepeLa === '' || intervalTras.current) return
-    const serviciu = servicii?.find((s) => s.id === id)
-    if (!serviciu?.durata_minute) return
-    setSeTerminaLa(laInputDatetime(addMinutes(new Date(incepeLa), serviciu.durata_minute)))
+  const schimbaServiciile = (urmatoarele: RandServiciu[]) => {
+    setRanduri(urmatoarele)
+    if (incepeLa === '' || intervalTras.current) return
+    const durata = durataServiciilor(urmatoarele, nomenclator)
+    if (durata > 0) setSeTerminaLa(laInputDatetime(addMinutes(new Date(incepeLa), durata)))
   }
+
+  const alegeServiciu = (cheie: string, articolId: Uuid | null) =>
+    schimbaServiciile(randuri.map((r) => (r.cheie === cheie ? { ...r, articolId } : r)))
+
+  const scoateServiciu = (cheie: string) => {
+    // Erorile poartă locul serviciului în listă; după o ștergere, locurile se mută.
+    erori.goleste()
+    schimbaServiciile(randuri.filter((r) => r.cheie !== cheie))
+  }
+
+  const schimbaPretul = (cheie: string, pret: string) =>
+    setRanduri((precedente) =>
+      precedente.map((r) => (r.cheie === cheie ? { ...r, pret, pretAtins: true } : r)),
+    )
 
   const trimite = async (e: FormEvent) => {
     e.preventDefault()
     erori.goleste()
 
     if (!clientId) return erori.setCamp('client_id', 'Alege clientul.')
-    if (!articolId) return erori.setCamp('articol_id', 'Alege serviciul.')
     if (!executantId) return erori.setCamp('executant_id', 'Alege persoana care execută.')
 
-    // Zero este o valoare validă: o ședință oferită gratuit rămâne o ședință
-    // efectuată, care trebuie să apară în calendar și în istoric.
-    const pretNumeric = parseNumar(pretAfisat)
-    if (pretNumeric === null) return erori.setCamp('pret', 'Completează prețul ședinței.')
-    if (pretNumeric < 0) return erori.setCamp('pret', 'Prețul nu poate fi negativ.')
+    const servicii: ServiciuProgramare[] = []
+    for (const [i, rand] of randuri.entries()) {
+      if (!rand.articolId) return erori.setCamp(`servicii.${i}.articol_id`, 'Alege serviciul.')
+      // Zero este o valoare validă: o ședință oferită gratuit rămâne o ședință
+      // efectuată, care trebuie să apară în calendar și în istoric.
+      const pret = parseNumar(pretAfisat(rand, i))
+      if (pret === null) return erori.setCamp(`servicii.${i}.pret`, 'Completează prețul.')
+      if (pret < 0) return erori.setCamp(`servicii.${i}.pret`, 'Prețul nu poate fi negativ.')
+      servicii.push({
+        ...(rand.existent ? { id: rand.existent.id } : {}),
+        articol_id: rand.articolId,
+        pret,
+        // Din fișa tratamentului, ședința intră EXPLICIT în el; altfel,
+        // serverul o pune singur în tratamentul în curs al clientului.
+        ...(rand.tratamentId ? { tratament_id: rand.tratamentId } : {}),
+      })
+    }
 
     if (incepeLa === '') return erori.setCamp('incepe_la', 'Completează ora de început.')
     if (seTerminaLa === '') return erori.setCamp('se_termina_la', 'Completează ora de sfârșit.')
@@ -191,12 +262,11 @@ export function FormularProgramare({
 
     const date = {
       client_id: clientId,
-      articol_id: articolId,
       executant_id: executantId,
       incepe_la: dinInputDatetime(incepeLa),
       se_termina_la: dinInputDatetime(seTerminaLa),
-      pret: pretNumeric,
       nota: nota.trim() === '' ? null : nota.trim(),
+      servicii,
     }
 
     try {
@@ -204,16 +274,14 @@ export function FormularProgramare({
         await modifica.mutateAsync({ id: programare.id, date })
         notificari.succes('Programare modificată')
       } else {
-        // Din fișa tratamentului, ședința intră EXPLICIT în el; din calendar,
-        // serverul o pune singur în tratamentul în curs al clientului.
-        const creata = await creeaza.mutateAsync(
-          initial ? { ...date, tratament_id: initial.tratament_id } : date,
-        )
+        const creata = await creeaza.mutateAsync(date)
         notificari.succes(
           'Programare adăugată',
-          creata.sedinta_nr !== null && creata.tratament_numar_sedinte !== null
-            ? `Ședința ${creata.sedinta_nr} din ${creata.tratament_numar_sedinte} a tratamentului.`
-            : undefined,
+          servicii.length > 1
+            ? `${servicii.length} servicii în aceeași programare.`
+            : creata.sedinta_nr !== null && creata.tratament_numar_sedinte !== null
+              ? `Ședința ${creata.sedinta_nr} din ${creata.tratament_numar_sedinte} a tratamentului.`
+              : undefined,
         )
       }
       onInchide()
@@ -224,6 +292,14 @@ export function FormularProgramare({
       erori.preia(err)
     }
   }
+
+  // Erorile cu un câmp pe care formularul nu-l arată nicăieri — `servicii.0.id`,
+  // de pildă — se spun în banda generală, nu se pierd în tăcere.
+  const eroareNevazuta = Object.entries(erori.peCamp).find(
+    ([camp]) => !CAMPURI_AFISATE.test(camp),
+  )?.[1] as string | undefined
+  const maiMulte = randuri.length > 1
+  const total = sumaTotal(randuri.map((r, i) => parseNumar(pretAfisat(r, i)) ?? 0))
 
   return (
     <Modala
@@ -271,48 +347,66 @@ export function FormularProgramare({
             disabled={dinTratament}
             eroare={erori.peCamp.client_id ?? null}
           />
-          <SelectorArticol
-            tip="serviciu"
-            valoare={articolId}
-            onSchimba={alegeServiciu}
-            eticheta="Serviciu"
-            obligatoriu
-            cuCreare
-            disabled={dinTratament}
-            eroare={erori.peCamp.articol_id ?? null}
-          />
-
-          {/*
-            Ce se întâmplă cu tratamentul dacă ședința se salvează acum — spus
-            ÎNAINTE de a salva. Recepția trebuie să știe că pune „ședința 3 din
-            8”, nu o programare oarecare, și că prețul de mai jos este partea
-            ei din tratament, nu prețul din nomenclator.
-          */}
-          {!esteModificare && sugestie?.tratament && (
-            <PeToataLatimea>
-              <NotaTratament sugestie={sugestie.tratament} />
-            </PeToataLatimea>
-          )}
-
           <SelectorUtilizator
             valoare={executantId}
             onSchimba={setExecutantId}
             obligatoriu
             eroare={erori.peCamp.executant_id ?? null}
           />
-          <Input
-            eticheta="Preț"
-            inputMode="decimal"
-            obligatoriu
-            value={pretAfisat}
-            onChange={(e) => {
-              setPretAtins(true)
-              setPret(e.target.value)
-            }}
-            eroare={erori.peCamp.pret ?? null}
-            ajutor={ajutorPret(sugestie)}
-            className="text-right tabular-nums"
-          />
+
+          {/*
+            Serviciile programării — unul sau mai multe, la aceeași venire: o
+            manichiură și ședința 3 din 6 de IPL, două ședințe din abonamente
+            diferite. Fiecare cu prețul lui și cu ședința lui din tratament;
+            ora de sfârșit crește cu durata fiecăruia.
+          */}
+          <PeToataLatimea>
+            <div className="flex flex-col gap-2.5">
+              {randuri.map((rand, i) => (
+                <RandServiciuFormular
+                  key={rand.cheie}
+                  rand={rand}
+                  index={maiMulte ? i : null}
+                  pret={pretAfisat(rand, i)}
+                  sugestie={sugestii[i]}
+                  // A câta ședință ar fi: sugestia nu știe de ședințele din
+                  // același tratament puse mai sus, în aceeași programare.
+                  maiDevreme={
+                    randuri.slice(0, i).filter((r) => !r.existent && r.articolId === rand.articolId).length
+                  }
+                  poateFiScos={maiMulte && !rand.tratamentId && !rand.existent?.achitat}
+                  eroareServiciu={erori.peCamp[`servicii.${i}.articol_id`] ?? null}
+                  eroarePret={erori.peCamp[`servicii.${i}.pret`] ?? null}
+                  eroareTratament={erori.peCamp[`servicii.${i}.tratament_id`] ?? null}
+                  onServiciu={(articolId) => alegeServiciu(rand.cheie, articolId)}
+                  onPret={(pret) => schimbaPretul(rand.cheie, pret)}
+                  onScoate={() => scoateServiciu(rand.cheie)}
+                />
+              ))}
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Buton
+                  onClick={() => setRanduri((precedente) => [...precedente, randGol()])}
+                  className="tinta-atingere"
+                >
+                  <Plus className="size-4" />
+                  Adaugă încă un serviciu
+                </Buton>
+                {maiMulte && (
+                  <span className="text-[13px] text-ink-soft">
+                    Total{' '}
+                    <strong className="font-semibold text-ink tabular-nums">{formateazaBani(total)}</strong>
+                  </span>
+                )}
+              </div>
+
+              {erori.peCamp.servicii && (
+                <p role="alert" className="text-[13px] text-danger">
+                  {erori.peCamp.servicii}
+                </p>
+              )}
+            </div>
+          </PeToataLatimea>
 
           <CampuriInterval
             incepeLa={incepeLa}
@@ -338,13 +432,136 @@ export function FormularProgramare({
           </PeToataLatimea>
         </GrilaFormular>
 
-        {erori.general && (
+        {(erori.general ?? eroareNevazuta) && (
           <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger">
-            {erori.general}
+            {erori.general ?? eroareNevazuta}
           </p>
         )}
       </form>
     </Modala>
+  )
+}
+
+/** Câmpurile pe care formularul le arată sub căsuța lor; restul merg în banda generală. */
+const CAMPURI_AFISATE =
+  /^(client_id|executant_id|incepe_la|se_termina_la|servicii|servicii\.\d+\.(articol_id|pret|tratament_id))$/
+
+function randGol(): RandServiciu {
+  return { cheie: uuid(), existent: null, articolId: null, tratamentId: null, pret: '', pretAtins: false }
+}
+
+/** Cât durează toate serviciile alese, după nomenclator. */
+function durataServiciilor(randuri: readonly RandServiciu[], nomenclator: Articol[] | undefined): number {
+  return randuri.reduce(
+    (total, r) => total + (nomenclator?.find((s) => s.id === r.articolId)?.durata_minute ?? 0),
+    0,
+  )
+}
+
+/**
+ * Un serviciu al programării: serviciul, prețul lui și — dacă face parte
+ * dintr-un tratament — ce ședință ar fi.
+ *
+ * Ce nu se mai poate schimba se arată blocat, nu se lasă pe seama unui refuz
+ * de la server: serviciul unei ședințe de tratament (e al tratamentului) și
+ * orice la un serviciu deja încasat (bonul nu se rescrie).
+ */
+function RandServiciuFormular({
+  rand,
+  index,
+  pret,
+  sugestie,
+  maiDevreme,
+  poateFiScos,
+  eroareServiciu,
+  eroarePret,
+  eroareTratament,
+  onServiciu,
+  onPret,
+  onScoate,
+}: {
+  rand: RandServiciu
+  /** Locul în listă, pentru etichete — null când programarea are un singur serviciu. */
+  index: number | null
+  pret: string
+  sugestie: PretSugerat | undefined
+  /** Câte ședințe din același serviciu, noi, stau mai sus în listă. */
+  maiDevreme: number
+  poateFiScos: boolean
+  eroareServiciu: string | null
+  eroarePret: string | null
+  eroareTratament: string | null
+  onServiciu: (articolId: Uuid | null) => void
+  onPret: (pret: string) => void
+  onScoate: () => void
+}) {
+  const achitat = rand.existent?.achitat ?? false
+  const serviciuBlocat = rand.tratamentId !== null || rand.existent?.tratament_id != null || achitat
+  const nr = index === null ? '' : ` ${index + 1}`
+
+  // Ce se întâmplă cu tratamentul dacă ședința se salvează acum — spus ÎNAINTE
+  // de a salva: recepția trebuie să știe că pune „ședința 3 din 8”, nu o
+  // programare oarecare, și că prețul este partea ei din tratament.
+  const tratament = !rand.existent && sugestie?.tratament
+    ? { ...sugestie.tratament, sedinta_nr: sugestie.tratament.sedinta_nr + maiDevreme }
+    : null
+
+  return (
+    <div
+      className={index === null ? 'flex flex-col gap-2.5' : 'flex flex-col gap-2.5 rounded-xl border border-line p-3'}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-2.5">
+        <SelectorArticol
+          tip="serviciu"
+          valoare={rand.articolId}
+          onSchimba={onServiciu}
+          eticheta={index === null ? 'Serviciu' : `Serviciul${nr}`}
+          obligatoriu
+          cuCreare
+          disabled={serviciuBlocat}
+          eroare={eroareServiciu}
+          className="min-w-0 sm:flex-1"
+        />
+        <div className="flex items-start gap-2.5">
+          <Input
+            eticheta={index === null ? 'Preț' : `Prețul${nr}`}
+            inputMode="decimal"
+            obligatoriu
+            value={pret}
+            onChange={(e) => onPret(e.target.value)}
+            disabled={achitat}
+            eroare={eroarePret}
+            className="text-right tabular-nums"
+            containerClassName="flex-1 sm:w-32 sm:flex-none"
+          />
+          {index !== null && (
+            <Buton
+              varianta="discret"
+              dimensiune="icon"
+              onClick={onScoate}
+              disabled={!poateFiScos}
+              aria-label={`Scoate serviciul${nr}`}
+              title={achitat ? 'Serviciul e deja încasat și nu se mai scoate.' : undefined}
+              className="tinta-atingere mt-6.5 text-ink-faint hover:text-danger"
+            >
+              <Trash2 className="size-4.5" />
+            </Buton>
+          )}
+        </div>
+      </div>
+
+      {achitat ? (
+        <p className="text-[13px] text-ink-faint">Încasat — serviciul și prețul nu se mai schimbă.</p>
+      ) : (
+        ajutorPret(sugestie) && <p className="text-[13px] text-ink-faint">{ajutorPret(sugestie)}</p>
+      )}
+      {tratament && <NotaTratament sugestie={tratament} />}
+      {eroareTratament && (
+        <p role="alert" className="text-[13px] text-danger">
+          {eroareTratament}
+        </p>
+      )}
+    </div>
   )
 }
 

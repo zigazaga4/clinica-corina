@@ -32,7 +32,9 @@ export function programariDetaliu(
   ex: Executor,
   where = '',
   values: unknown[] = [],
-  ordine = 'ORDER BY incepe_la',
+  // Serviciile aceleiași programări încep deodată: între ele decide ordinea
+  // în care le-a trecut recepția, nu hazardul planului de execuție.
+  ordine = 'ORDER BY incepe_la, creat_la, id',
 ): Promise<ProgramareDetaliu[]> {
   return multe<ProgramareDetaliu>(ex, `${DIN_PROGRAMARI} ${where} ${ordine}`, values)
 }

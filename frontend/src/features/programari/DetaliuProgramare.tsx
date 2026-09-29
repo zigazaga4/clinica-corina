@@ -9,7 +9,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { useIncaseaza, useSchimbaStareProgramare } from '@/app/queries'
+import { useIncaseaza, useSchimbaStareProgramare, useServiciileProgramarii } from '@/app/queries'
 import { InsemnPlata, InsemnStareProgramare } from '@/components/insemne'
 import { etichetaSedinta } from '@/features/tratamente/ProgresTratament'
 import { STARE_PROGRAMARE, type ProgramareDetaliu, type StareProgramare } from '@/domain/types'
@@ -23,6 +23,7 @@ import {
 import { formateazaBani } from '@/lib/money'
 import { Buton, Modala, Pereche, useNotificari } from '@/ui'
 import { ModalaOnorare } from './ModalaOnorare'
+import { pretulProgramarii } from './vizite'
 
 /**
  * Detaliul unei programări, cu schimbarea stării.
@@ -35,6 +36,10 @@ import { ModalaOnorare } from './ModalaOnorare'
  * Trecerea pe „onorat” este singura care nu se aplică direct: ea mișcă și bani,
  * deci trece prin `ModalaOnorare`, care întreabă dacă s-a plătit. Anularea,
  * neprezentarea și revenirea la „programat” nu ating încasările.
+ *
+ * Fereastra arată programarea ÎNTREAGĂ, cu toate serviciile ei — fiecare cu
+ * prețul, ședința din tratament și plata lui — oricare dintre ele ar fi fost
+ * apăsat. Starea se schimbă pe toate deodată: clienta a venit sau nu a venit.
  */
 
 const pictograme: Partial<Record<StareProgramare, typeof CheckCircle2>> = {
@@ -44,22 +49,33 @@ const pictograme: Partial<Record<StareProgramare, typeof CheckCircle2>> = {
 }
 
 export function DetaliuProgramare({
-  programare,
+  programare: apasata,
+  cunoscute,
   onInchide,
   onModifica,
 }: {
+  /** Oricare serviciu al programării — cel apăsat. */
   programare: ProgramareDetaliu | null
+  /** Serviciile pe care apelantul le are deja (calendarul le are pe toate). */
+  cunoscute?: ProgramareDetaliu[]
   onInchide: () => void
-  onModifica: (programare: ProgramareDetaliu) => void
+  /** Programarea de modificat: rândul apăsat și toate serviciile ei. */
+  onModifica: (programare: ProgramareDetaliu, servicii: ProgramareDetaliu[]) => void
 }) {
   const schimbaStarea = useSchimbaStareProgramare()
   const incasare = useIncaseaza()
   const notificari = useNotificari()
   const [confirmaOnorarea, setConfirmaOnorarea] = useState(false)
+  const servicii = useServiciileProgramarii(apasata, cunoscute)
 
-  if (!programare) return null
+  if (!apasata) return null
 
+  // Varianta proaspătă a rândului apăsat: ora, starea, clientul și nota sunt
+  // aceleași pe toate serviciile, deci oricare le poate spune.
+  const programare = servicii.find((s) => s.id === apasata.id) ?? servicii[0] ?? apasata
   const stariDisponibile = STARE_PROGRAMARE.filter((stare) => stare !== programare.stare)
+  const maiMulte = servicii.length > 1
+  const neachitate = servicii.filter((s) => !s.achitat)
 
   const schimba = async (stare: StareProgramare) => {
     try {
@@ -78,13 +94,14 @@ export function DetaliuProgramare({
 
   const incaseaza = async () => {
     try {
+      // Toate serviciile încă neplătite, cu o singură plată — un bon.
       await incasare.mutateAsync({
         client_id: programare.client_id,
-        programare_ids: [programare.id],
+        programare_ids: neachitate.map((s) => s.id),
       })
       notificari.succes(
         'Încasare înregistrată',
-        `${formateazaBani(programare.pret)} de la ${programare.client_nume}.`,
+        `${formateazaBani(pretulProgramarii(neachitate))} de la ${programare.client_nume}.`,
       )
       // Fereastra se închide după încasare: programarea de aici este o copie
       // luată la deschidere, iar lăsată pe ecran ar continua să arate „De
@@ -107,7 +124,7 @@ export function DetaliuProgramare({
         onInchide={onInchide}
         dimensiune="sm"
         titlu={programare.client_nume}
-        descriere={programare.articol_denumire}
+        descriere={servicii.map((s) => s.articol_denumire).join(' + ')}
         subsol={
           <>
             <Buton onClick={onInchide} plin className="sm:w-auto">
@@ -115,7 +132,7 @@ export function DetaliuProgramare({
             </Buton>
             <Buton
               varianta="primar"
-              onClick={() => onModifica(programare)}
+              onClick={() => onModifica(programare, servicii)}
               plin
               className="sm:w-auto"
             >
@@ -139,43 +156,59 @@ export function DetaliuProgramare({
             <InsemnStareProgramare stare={programare.stare} />
           </div>
 
-          {/* Locul ședinței în tratament, cu drum spre fișa lui. */}
-          {programare.tratament_id !== null && (
-            <Link
-              to={`/tratamente?tratament=${programare.tratament_id}`}
-              onClick={onInchide}
-              className="flex items-center gap-2 rounded-xl bg-primary-50 px-3 py-2 text-[13px] font-medium text-primary-700 hover:bg-primary-100"
-            >
-              <Layers className="size-4 shrink-0" aria-hidden />
-              <span className="flex-1">{etichetaSedinta(programare)}</span>
-              <span aria-hidden>→</span>
-            </Link>
-          )}
-
           {/*
-            Banii ședinței. Însemnul de plată apare DOAR la ședințele onorate:
-            una de joia viitoare nu este „de plată”, este neîntâmplată încă.
+            Serviciile și banii lor, fiecare pe rândul lui: prețul, ședința din
+            tratament (cu drum spre fișa lui) și plata. Însemnul de plată apare
+            DOAR la programările onorate: una de joia viitoare nu este „de
+            plată”, este neîntâmplată încă.
           */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-3 py-2.5">
-            <div>
-              <p className="text-[12px] font-medium tracking-wide text-ink-faint uppercase">
-                Preț ședință
-              </p>
-              <p className="mt-0.5 text-base font-semibold text-ink tabular-nums">
-                {formateazaBani(programare.pret)}
-              </p>
-              {/* Când au intrat banii — plata se face adesea la altă dată. */}
-              {programare.achitat_la !== null && (
-                <p className="mt-0.5 text-[12px] text-ink-faint tabular-nums">
-                  Încasat pe {formateazaData(programare.achitat_la)}
-                </p>
-              )}
-            </div>
+          <section aria-label="Servicii" className="overflow-hidden rounded-xl border border-line">
+            <ul className="divide-y divide-line">
+              {servicii.map((serviciu) => (
+                <li key={serviciu.id} className="flex items-start justify-between gap-3 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-ink">{serviciu.articol_denumire}</p>
+                    {serviciu.tratament_id !== null && (
+                      <Link
+                        to={`/tratamente?tratament=${serviciu.tratament_id}`}
+                        onClick={onInchide}
+                        className="mt-0.5 inline-flex items-center gap-1 text-[12px] font-medium text-primary-600 hover:underline"
+                      >
+                        <Layers className="size-3.5 shrink-0" aria-hidden />
+                        {etichetaSedinta(serviciu)}
+                        <span aria-hidden>→</span>
+                      </Link>
+                    )}
+                    {/* Când au intrat banii — plata se face adesea la altă dată. */}
+                    {serviciu.achitat_la !== null && (
+                      <p className="mt-0.5 text-[12px] text-ink-faint tabular-nums">
+                        Încasat pe {formateazaData(serviciu.achitat_la)}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="text-sm font-semibold text-ink tabular-nums">
+                      {formateazaBani(serviciu.pret)}
+                    </span>
+                    {esteOnorata && <InsemnPlata achitat={serviciu.achitat} />}
+                  </div>
+                </li>
+              ))}
+            </ul>
 
-            {esteOnorata && (
-              <div className="flex items-center gap-2">
-                <InsemnPlata achitat={programare.achitat} />
-                {!programare.achitat && (
+            {(maiMulte || (esteOnorata && neachitate.length > 0)) && (
+              <div className="flex items-center justify-between gap-3 border-t border-line bg-muted/60 px-3 py-2">
+                <p className="text-[13px] text-ink-soft">
+                  {maiMulte && (
+                    <>
+                      Total{' '}
+                      <strong className="font-semibold text-ink tabular-nums">
+                        {formateazaBani(pretulProgramarii(servicii))}
+                      </strong>
+                    </>
+                  )}
+                </p>
+                {esteOnorata && neachitate.length > 0 && (
                   <Buton
                     dimensiune="sm"
                     varianta="primar"
@@ -188,7 +221,7 @@ export function DetaliuProgramare({
                 )}
               </div>
             )}
-          </div>
+          </section>
 
           <dl className="grid grid-cols-2 gap-3">
             <Pereche eticheta="Execută">{programare.executant_nume}</Pereche>
@@ -243,6 +276,7 @@ export function DetaliuProgramare({
         deschisa={confirmaOnorarea}
         onInchide={() => setConfirmaOnorarea(false)}
         programare={programare}
+        servicii={servicii}
         onOnorata={() => {
           setConfirmaOnorarea(false)
           onInchide()

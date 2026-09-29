@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { api } from '@/api'
 import { magazin } from '@/api/memory/store'
 import { autentifica, randeaza } from '@/test/render'
 import { FormularProgramare } from './FormularProgramare'
@@ -36,6 +37,19 @@ async function cautaIn(formular: ReturnType<typeof within>, eticheta: RegExp, te
   fireEvent.change(cautare, { target: { value: text } })
   return cautare
 }
+
+/** Formularul unei programări noi, pornit din locul dat. */
+async function deschideLa(l: LocAles) {
+  randeaza(<FormularProgramare deschisa onInchide={() => undefined} loc={l} />)
+  const formular = within(await screen.findByRole('dialog', {}, ASTEPTARE))
+  // Câmpurile se completează într-un efect, după prima pictare a ferestrei;
+  // în suita întreagă, cu nucleele ocupate, fereastra se găsește înaintea lui.
+  await waitFor(() => expect(formular.getByLabelText(/^Ziua/)).not.toHaveValue(''), ASTEPTARE)
+  return formular
+}
+
+const durata = (formular: ReturnType<typeof within>) =>
+  (formular.getByLabelText(/^Durata/) as HTMLSelectElement).value
 
 describe('client nou din formularul de programare', () => {
   it('oferă crearea cu numele tastat și îl lasă ales', async () => {
@@ -139,18 +153,6 @@ describe('programare nouă din locul apăsat în calendar', () => {
     clientId: null,
   })
 
-  async function deschideLa(l: LocAles) {
-    randeaza(<FormularProgramare deschisa onInchide={() => undefined} loc={l} />)
-    const formular = within(await screen.findByRole('dialog', {}, ASTEPTARE))
-    // Câmpurile se completează într-un efect, după prima pictare a ferestrei;
-    // în suita întreagă, cu nucleele ocupate, fereastra se găsește înaintea lui.
-    await waitFor(() => expect(formular.getByLabelText(/^Ziua/)).not.toHaveValue(''), ASTEPTARE)
-    return formular
-  }
-
-  const durata = (formular: ReturnType<typeof within>) =>
-    (formular.getByLabelText(/^Durata/) as HTMLSelectElement).value
-
   it('completează ziua, ora și persoana coloanei', async () => {
     await autentifica('admin@clinica.ro')
     const andreea = cont('Andreea Popescu')
@@ -197,5 +199,81 @@ describe('programare nouă din locul apăsat în calendar', () => {
         'Andreea Popescu',
       ),
     ASTEPTARE)
+  })
+})
+
+/*
+  Mai multe servicii în aceeași programare: o manichiură și o pedichiură la
+  aceeași venire, fiecare cu prețul ei, într-un singur bloc din calendar.
+*/
+describe('mai multe servicii într-o programare', () => {
+  /** Zi departe de agenda generată, ca să nu se ciocnească de nimic. */
+  const ZI = new Date(2031, 2, 4, 10, 0)
+
+  /** Alege un serviciu în selectorul dat și așteaptă să rămână ales. */
+  async function alege(formular: ReturnType<typeof within>, eticheta: RegExp, denumire: string) {
+    await cautaIn(formular, eticheta, denumire)
+    fireEvent.click(await formular.findByRole('option', { name: new RegExp(denumire) }, ASTEPTARE))
+    await waitFor(() =>
+      expect(formular.getByRole('combobox', { name: eticheta })).toHaveTextContent(denumire),
+    ASTEPTARE)
+  }
+
+  it('al doilea serviciu intră în aceeași programare, iar durata lor se adună', async () => {
+    await autentifica('admin@clinica.ro')
+    // Fișă fără istoric: prețurile pornesc de la listă.
+    const clienta = await api.clienti.create({ nume: 'Clientă Cu Două Servicii' })
+    const formular = await deschideLa({ inceput: ZI, sfarsit: null, executantId: null, clientId: clienta.id })
+
+    await alege(formular, /^Serviciu/, 'Manichiură clasică')
+    await waitFor(() => expect(durata(formular)).toBe('45'), ASTEPTARE)
+
+    fireEvent.click(formular.getByRole('button', { name: 'Adaugă încă un serviciu' }))
+    await alege(formular, /^Serviciul 2/, 'Pedichiură clasică')
+    // 45 + 60 de minute: ora de sfârșit merge după toate serviciile.
+    await waitFor(() => expect(durata(formular)).toBe('105'), ASTEPTARE)
+    expect(formular.getByText(/Total/)).toHaveTextContent('190')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Adaugă programarea' }))
+
+    await waitFor(() => {
+      const ale = [...magazin.programare.values()].filter((p) => p.client_id === clienta.id)
+      expect(ale).toHaveLength(2)
+    }, ASTEPTARE)
+    const ale = [...magazin.programare.values()].filter((p) => p.client_id === clienta.id)
+    expect(new Set(ale.map((p) => p.vizita_id)).size).toBe(1)
+    expect(ale.map((p) => p.pret)).toEqual([80, 110])
+    expect(new Set(ale.map((p) => p.se_termina_la)).size).toBe(1)
+  })
+
+  it('la modificare arată toate serviciile, iar cel scos rămâne în istoric, anulat', async () => {
+    const admin = await autentifica('admin@clinica.ro')
+    const clienta = await api.clienti.create({ nume: 'Clientă De Modificat' })
+    const [manichiura, pedichiura] = ['Manichiură clasică', 'Pedichiură clasică'].map(
+      (d) => [...magazin.articol.values()].find((a) => a.denumire === d)!,
+    )
+    const prima = await api.programari.create({
+      client_id: clienta.id,
+      executant_id: admin.id,
+      incepe_la: ZI.toISOString(),
+      se_termina_la: new Date(ZI.getTime() + 105 * 60_000).toISOString(),
+      servicii: [{ articol_id: manichiura!.id }, { articol_id: pedichiura!.id }],
+    })
+    const servicii = await api.programari.list({ vizita_id: prima.vizita_id })
+
+    randeaza(
+      <FormularProgramare deschisa onInchide={() => undefined} programare={servicii[0]} servicii={servicii} />,
+    )
+    const formular = within(await screen.findByRole('dialog', {}, ASTEPTARE))
+    await waitFor(() => {
+      expect(formular.getByRole('combobox', { name: /^Serviciul 1/ })).toHaveTextContent('Manichiură clasică')
+      expect(formular.getByRole('combobox', { name: /^Serviciul 2/ })).toHaveTextContent('Pedichiură clasică')
+    }, ASTEPTARE)
+
+    fireEvent.click(formular.getByRole('button', { name: 'Scoate serviciul 2' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvează' }))
+
+    await waitFor(() => expect(magazin.programare.get(servicii[1]!.id)?.stare).toBe('anulat'), ASTEPTARE)
+    expect(magazin.programare.get(servicii[0]!.id)?.stare).toBe('programat')
   })
 })

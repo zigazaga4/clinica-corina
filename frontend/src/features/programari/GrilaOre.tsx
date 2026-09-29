@@ -184,6 +184,7 @@ function ColoanaElemente({
           <ChipProgramare
             key={id}
             programare={element.programare}
+            servicii={element.servicii}
             onClick={onAlegeProgramare}
             {...asezare}
           />

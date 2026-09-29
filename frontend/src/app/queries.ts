@@ -11,11 +11,13 @@
 
 import {
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import { api } from '@/api'
 import type {
   DateArticolModificat,
@@ -286,6 +288,36 @@ export function useProgramari(
   })
 }
 
+/**
+ * Toate serviciile programării din care face parte `programare`, în ordinea lor.
+ *
+ * Fereastra unei programări se deschide din locuri care știu doar un rând —
+ * o ședință din fișa unui tratament, de pildă — dar arată și închide
+ * programarea ÎNTREAGĂ. `cunoscute` sunt rândurile pe care apelantul le are
+ * deja (calendarul le are pe toate): se arată pe loc, cât sosește răspunsul.
+ *
+ * Fără `placeholderData` moștenit de la cheia precedentă, ca la `useProgramari`:
+ * o fereastră nou deschisă ar fi arătat o clipă serviciile altei programări.
+ */
+export function useServiciileProgramarii(
+  programare: ProgramareDetaliu | null,
+  cunoscute?: ProgramareDetaliu[],
+): ProgramareDetaliu[] {
+  const vizita_id = programare?.vizita_id ?? null
+  const { data } = useQuery({
+    queryKey: chei.programari.lista({ vizita_id: vizita_id ?? '' }),
+    queryFn: () => api.programari.list({ vizita_id: vizita_id as Uuid }),
+    enabled: vizita_id !== null,
+  })
+  // Aceeași listă cât timp nimic nu s-a schimbat: ferestrele o pun în
+  // dependențele efectelor care le completează câmpurile.
+  return useMemo(() => {
+    if (!programare) return []
+    const aleEi = (data ?? cunoscute ?? []).filter((p) => p.vizita_id === programare.vizita_id)
+    return aleEi.length > 0 ? aleEi : [programare]
+  }, [programare, data, cunoscute])
+}
+
 /** Invalidează tot ce se schimbă odată cu o programare. */
 function invalideazaProgramari(qc: ReturnType<typeof useQueryClient>, client_id?: Uuid) {
   void qc.invalidateQueries({ queryKey: chei.programari.tot })
@@ -338,8 +370,8 @@ export function useSchimbaStareProgramare(): UseMutationResult<
 > {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, stare, achitat, pret }: { id: Uuid; stare: StareProgramare } & OptiuniStare) =>
-      api.programari.schimbaStarea(id, stare, { achitat, pret }),
+    mutationFn: ({ id, stare, achitat, pret, preturi }: { id: Uuid; stare: StareProgramare } & OptiuniStare) =>
+      api.programari.schimbaStarea(id, stare, { achitat, pret, preturi }),
     onSuccess: (programare, { achitat }) => {
       invalideazaProgramari(qc, programare.client_id)
       if (achitat) invalideazaVanzari(qc, programare.client_id)
@@ -364,6 +396,25 @@ export function usePretSugerat(
     enabled: client_id !== null && articol_id !== null,
     staleTime: PROSPETIME_NOMENCLATOR,
   })
+}
+
+/**
+ * Același răspuns, pentru fiecare serviciu al unei programări — câte unul pe
+ * rândul lui din formular, în ordinea lor. Cheile sunt ale lui
+ * `usePretSugerat`, deci cele două împart memoria.
+ */
+export function usePreturiSugerate(
+  client_id: Uuid | null,
+  articol_ids: readonly (Uuid | null)[],
+): (PretSugerat | undefined)[] {
+  return useQueries({
+    queries: articol_ids.map((articol_id) => ({
+      queryKey: chei.programari.pret(client_id ?? '', articol_id ?? ''),
+      queryFn: () => api.programari.pretSugerat(client_id as Uuid, articol_id as Uuid),
+      enabled: client_id !== null && articol_id !== null,
+      staleTime: PROSPETIME_NOMENCLATOR,
+    })),
+  }).map((rezultat) => rezultat.data)
 }
 
 // ---------------------------------------------------------------------------

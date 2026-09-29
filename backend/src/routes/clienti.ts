@@ -364,7 +364,7 @@ router.get('/:id/istoric', ruta(async (req: AuthRequest, res: Response) => {
   await unu(pool, `SELECT id FROM client WHERE id = $1`, [id], 'Clientul')
 
   const [programari, vanzari] = await Promise.all([
-    programariDetaliu(pool, 'WHERE client_id = $1', [id], 'ORDER BY incepe_la DESC'),
+    programariDetaliu(pool, 'WHERE client_id = $1', [id], 'ORDER BY incepe_la DESC, creat_la, id'),
     vanzariDetaliu(pool, 'WHERE client_id = $1', [id]),
   ])
 

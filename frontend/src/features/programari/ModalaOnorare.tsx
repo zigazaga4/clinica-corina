@@ -9,8 +9,9 @@ import {
 } from '@/app/queries'
 import { ModalaAcordGdpr } from '@/features/consimtamant/ModalaAcordGdpr'
 import { BaniTratament, etichetaSedinta, ProgresSedinte } from '@/features/tratamente/ProgresTratament'
-import type { ProgramareDetaliu } from '@/domain/types'
-import { formateazaBani, parseNumar } from '@/lib/money'
+import type { ProgramareDetaliu, Uuid } from '@/domain/types'
+import { cn } from '@/lib/cn'
+import { formateazaBani, parseNumar, sumaTotal } from '@/lib/money'
 import { Buton, Input, Modala, Spinner, useNotificari } from '@/ui'
 
 /**
@@ -32,21 +33,30 @@ import { Buton, Input, Modala, Spinner, useNotificari } from '@/ui'
  * Suma se poate corecta AICI, nu doar în formularul de modificare: la casă se
  * află cât s-a luat de fapt — o ședință mai scurtă, un extra — iar la un
  * tratament partea ședințelor următoare se reface singură din ce a rămas.
+ *
+ * O programare cu mai multe servicii se închide o singură dată: câte o sumă pe
+ * serviciu, iar „Achitat acum” le plătește pe toate, pe un singur bon. Nu se
+ * poate „achita manichiura, dar nu și IPL-ul” de aici — ce rămâne neplătit se
+ * încasează după aceea de pe fișă, unde se aleg ședințele una câte una.
  */
 export function ModalaOnorare({
   deschisa,
   onInchide,
   programare,
+  servicii = [programare],
   onOnorata,
 }: {
   deschisa: boolean
   onInchide: () => void
   programare: ProgramareDetaliu
+  /** Toate serviciile programării; implicit doar `programare`. */
+  servicii?: ProgramareDetaliu[]
   /** Ședința a fost închisă cu succes — apelantul poate închide și detaliul. */
   onOnorata: () => void
 }) {
   const schimbaStarea = useSchimbaStareProgramare()
   const notificari = useNotificari()
+  const maiMulte = servicii.length > 1
 
   /*
     Acordul se caută după ȘEDINȚĂ, nu după client.
@@ -55,27 +65,33 @@ export function ModalaOnorare({
     nu ține locul celui de azi. Legat de programare, pasul se sare exact în
     singurul caz în care trebuie sărit: fereastra a fost deja deschisă o dată,
     s-a semnat, iar recepția o redeschide.
+
+    O venire, un acord: se leagă de PRIMUL serviciu al programării, oricare ar
+    fi fost apăsat în calendar — altfel aceeași venire l-ar fi cerut din nou.
   */
-  const acorduri = useConsimtaminte({ programare_id: programare.id, pe_pagina: 1 }, deschisa)
+  const primul = servicii[0] ?? programare
+  const acorduri = useConsimtaminte({ programare_id: primul.id, pe_pagina: 1 }, deschisa)
   const clientul = useClient(deschisa ? programare.client_id : null)
-  // Tratamentul din care face parte ședința, pentru context: cât s-a încasat
-  // până acum din cât — ca suma de mai jos să se hotărască în cunoștință.
-  const tratament = useTratament(deschisa ? programare.tratament_id : null)
 
   const [acordRezolvat, setAcordRezolvat] = useState(false)
-  // Suma pleacă de la prețul ședinței și se poate corecta; pe o ședință deja
-  // încasată câmpul nu apare — bonul nu se rescrie.
-  const [suma, setSuma] = useState('')
-  const [eroareSuma, setEroareSuma] = useState<string | null>(null)
+  // Sumele pleacă de la prețul fiecărui serviciu și se pot corecta; pe unul
+  // deja încasat câmpul nu apare — bonul nu se rescrie.
+  const [sume, setSume] = useState<Record<Uuid, string>>({})
+  const [eroriSume, setEroriSume] = useState<Record<Uuid, string>>({})
+  // Cheia pe care se reîncarcă sumele: ce servicii și cu ce prețuri — nu
+  // identitatea listei, care se reface la fiecare citire a programării.
+  const cheiePreturi = servicii.map((s) => `${s.id}:${s.pret}`).join()
   useEffect(() => {
     if (!deschisa) return
     setAcordRezolvat(false)
-    setSuma(String(programare.pret).replace('.', ','))
-    setEroareSuma(null)
-  }, [deschisa, programare.pret])
+    setSume(Object.fromEntries(servicii.map((s) => [s.id, laText(s.pret)])))
+    setEroriSume({})
+    // `servicii` se citește prin `cheiePreturi`, care o rezumă exact.
+  }, [deschisa, cheiePreturi])
 
-  const sumaNumerica = parseNumar(suma)
-  const sumaSchimbata = sumaNumerica !== null && sumaNumerica !== programare.pret
+  const sumaDe = (s: ProgramareDetaliu) => parseNumar(sume[s.id] ?? laText(s.pret))
+  const deIncasat = servicii.filter((s) => !s.achitat)
+  const totalDeIncasat = sumaTotal(deIncasat.map((s) => sumaDe(s) ?? 0))
 
   const seVerifica = acorduri.isPending || clientul.isPending
   const areAcord = (acorduri.data?.total ?? 0) > 0
@@ -104,35 +120,42 @@ export function ModalaOnorare({
   const confirma = async (achitat: boolean) => {
     // Zero este o sumă validă — o ședință oferită gratuit — dar lipsa sau un
     // minus nu sunt.
-    if (sumaNumerica === null) return setEroareSuma('Completează suma ședinței.')
-    if (sumaNumerica < 0) return setEroareSuma('Suma nu poate fi negativă.')
-    setEroareSuma(null)
+    const erori: Record<Uuid, string> = {}
+    const preturi: Record<Uuid, number> = {}
+    for (const s of deIncasat) {
+      const suma = sumaDe(s)
+      if (suma === null) erori[s.id] = 'Completează suma.'
+      else if (suma < 0) erori[s.id] = 'Suma nu poate fi negativă.'
+      // Se trimite doar ce s-a schimbat: pe o ședință deja încasată, prețul
+      // retrimis neschimbat nu trebuie să cadă pe „nu se mai poate”.
+      else if (suma !== s.pret) preturi[s.id] = suma
+    }
+    setEroriSume(erori)
+    if (Object.keys(erori).length > 0) return
 
     try {
       await schimbaStarea.mutateAsync({
         id: programare.id,
         stare: 'onorat',
         achitat,
-        // Se trimite doar când s-a schimbat: pe o ședință deja încasată,
-        // prețul retrimis neschimbat nu trebuie să cadă pe „nu se mai poate”.
-        ...(sumaSchimbata ? { pret: sumaNumerica } : {}),
+        ...(Object.keys(preturi).length > 0 ? { preturi } : {}),
       })
       notificari.succes(
-        'Ședință marcată ca onorată',
-        achitat
-          ? `Încasare ${formateazaBani(sumaNumerica)}.`
-          : `${formateazaBani(sumaNumerica)} rămân de plată.`,
+        maiMulte ? 'Programare marcată ca onorată' : 'Ședință marcată ca onorată',
+        deIncasat.length === 0
+          ? undefined
+          : achitat
+            ? `Încasare ${formateazaBani(totalDeIncasat)}.`
+            : `${formateazaBani(totalDeIncasat)} rămân de plată.`,
       )
       onOnorata()
     } catch (err) {
       notificari.eroare(
-        'Ședința nu a putut fi marcată ca onorată',
+        maiMulte ? 'Programarea nu a putut fi marcată ca onorată' : 'Ședința nu a putut fi marcată ca onorată',
         err instanceof Error ? err.message : undefined,
       )
     }
   }
-
-  const sedinta = etichetaSedinta(programare)
 
   return (
     <>
@@ -144,7 +167,7 @@ export function ModalaOnorare({
         onInchide={onInchide}
         dimensiune="sm"
         blocata={inCurs}
-        titlu="Ședință efectuată"
+        titlu={maiMulte ? 'Programare efectuată' : 'Ședință efectuată'}
         subsol={
           <>
             <Buton
@@ -172,46 +195,75 @@ export function ModalaOnorare({
         }
       >
         <div className="flex flex-col gap-4">
-          <div className="rounded-xl bg-muted p-4 text-center">
-            <p className="truncate text-sm font-medium text-ink">{programare.client_nume}</p>
-            <p className="mt-0.5 truncate text-[13px] text-ink-soft">
-              {programare.articol_denumire}
-              {sedinta && <span className="text-primary-600"> · {sedinta}</span>}
-            </p>
-            {/*
-              Suma este cea a ȘEDINȚEI, nu prețul din nomenclator, și se poate
-              corecta pe loc — cât s-a luat de fapt. Pe o ședință deja
-              încasată rămâne doar de citit: bonul nu se rescrie.
-            */}
-            {programare.achitat ? (
-              <p className="mt-2 text-2xl font-semibold text-ink tabular-nums">
-                {formateazaBani(programare.pret)}
+          {/*
+            Suma este cea a ȘEDINȚEI, nu prețul din nomenclator, și se poate
+            corecta pe loc — cât s-a luat de fapt. Pe o ședință deja încasată
+            rămâne doar de citit: bonul nu se rescrie.
+          */}
+          {maiMulte ? (
+            <div className="rounded-xl bg-muted p-3">
+              <p className="truncate text-center text-sm font-medium text-ink">{programare.client_nume}</p>
+              <ul className="mt-2 flex flex-col gap-2">
+                {servicii.map((s) => (
+                  <li key={s.id} className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 text-[13px] text-ink">
+                      <span className="block truncate font-medium">{s.articol_denumire}</span>
+                      {etichetaSedinta(s) && (
+                        <span className="block truncate text-[12px] text-primary-600">{etichetaSedinta(s)}</span>
+                      )}
+                    </span>
+                    <SumaServiciului
+                      serviciu={s}
+                      valoare={sume[s.id] ?? ''}
+                      onSchimba={(v) => setSume((p) => ({ ...p, [s.id]: v }))}
+                      eroare={eroriSume[s.id] ?? null}
+                      eticheta={`Suma: ${s.articol_denumire}`}
+                      ascundeEticheta
+                      containerClassName="w-36 shrink-0 text-left"
+                      // Loc pentru „RON”: altfel cifrele se lipesc de el.
+                      className="pr-12 text-right font-semibold tabular-nums"
+                    />
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 flex items-baseline justify-between border-t border-line pt-2 text-[13px] text-ink-soft">
+                {deIncasat.length < servicii.length ? 'De încasat acum' : 'Total'}
+                <span className="text-lg font-semibold text-ink tabular-nums">
+                  {formateazaBani(totalDeIncasat)}
+                </span>
               </p>
-            ) : (
-              <Input
+            </div>
+          ) : (
+            <div className="rounded-xl bg-muted p-4 text-center">
+              <p className="truncate text-sm font-medium text-ink">{programare.client_nume}</p>
+              <p className="mt-0.5 truncate text-[13px] text-ink-soft">
+                {primul.articol_denumire}
+                {etichetaSedinta(primul) && (
+                  <span className="text-primary-600"> · {etichetaSedinta(primul)}</span>
+                )}
+              </p>
+              <SumaServiciului
+                serviciu={primul}
+                valoare={sume[primul.id] ?? ''}
+                onSchimba={(v) => setSume((p) => ({ ...p, [primul.id]: v }))}
+                eroare={eroriSume[primul.id] ?? null}
                 eticheta="Suma ședinței"
-                inputMode="decimal"
-                value={suma}
-                onChange={(e) => setSuma(e.target.value)}
-                eroare={eroareSuma}
-                sufix="RON"
                 containerClassName="mx-auto mt-3 max-w-48 text-left"
                 className="text-right text-lg font-semibold tabular-nums"
-                ajutor={
-                  sumaSchimbata
-                    ? `Prețul convenit era ${formateazaBani(programare.pret)}.`
-                    : undefined
-                }
+                clasaAchitat="mt-2 text-2xl"
               />
-            )}
-          </div>
-
-          {/* Tratamentul: unde s-a ajuns și cât s-a încasat până acum din el. */}
-          {tratament.data && (
-            <div className="flex items-start justify-between gap-4 rounded-xl border border-line px-3 py-2.5">
-              <ProgresSedinte tratament={tratament.data} className="flex-1" />
-              <BaniTratament tratament={tratament.data} className="shrink-0 text-right" />
             </div>
+          )}
+
+          {/* Tratamentele: unde s-a ajuns și cât s-a încasat până acum din fiecare. */}
+          {servicii.map((s) =>
+            s.tratament_id === null ? null : (
+              <ContextTratament
+                key={s.id}
+                tratament_id={deschisa ? s.tratament_id : null}
+                cuNume={maiMulte}
+              />
+            ),
           )}
 
           {seVerifica ? (
@@ -238,7 +290,7 @@ export function ModalaOnorare({
           deschisa={cereAcord}
           onInchide={onInchide}
           client={clientul.data}
-          programareId={programare.id}
+          programareId={primul.id}
           onSemnat={() => {
             setAcordRezolvat(true)
             notificari.succes('Acord GDPR semnat', 'Documentul a fost păstrat pe fișa clientului.')
@@ -247,5 +299,85 @@ export function ModalaOnorare({
         />
       )}
     </>
+  )
+}
+
+/** Sumele intră în câmp cu virgulă zecimală, forma pe care o tastează recepția. */
+function laText(valoare: number): string {
+  return String(valoare).replace('.', ',')
+}
+
+/**
+ * Suma unui serviciu: câmp de corectat — sau, dacă e deja încasat, doar de
+ * citit: bonul nu se rescrie. Sub câmp, prețul convenit, cât timp suma
+ * tastată e alta.
+ */
+function SumaServiciului({
+  serviciu,
+  valoare,
+  onSchimba,
+  eroare,
+  eticheta,
+  ascundeEticheta = false,
+  containerClassName,
+  className,
+  clasaAchitat,
+}: {
+  serviciu: ProgramareDetaliu
+  valoare: string
+  onSchimba: (valoare: string) => void
+  eroare: string | null
+  eticheta: string
+  /** Eticheta rămâne doar pentru cititoarele de ecran — rândul își spune serviciul. */
+  ascundeEticheta?: boolean
+  containerClassName?: string
+  className?: string
+  clasaAchitat?: string
+}) {
+  if (serviciu.achitat) {
+    return (
+      <p className={cn('font-semibold text-ink tabular-nums', clasaAchitat)}>
+        {formateazaBani(serviciu.pret)}
+      </p>
+    )
+  }
+  const suma = parseNumar(valoare)
+  return (
+    <Input
+      {...(ascundeEticheta ? { 'aria-label': eticheta } : { eticheta })}
+      inputMode="decimal"
+      value={valoare}
+      onChange={(e) => onSchimba(e.target.value)}
+      eroare={eroare}
+      sufix="RON"
+      containerClassName={containerClassName}
+      className={className}
+      ajutor={
+        suma !== null && suma !== serviciu.pret
+          ? `Prețul convenit era ${formateazaBani(serviciu.pret)}.`
+          : undefined
+      }
+    />
+  )
+}
+
+/**
+ * Tratamentul unui serviciu, pentru context: unde s-a ajuns și cât s-a încasat
+ * până acum din el — ca suma să se hotărască în cunoștință. Câte unul pe
+ * serviciu: o programare poate avea ședințe din două tratamente.
+ */
+function ContextTratament({ tratament_id, cuNume }: { tratament_id: Uuid | null; cuNume: boolean }) {
+  const tratament = useTratament(tratament_id)
+  if (!tratament.data) return null
+  return (
+    <div className="rounded-xl border border-line px-3 py-2.5">
+      {cuNume && (
+        <p className="mb-1 text-[12px] font-medium text-ink-soft">{tratament.data.articol_denumire}</p>
+      )}
+      <div className="flex items-start justify-between gap-4">
+        <ProgresSedinte tratament={tratament.data} className="flex-1" />
+        <BaniTratament tratament={tratament.data} className="shrink-0 text-right" />
+      </div>
+    </div>
   )
 }

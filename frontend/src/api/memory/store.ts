@@ -107,6 +107,43 @@ export function goleste(): void {
   }
 }
 
+/**
+ * Rulează `fn` ca pe o tranzacție: dacă aruncă, magazinul revine exact cum era.
+ *
+ * Pe server, o programare cu trei servicii se scrie într-o singură tranzacție:
+ * dacă al treilea cade — tratamentul lui e plin — nici primele două nu rămân.
+ * Aici nu există ROLLBACK, iar fără el ecranul demonstrativ ar fi arătat o
+ * programare pe jumătate scrisă, pe care serverul real nu o poate produce.
+ *
+ * Rândurile se copiază, nu doar tabelele: funcțiile de scriere modifică
+ * obiectele pe loc (`rand.pret = …`), iar o copie a hărții cu aceleași obiecte
+ * ar fi „restaurat” exact modificările pe care trebuia să le uite.
+ */
+export function inTranzactie<T>(fn: () => T): T {
+  const inainte = copieMagazin()
+  try {
+    return fn()
+  } catch (e) {
+    for (const cheie of Object.keys(inainte) as (keyof Magazin)[]) {
+      ;(magazin as unknown as Record<string, unknown>)[cheie] = inainte[cheie]
+    }
+    throw e
+  }
+}
+
+function copieMagazin(): Magazin {
+  const copie: Record<string, unknown> = {}
+  for (const [cheie, valoare] of Object.entries(magazin)) {
+    copie[cheie] =
+      valoare instanceof Map
+        ? new Map([...valoare].map(([id, rand]) => [id, { ...rand }]))
+        : Array.isArray(valoare)
+          ? [...valoare]
+          : valoare
+  }
+  return copie as unknown as Magazin
+}
+
 // ---------------------------------------------------------------------------
 // Generator pseudo-aleator determinist
 // ---------------------------------------------------------------------------

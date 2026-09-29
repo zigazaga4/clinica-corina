@@ -311,6 +311,23 @@ CREATE TABLE IF NOT EXISTS programare (
   -- pune tot la sfârșit, iar `p.*` din vederi dă atunci aceleași coloane, în
   -- aceeași ordine, indiferent cum a fost creată baza.
   tratament_id    uuid REFERENCES tratament(id) ON DELETE RESTRICT,
+  -- Programarea din calendar din care face parte rândul.
+  --
+  -- Un rând `programare` este UN serviciu. Clienta care vine la 10:00 pentru o
+  -- manichiură și ședința 3 din 6 de IPL are o singură programare în calendar,
+  -- dar două rânduri aici, cu același `vizita_id`: fiecare cu prețul lui, cu
+  -- tratamentul lui și cu plata lui — deci tot ce se numără pe ședință
+  -- (tratamente, restanțe, încasări) rămâne numărat exact ca înainte.
+  --
+  -- Rândurile aceleiași vizite au același client, aceeași persoană, același
+  -- interval, aceeași stare și aceeași notă; serverul le schimbă împreună.
+  -- Un serviciu scos din programare primește o vizită a lui și se anulează.
+  --
+  -- Implicit unul nou la fiecare rând: o programare cu un singur serviciu —
+  -- și toate cele de dinainte de coloană — este o vizită cu un singur rând.
+  -- Ultima coloană dinadins, ca `p.*` din vederi să iasă la fel pe o bază
+  -- nouă și pe una migrată.
+  vizita_id       uuid NOT NULL DEFAULT gen_random_uuid(),
 
   CONSTRAINT programare_articol_fk
     FOREIGN KEY (articol_id, articol_tip) REFERENCES articol (id, tip)
@@ -320,9 +337,12 @@ CREATE TABLE IF NOT EXISTS programare (
 
   -- Aceeași persoană nu poate fi în două locuri deodată. Programările anulate
   -- sunt în afara constrângerii — locul se eliberează pentru altcineva.
+  -- Serviciile ACELEIAȘI programări stau, firesc, în același interval: ele nu
+  -- se ciocnesc între ele, ci doar cu ale altor programări (`vizita_id WITH <>`).
   CONSTRAINT programare_fara_suprapunere EXCLUDE USING gist (
     executant_id WITH =,
-    tstzrange(incepe_la, se_termina_la) WITH &&
+    tstzrange(incepe_la, se_termina_la) WITH &&,
+    vizita_id WITH <>
   ) WHERE (stare <> 'anulat')
 );
 
@@ -337,6 +357,8 @@ CREATE INDEX IF NOT EXISTS programare_onorate_idx
 -- programare nouă în el.
 CREATE INDEX IF NOT EXISTS programare_tratament_idx
   ON programare (tratament_id, incepe_la) WHERE tratament_id IS NOT NULL;
+-- Serviciile unei programări: citite împreună la fiecare modificare a ei.
+CREATE INDEX IF NOT EXISTS programare_vizita_idx ON programare (vizita_id);
 
 DROP TRIGGER IF EXISTS programare_actualizat_la ON programare;
 CREATE TRIGGER programare_actualizat_la BEFORE UPDATE ON programare

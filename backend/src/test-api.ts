@@ -901,6 +901,174 @@ async function ruleaza(): Promise<void> {
     JSON.stringify(scurtDupa.corp))
 
   // -------------------------------------------------------------------------
+  console.log('\nMai multe servicii într-o programare')
+
+  // Un client propriu, ca prețurile să pornească de la listă; cura de 3 ședințe
+  // de mai sus are ambele tratamente încheiate, deci deschide unul nou.
+  const altServiciu = articole.corp.find((a: any) => a.numar_sedinte === 1 && a.id !== serviciu.id)
+  const vizitator = (await cere('POST', '/clienti', {
+    token: admin, corp: { nume: `Client Vizită ${marcajT}` },
+  })).corp
+  const locVizita = interval(60, 10, 90)
+  const serviciileVizitei = async (vizita_id: string) =>
+    (await cere('GET', `/programari?vizita_id=${vizita_id}`, { token: admin })).corp as any[]
+
+  const multipla = await cere('POST', '/programari', {
+    token: admin,
+    corp: {
+      client_id: vizitator.id, executant_id: executant.id, ...locVizita, nota: 'Trei deodată',
+      servicii: [
+        { articol_id: serviciu.id, pret: 120 },
+        { articol_id: cura_id },
+        { articol_id: altServiciu.id },
+      ],
+    },
+  })
+  verifica('POST /programari cu 3 servicii -> 201, cu primul serviciu și vizita_id',
+    multipla.status === 201 && multipla.corp?.articol_id === serviciu.id && multipla.corp?.pret === 120
+      && typeof multipla.corp?.vizita_id === 'string',
+    `a venit ${multipla.status}: ${JSON.stringify(multipla.corp)}`)
+  const vizita_id = multipla.corp?.vizita_id as string
+
+  const cele3 = await serviciileVizitei(vizita_id)
+  verifica('GET /programari?vizita_id= -> toate 3, în ordinea trimisă, cu același client, interval și notă',
+    cele3?.length === 3
+      && cele3.map((s) => s.articol_id).join() === [serviciu.id, cura_id, altServiciu.id].join()
+      && cele3.every((s) => s.client_id === vizitator.id && s.incepe_la === multipla.corp.incepe_la
+        && s.se_termina_la === multipla.corp.se_termina_la && s.nota === 'Trei deodată'),
+    JSON.stringify(cele3?.map((s) => [s.articol_denumire, s.incepe_la])))
+  const [sPrim, sCura, sAl3lea] = cele3
+  verifica('ședința de cură își deschide tratamentul și ia partea ei (300 / 3 = 100)',
+    typeof sCura?.tratament_id === 'string' && sCura?.sedinta_nr === 1 && sCura?.pret === 100,
+    JSON.stringify(sCura))
+  verifica('serviciul fără preț ia prețul de listă', sAl3lea?.pret === altServiciu.pret_lista,
+    `${sAl3lea?.pret} vs ${altServiciu.pret_lista}`)
+
+  const pesteVizita = await cere('POST', '/programari', {
+    token: admin,
+    corp: { client_id, articol_id: serviciu.id, executant_id: executant.id, ...locVizita },
+  })
+  verifica('altă programare peste ea, la aceeași persoană -> 409', pesteVizita.status === 409,
+    `a venit ${pesteVizita.status}`)
+
+  const cuProdus = await cere('POST', '/programari', {
+    token: admin,
+    corp: {
+      client_id: vizitator.id, executant_id: executant.id, ...interval(61, 10),
+      servicii: [{ articol_id: serviciu.id }, { articol_id: produs.id }],
+    },
+  })
+  verifica('un produs pe locul al doilea -> 400 pe „servicii.1.articol_id”',
+    cuProdus.status === 400 && cuProdus.corp?.camp === 'servicii.1.articol_id', JSON.stringify(cuProdus.corp))
+  const faraServicii = await cere('POST', '/programari', {
+    token: admin,
+    corp: { client_id: vizitator.id, executant_id: executant.id, ...interval(61, 10), servicii: [] },
+  })
+  verifica('servicii: [] -> 400 pe „servicii”',
+    faraServicii.status === 400 && faraServicii.corp?.camp === 'servicii', JSON.stringify(faraServicii.corp))
+  const alVizitatorului = await cere('GET', `/programari?client_id=${vizitator.id}`, { token: admin })
+  verifica('programările refuzate nu au lăsat niciun serviciu scris', alVizitatorului.corp?.length === 3,
+    `${alVizitatorului.corp?.length}`)
+
+  const dubla = await cere('POST', '/programari', {
+    token: admin,
+    corp: {
+      client_id: vizitator.id, executant_id: executant.id, ...interval(62, 10, 60),
+      servicii: [{ articol_id: cura_id }, { articol_id: cura_id }],
+    },
+  })
+  const douaSedinte = await serviciileVizitei(dubla.corp?.vizita_id)
+  verifica('două ședințe din același tratament într-o programare -> ședințele 2 și 3, câte 100',
+    douaSedinte?.length === 2 && douaSedinte.every((s) => s.tratament_id === sCura.tratament_id && s.pret === 100)
+      && douaSedinte.map((s) => s.sedinta_nr).sort().join() === '2,3',
+    JSON.stringify(douaSedinte?.map((s) => [s.sedinta_nr, s.pret])))
+  const aPatra = await cere('POST', '/programari', {
+    token: admin,
+    corp: {
+      client_id: vizitator.id, executant_id: executant.id, ...interval(63, 10),
+      servicii: [{ articol_id: cura_id }],
+    },
+  })
+  verifica('a patra ședință într-un tratament de 3 -> 409 pe „servicii.0.tratament_id”',
+    aPatra.status === 409 && aPatra.corp?.camp === 'servicii.0.tratament_id', JSON.stringify(aPatra.corp))
+
+  const loculNou = interval(64, 10, 90)
+  const mutataToata = await cere('PATCH', `/programari/${sAl3lea.id}`, { token: admin, corp: loculNou })
+  const dupaMutare = await serviciileVizitei(vizita_id)
+  verifica('PATCH pe un singur serviciu mută TOATĂ programarea',
+    mutataToata.status === 200 && dupaMutare.every((s) =>
+      s.incepe_la === loculNou.incepe_la && s.se_termina_la === loculNou.se_termina_la),
+    JSON.stringify(dupaMutare?.map((s) => s.incepe_la)))
+
+  const editata = await cere('PATCH', `/programari/${sPrim.id}`, {
+    token: admin,
+    corp: {
+      servicii: [
+        { id: sCura.id, articol_id: cura_id, pret: sCura.pret },
+        { id: sAl3lea.id, articol_id: altServiciu.id, pret: 55 },
+        { articol_id: serviciu.id, pret: 70 },
+      ],
+    },
+  })
+  verifica('PATCH cu lista de servicii -> 200; cel cerut a fost scos, deci răspunde primul rămas',
+    editata.status === 200 && editata.corp?.id === sCura.id, `a venit ${editata.status}: ${JSON.stringify(editata.corp)}`)
+  const dupaEditare = await serviciileVizitei(vizita_id)
+  verifica('lista nouă: ședința neatinsă, prețul nou, serviciul adăugat în același interval',
+    dupaEditare?.map((s) => s.pret).join() === '100,55,70'
+      && dupaEditare[2]?.articol_id === serviciu.id && dupaEditare[2]?.incepe_la === loculNou.incepe_la,
+    JSON.stringify(dupaEditare?.map((s) => [s.articol_denumire, s.pret])))
+  const scos = await cere('GET', `/programari/${sPrim.id}`, { token: admin })
+  verifica('serviciul scos rămâne în istoric: anulat, într-o programare a lui',
+    scos.corp?.stare === 'anulat' && scos.corp?.vizita_id !== vizita_id, JSON.stringify(scos.corp))
+
+  const adaugat = dupaEditare[2]
+  const onorataToata = await cere('PATCH', `/programari/${sCura.id}/stare`, {
+    token: admin, corp: { stare: 'onorat', achitat: true, preturi: { [adaugat.id]: 80 } },
+  })
+  const dupaOnorare = await serviciileVizitei(vizita_id)
+  verifica('onorat + achitat pe un serviciu -> toate serviciile onorate și achitate',
+    onorataToata.status === 200 && dupaOnorare.every((s) => s.stare === 'onorat' && s.achitat === true),
+    JSON.stringify(dupaOnorare?.map((s) => [s.stare, s.achitat])))
+  const bonuri = new Set(dupaOnorare.map((s) => s.vanzare_id))
+  const bonulVizitei = await cere('GET', `/vanzari/${[...bonuri][0]}`, { token: admin })
+  verifica('toate pe UN bon, câte o linie pe serviciu, cu suma corectată (100 + 55 + 80 = 235)',
+    bonuri.size === 1 && bonulVizitei.corp?.linii?.length === 3 && bonulVizitei.corp?.total === 235,
+    JSON.stringify({ bonuri: bonuri.size, total: bonulVizitei.corp?.total }))
+
+  const anulareRefuzata = await cere('PATCH', `/programari/${sAl3lea.id}/stare`, {
+    token: admin, corp: { stare: 'anulat' },
+  })
+  verifica('o programare cu servicii încasate nu se anulează -> 400 pe „stare”',
+    anulareRefuzata.status === 400 && anulareRefuzata.corp?.camp === 'stare', JSON.stringify(anulareRefuzata.corp))
+  const scoatereRefuzata = await cere('PATCH', `/programari/${sCura.id}`, {
+    token: admin, corp: { servicii: [{ id: sCura.id, articol_id: cura_id }] },
+  })
+  verifica('un serviciu încasat nu se scoate din programare -> 400 pe „servicii”',
+    scoatereRefuzata.status === 400 && scoatereRefuzata.corp?.camp === 'servicii', JSON.stringify(scoatereRefuzata.corp))
+  const acelasiPret = await cere('PATCH', `/programari/${sAl3lea.id}`, {
+    token: admin, corp: { pret: 55, nota: 'Doar nota, prețul la fel' },
+  })
+  verifica('pe un serviciu încasat, prețul retrimis NESCHIMBAT nu mai cade -> 200',
+    acelasiPret.status === 200 && acelasiPret.corp?.nota === 'Doar nota, prețul la fel',
+    `a venit ${acelasiPret.status}: ${JSON.stringify(acelasiPret.corp)}`)
+
+  const cuUnulInPlus = await cere('PATCH', `/programari/${sCura.id}`, {
+    token: admin,
+    corp: {
+      servicii: [
+        ...dupaOnorare.map((s) => ({ id: s.id, articol_id: s.articol_id })),
+        { articol_id: altServiciu.id, pret: 40 },
+      ],
+    },
+  })
+  const cuPatru = await serviciileVizitei(vizita_id)
+  const fisaVizitator = await cere('GET', `/clienti/${vizitator.id}`, { token: admin })
+  verifica('adăugat la o programare onorată, serviciul e onorat și rămâne de plată (40 pe fișă)',
+    cuUnulInPlus.status === 200 && cuPatru?.length === 4 && cuPatru[3]?.stare === 'onorat'
+      && cuPatru[3]?.achitat === false && fisaVizitator.corp?.de_incasat === 40,
+    JSON.stringify({ n: cuPatru?.length, ultimul: cuPatru?.[3]?.stare, de_incasat: fisaVizitator.corp?.de_incasat }))
+
+  // -------------------------------------------------------------------------
   console.log('\nArhivare, ștergere, sesiuni')
 
   const arhivat = await cere('POST', `/clienti/${injectat.corp.id}/arhivare`, { token: admin })

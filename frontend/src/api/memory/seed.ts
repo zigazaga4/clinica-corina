@@ -336,6 +336,19 @@ export function populeaza(): void {
   const programari: Programare[] = []
 
   /*
+    Programările cu DOUĂ servicii — o manichiură și, la aceeași venire, un
+    pensat. Al doilea serviciu este un rând în plus, cu același `vizita_id` și
+    același interval.
+
+    Alese după poziție, nu cu `rnd`, și ținute deoparte de `programari`: o
+    tragere în plus — sau un rând în plus în lista pe care se trag încasările —
+    ar muta tot restul datelor demo, de care depind testele și capturile.
+  */
+  const serviciiInPlus = new Map<Uuid, Programare>()
+  const dintrOVenire = serviciiActive.filter((s) => s.numar_sedinte === 1)
+  const LA_A_CATA = 9
+
+  /*
     Prețurile negociate, ținute minte pe (client, serviciu).
 
     O parte dintre cliente au un preț al lor la un serviciu anume — fidelitate,
@@ -456,9 +469,29 @@ export function populeaza(): void {
           creat_la: laTimestamptz(addDays(cursor, -intreg(rnd, 1, 14))),
           actualizat_la: creat_la,
           tratament_id: tratament?.rand.id ?? null,
+          vizita_id: uuid(),
         }
         magazin.programare.set(rand.id, rand)
         programari.push(rand)
+
+        // Din când în când, încă un serviciu la aceeași venire, cu prețul de
+        // listă — fără nicio tragere din `rnd` (v. `serviciiInPlus`). Doar după
+        // un serviciu dintr-o venire: ședințele de tratament rămân singure, ca
+        // în datele pe care se sprijină testele tratamentelor.
+        const alDoilea = programari.length % LA_A_CATA === 0 && serviciu.numar_sedinte === 1
+          ? dintrOVenire.filter((s) => s.id !== serviciu.id)[programari.length % (dintrOVenire.length - 1)]
+          : undefined
+        if (alDoilea) {
+          const inPlus: Programare = {
+            ...rand,
+            id: uuid(),
+            articol_id: alDoilea.id,
+            pret: alDoilea.pret_lista,
+            tratament_id: null,
+          }
+          magazin.programare.set(inPlus.id, inPlus)
+          serviciiInPlus.set(rand.id, inPlus)
+        }
 
         // Interval tampon între programări.
         cursor = addMinutes(sfarsit, alege(rnd, [0, 15, 15, 30]))
@@ -558,6 +591,9 @@ export function populeaza(): void {
     // Prețul convenit la programare, NU cel din nomenclator: pe asta se
     // sprijină prețurile negociate de mai sus.
     adaugaLinie(vanzare.id, programare.articol_id, 1, programare.pret, programare.id)
+    // Al doilea serviciu al aceleiași programări se plătește pe același bon.
+    const inPlus = serviciiInPlus.get(programare.id)
+    if (inPlus) adaugaLinie(vanzare.id, inPlus.articol_id, 1, inPlus.pret, inPlus.id)
 
     // Uneori clientul pleacă și cu un produs.
     if (sansa(rnd, 0.3)) {

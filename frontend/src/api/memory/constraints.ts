@@ -164,22 +164,25 @@ export function verificaArticolProgramabil(articol_id: Uuid): Articol {
 
 /**
  * CONSTRAINT programare_fara_suprapunere EXCLUDE USING gist (
- *   executant_id WITH =, tstzrange(incepe_la, se_termina_la) WITH &&
+ *   executant_id WITH =, tstzrange(incepe_la, se_termina_la) WITH &&,
+ *   vizita_id WITH <>
  * ) WHERE (stare <> 'anulat')
  *
  * Programările anulate sunt în afara constrângerii — locul se eliberează.
+ * Serviciile programării verificate (`vizita_id`) nu se numără: stau dinadins
+ * în același interval, iar o reprogramare nu se ciocnește de ea însăși.
  */
 export function verificaSuprapunere(
   executant_id: Uuid,
   incepe_la: Timestamptz,
   se_termina_la: Timestamptz,
   stare: StareProgramare,
-  exceptaId?: Uuid,
+  vizita_id?: Uuid,
 ): void {
   if (stare === 'anulat') return
 
   for (const p of magazin.programare.values()) {
-    if (p.id === exceptaId) continue
+    if (p.vizita_id === vizita_id) continue
     if (p.executant_id !== executant_id) continue
     if (p.stare === 'anulat') continue
     if (seSuprapun(incepe_la, se_termina_la, p.incepe_la, p.se_termina_la)) {

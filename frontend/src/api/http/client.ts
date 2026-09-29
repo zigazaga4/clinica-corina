@@ -258,6 +258,7 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
             stare,
             ...(optiuni?.achitat === undefined ? {} : { achitat: optiuni.achitat }),
             ...(optiuni?.pret === undefined ? {} : { pret: optiuni.pret }),
+            ...(optiuni?.preturi === undefined ? {} : { preturi: optiuni.preturi }),
           },
         }),
       pretSugerat: (client_id, articol_id) =>

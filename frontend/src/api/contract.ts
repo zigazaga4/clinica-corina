@@ -198,15 +198,49 @@ export interface FiltruProgramari extends IntervalTimp {
   client_id?: Uuid
   /** Ședințele unui tratament, pentru fișa lui. */
   tratament_id?: Uuid
+  /** Serviciile unei programări (`Programare.vizita_id`), pentru fereastra ei. */
+  vizita_id?: Uuid
   stare?: StareProgramare[]
   /** true = doar ședințele onorate și neîncasate. */
   neachitate?: boolean
 }
 
-export interface DateProgramareNoua {
-  client_id: Uuid
+/**
+ * Un serviciu al programării, așa cum îl trimite formularul.
+ *
+ * Fiecare devine un rând `programare`, cu prețul, tratamentul și plata lui;
+ * toate au clientul, persoana, intervalul și nota programării.
+ */
+export interface ServiciuProgramare {
+  /**
+   * Rândul existent, la modificare. Lipsă = serviciu nou, adăugat programării.
+   * La creare nu are sens și se ignoră.
+   */
+  id?: Uuid
   /** Trebuie să fie un articol de tip 'serviciu' (CHECK articol_tip). */
   articol_id: Uuid
+  /** Lipsă = prețul sugerat (v. `pretSugerat`). */
+  pret?: number
+  /**
+   * Tratamentul în care intră ședința, doar pentru un serviciu nou. Lipsă:
+   * tratamentul în curs al clientului pentru acest serviciu, sau unul nou.
+   */
+  tratament_id?: Uuid | null
+}
+
+export interface DateProgramareNoua {
+  client_id: Uuid
+  /**
+   * Serviciul unei programări cu un singur serviciu — forma de dinainte de
+   * `servicii`. Cu `servicii`, se ignoră (ca și `pret` și `tratament_id`).
+   * Trebuie să fie un articol de tip 'serviciu' (CHECK articol_tip).
+   */
+  articol_id?: Uuid
+  /**
+   * Serviciile programării, în ordinea lor — unul sau mai multe: o manichiură
+   * și o ședință de IPL, două ședințe din abonamente diferite, oricâte.
+   */
+  servicii?: ServiciuProgramare[]
   executant_id: Uuid
   /** Opțional: clinica are un singur punct de lucru, iar serverul îl completează. */
   punct_lucru_id?: Uuid
@@ -229,7 +263,17 @@ export interface DateProgramareNoua {
   tratament_id?: Uuid | null
 }
 
-export type DateProgramareModificata = Partial<DateProgramareNoua>
+/**
+ * Clientul, persoana, intervalul și nota sunt ale PROGRAMĂRII: trimise pe
+ * oricare serviciu al ei, se schimbă pe toate. `articol_id` și `pret` sunt ale
+ * rândului cerut.
+ *
+ * `servicii` este lista COMPLETĂ a programării de acum încolo: cele cu `id`
+ * rămân (cu serviciul și prețul trimise), cele fără `id` se adaugă, iar un
+ * serviciu existent care lipsește se scoate — primește o programare a lui și
+ * se anulează. Un serviciu deja încasat nu se poate scoate.
+ */
+export type DateProgramareModificata = Partial<Omit<DateProgramareNoua, 'tratament_id'>>
 
 /** Ce s-ar întâmpla cu tratamentul dacă ședința s-ar salva acum. */
 export interface SugestieTratament {
@@ -269,6 +313,11 @@ export interface OptiuniStare {
    * încasării; refuzată pe o ședință deja încasată.
    */
   pret?: number
+  /**
+   * Sumele corectate ale serviciilor programării, pe rând: `{ [id]: suma }`.
+   * Aceleași reguli ca `pret`, pentru fiecare.
+   */
+  preturi?: Record<Uuid, number>
 }
 
 export interface ApiProgramari {
@@ -279,13 +328,21 @@ export interface ApiProgramari {
   /**
    * POST /programari — orice rol.
    * Respinsă (409) dacă executantul are deja o programare suprapusă
-   * (EXCLUDE USING gist ... WHERE stare <> 'anulat').
+   * (EXCLUDE USING gist ... WHERE stare <> 'anulat'). Întoarce PRIMUL serviciu
+   * al programării; toate se citesc cu `list({ vizita_id })`.
    */
   create(date: DateProgramareNoua): Promise<ProgramareDetaliu>
-  /** PATCH /programari/:id — orice rol. Modifică sau reprogramează. */
+  /**
+   * PATCH /programari/:id — orice rol. Modifică sau reprogramează toată
+   * programarea. Întoarce rândul cerut — sau, dacă a fost scos din listă,
+   * primul serviciu rămas.
+   */
   update(id: Uuid, date: DateProgramareModificata): Promise<ProgramareDetaliu>
   /**
    * PATCH /programari/:id/stare — orice rol.
+   *
+   * Starea este a programării: se pune pe TOATE serviciile ei, iar `achitat`
+   * le încasează pe toate cele neplătite, pe un singur bon.
    *
    * `achitat` are efect doar la trecerea pe 'onorat' și doar o singură dată:
    * true înregistrează pe loc încasarea ședinței, în aceeași tranzacție.

@@ -100,6 +100,12 @@ export interface Programare {
   actualizat_la: string
   /** Tratamentul din care face parte ședința; NULL la serviciile dintr-o venire. */
   tratament_id: string | null
+  /**
+   * Programarea din calendar din care face parte rândul. Rândurile cu același
+   * `vizita_id` sunt serviciile aceleiași programări: același client, aceeași
+   * persoană, același interval, aceeași stare.
+   */
+  vizita_id: string
 }
 
 /**

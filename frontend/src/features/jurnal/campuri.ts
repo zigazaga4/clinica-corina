@@ -50,6 +50,8 @@ const ETICHETE_CAMP: Record<string, string> = {
   punct_lucru_id: 'Punct de lucru',
   operator_id: 'Operator',
   programare_id: 'Programare',
+  vizita_id: 'Programarea din calendar',
+  motiv: 'Motiv',
   versiune: 'Versiunea acordului',
   marime: 'Mărime fișier',
   amprenta: 'Amprentă SHA-256',

@@ -205,6 +205,17 @@ export interface Programare {
   actualizat_la: Timestamptz
   /** Tratamentul din care face parte ședința; NULL la serviciile dintr-o venire. */
   tratament_id: Uuid | null
+  /**
+   * Programarea din calendar din care face parte rândul.
+   *
+   * Un rând `programare` este UN serviciu. Clienta care vine la 10:00 pentru o
+   * manichiură și ședința 3 din 6 de IPL are o singură programare în calendar
+   * și două rânduri cu același `vizita_id` — fiecare cu prețul, tratamentul și
+   * plata lui. Rândurile aceleiași vizite au același client, aceeași persoană,
+   * același interval, aceeași stare și aceeași notă; serverul le schimbă
+   * împreună. O programare cu un singur serviciu are o vizită a ei.
+   */
+  vizita_id: Uuid
 }
 
 /**
