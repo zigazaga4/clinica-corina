@@ -105,11 +105,18 @@ jobs:
       # pe amândouă. Actualizarea automată poate înlocui un singur fel de
       # instalare; dacă cineva ar porni de la MSI, o actualizare NSIS s-ar
       # așeza alături în loc să o înlocuiască, și ar rămâne cu două programe.
+      #
+      # Semnătura (`.sig`) pleacă împreună cu instalatorul. Cheia privată stă
+      # doar în secretele de aici, deci aceasta este singura compilare care o
+      # poate produce; fără ea în artefact, o versiune nu se poate publica de
+      # mână din el, ci doar prin „Run workflow”.
       - uses: actions/upload-artifact@v4
         with:
           name: GestiuneClinica-Windows
           if-no-files-found: error
-          path: frontend/src-tauri/target/release/bundle/nsis/*-setup.exe
+          path: |
+            frontend/src-tauri/target/release/bundle/nsis/*-setup.exe
+            frontend/src-tauri/target/release/bundle/nsis/*-setup.exe.sig
 
       - name: Pregătește publicarea
         if: github.event_name == 'workflow_dispatch'
