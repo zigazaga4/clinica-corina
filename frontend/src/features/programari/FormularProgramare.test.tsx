@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { magazin } from '@/api/memory/store'
 import { autentifica, randeaza } from '@/test/render'
 import { FormularProgramare } from './FormularProgramare'
+import type { LocAles } from './locAles'
 
 /*
   Clientul și serviciul „pe loc”, din formularul de programare.
@@ -117,5 +118,84 @@ describe('serviciu nou din formularul de programare', () => {
     // Dar clientul îl poate face oricine.
     await cautaIn(formular, /^Client/, 'Client Nou De Operator')
     expect(await formular.findByRole('button', { name: /Client nou/ }, ASTEPTARE)).toBeInTheDocument()
+  })
+})
+
+/*
+  Deschis din calendar: pornește din locul apăsat, nu de la „acum”.
+*/
+describe('programare nouă din locul apăsat în calendar', () => {
+  /** Contul demo cu numele dat — id-urile se generează la fiecare populare. */
+  const cont = (nume: string) => {
+    const u = [...magazin.utilizator.values()].find((x) => x.nume === nume)
+    if (!u) throw new Error(`Nu există contul demo „${nume}”.`)
+    return u
+  }
+
+  const loc = (dinColoana: string | null, sfarsit: Date | null = null): LocAles => ({
+    inceput: new Date(2026, 9, 6, 10, 30),
+    sfarsit,
+    executantId: dinColoana,
+    clientId: null,
+  })
+
+  async function deschideLa(l: LocAles) {
+    randeaza(<FormularProgramare deschisa onInchide={() => undefined} loc={l} />)
+    const formular = within(await screen.findByRole('dialog', {}, ASTEPTARE))
+    // Câmpurile se completează într-un efect, după prima pictare a ferestrei;
+    // în suita întreagă, cu nucleele ocupate, fereastra se găsește înaintea lui.
+    await waitFor(() => expect(formular.getByLabelText(/^Ziua/)).not.toHaveValue(''), ASTEPTARE)
+    return formular
+  }
+
+  const durata = (formular: ReturnType<typeof within>) =>
+    (formular.getByLabelText(/^Durata/) as HTMLSelectElement).value
+
+  it('completează ziua, ora și persoana coloanei', async () => {
+    await autentifica('admin@clinica.ro')
+    const andreea = cont('Andreea Popescu')
+    const formular = await deschideLa(loc(andreea.id))
+
+    expect(formular.getByLabelText(/^Ziua/)).toHaveValue('2026-10-06')
+    expect(formular.getByLabelText(/^Ora/)).toHaveValue('10:30')
+    expect(durata(formular)).toBe('60')
+    await waitFor(() =>
+      expect(formular.getByRole('combobox', { name: /^Persoana care execută/ })).toHaveTextContent(
+        'Andreea Popescu',
+      ),
+    ASTEPTARE)
+  })
+
+  it('un interval tras rămâne așa și după alegerea serviciului', async () => {
+    await autentifica('admin@clinica.ro')
+    const formular = await deschideLa(loc(null, new Date(2026, 9, 6, 12, 0)))
+    expect(durata(formular)).toBe('90')
+
+    await cautaIn(formular, /^Serviciu/, 'Manichiură clasică')
+    fireEvent.click(await formular.findByRole('option', { name: /Manichiură clasică/ }, ASTEPTARE))
+    await waitFor(() =>
+      expect(formular.getByRole('combobox', { name: /^Serviciu/ })).toHaveTextContent('Manichiură clasică'),
+    ASTEPTARE)
+    // Serviciul durează 45 de minute, dar intervalul l-a ales recepția.
+    expect(durata(formular)).toBe('90')
+  })
+
+  it('o simplă apăsare lasă durata serviciului', async () => {
+    await autentifica('admin@clinica.ro')
+    const formular = await deschideLa(loc(null))
+
+    await cautaIn(formular, /^Serviciu/, 'Manichiură clasică')
+    fireEvent.click(await formular.findByRole('option', { name: /Manichiură clasică/ }, ASTEPTARE))
+    await waitFor(() => expect(durata(formular)).toBe('45'), ASTEPTARE)
+  })
+
+  it('operatorul obișnuit rămâne executant chiar în coloana altcuiva', async () => {
+    await autentifica('andreea.popescu@clinica.ro')
+    const formular = await deschideLa(loc(cont('Mihaela Stan').id))
+    await waitFor(() =>
+      expect(formular.getByRole('combobox', { name: /^Persoana care execută/ })).toHaveTextContent(
+        'Andreea Popescu',
+      ),
+    ASTEPTARE)
   })
 })

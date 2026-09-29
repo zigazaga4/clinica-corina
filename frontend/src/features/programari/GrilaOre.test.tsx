@@ -1,0 +1,125 @@
+import { fireEvent, render } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { GrilaOre, type ColoanaGrila, type LocGrila } from './GrilaOre'
+import { PIXELI_PE_ORA, minutLaPozitie } from './constante'
+
+/*
+  Programarea direct din grilă: apăsare pe un loc liber, sau tragere cu mouse-ul.
+
+  jsdom nu așază nimic: orice element are dreptunghiul la 0, deci `clientY`
+  este chiar distanța de la vârful grilei — 8:00. O oră are `PIXELI_PE_ORA`.
+*/
+
+const ZI = new Date(2026, 9, 6) // marți, 6 octombrie 2026
+
+/** Pixelul (în grilă) la care cade ora `h:m`. */
+const la = (h: number, m = 0) => ((h - 8) * 60 + m) * (PIXELI_PE_ORA / 60)
+
+function grila(onProgrameaza?: (loc: LocGrila) => void, coloana: Partial<ColoanaGrila> = {}) {
+  const { container } = render(
+    <GrilaOre
+      coloane={[{ id: 'c', eticheta: 'Marți', zi: ZI, programari: [], executantId: 'u-1', ...coloana }]}
+      onAlegeProgramare={() => undefined}
+      {...(onProgrameaza ? { onProgrameaza } : {})}
+    />,
+  )
+  return container.querySelector<HTMLElement>('[data-strat-selectie]')
+}
+
+const mouse = (clientY: number) => ({ clientY, button: 0, pointerId: 1, pointerType: 'mouse' })
+const ora = (h: number, m = 0) => new Date(2026, 9, 6, h, m)
+
+describe('programare din grila orară', () => {
+  it('o apăsare alege sfertul de sub cursor, cu persoana coloanei', () => {
+    const alege = vi.fn()
+    const strat = grila(alege)!
+    // 10:20 cade în sfertul 10:15.
+    fireEvent.pointerDown(strat, mouse(la(10, 20)))
+    fireEvent.pointerUp(strat, mouse(la(10, 20)))
+
+    expect(alege).toHaveBeenCalledTimes(1)
+    const loc = alege.mock.calls[0]![0] as LocGrila
+    expect(loc.inceput).toEqual(ora(10, 15))
+    // Doar apăsat: durata o hotărăște serviciul, în formular.
+    expect(loc.sfarsit).toBeNull()
+    expect(loc.coloana.executantId).toBe('u-1')
+  })
+
+  it('tras în jos alege intervalul întreg, cu ultimul sfert inclus', () => {
+    const alege = vi.fn()
+    const strat = grila(alege)!
+    fireEvent.pointerDown(strat, mouse(la(10)))
+    fireEvent.pointerMove(strat, mouse(la(11, 35)))
+    // Cât se trage, intervalul se vede, cu orele lui.
+    expect(strat).toHaveTextContent('10:00 – 11:45')
+    fireEvent.pointerUp(strat, mouse(la(11, 35)))
+
+    const loc = alege.mock.calls[0]![0] as LocGrila
+    expect(loc.inceput).toEqual(ora(10))
+    expect(loc.sfarsit).toEqual(ora(11, 45))
+  })
+
+  it('tras în sus dă același interval', () => {
+    const alege = vi.fn()
+    const strat = grila(alege)!
+    fireEvent.pointerDown(strat, mouse(la(11, 35)))
+    fireEvent.pointerMove(strat, mouse(la(10)))
+    fireEvent.pointerUp(strat, mouse(la(10)))
+
+    const loc = alege.mock.calls[0]![0] as LocGrila
+    expect(loc.inceput).toEqual(ora(10))
+    expect(loc.sfarsit).toEqual(ora(11, 45))
+  })
+
+  it('mouse-ul fără apăsare arată doar sfertul, fără să programeze', () => {
+    const alege = vi.fn()
+    const strat = grila(alege)!
+    fireEvent.pointerMove(strat, mouse(la(14, 40)))
+    expect(strat).toHaveTextContent('14:30')
+    fireEvent.pointerLeave(strat, mouse(la(14, 40)))
+    expect(strat).toHaveTextContent('')
+    expect(alege).not.toHaveBeenCalled()
+  })
+
+  it('clicul dreapta și derularea cu degetul nu programează', () => {
+    const alege = vi.fn()
+    const strat = grila(alege)!
+    fireEvent.pointerDown(strat, { ...mouse(la(9)), button: 2 })
+    fireEvent.pointerUp(strat, { ...mouse(la(9)), button: 2 })
+
+    // Pe ecranul tactil, tragerea derulează: browserul trimite `pointercancel`.
+    const deget = { clientY: la(9), button: 0, pointerId: 2, pointerType: 'touch' }
+    fireEvent.pointerDown(strat, deget)
+    fireEvent.pointerCancel(strat, deget)
+
+    expect(alege).not.toHaveBeenCalled()
+  })
+
+  it('o atingere scurtă programează, ca o apăsare', () => {
+    const alege = vi.fn()
+    const strat = grila(alege)!
+    const deget = { clientY: la(16), button: 0, pointerId: 3, pointerType: 'touch' }
+    fireEvent.pointerDown(strat, deget)
+    fireEvent.pointerUp(strat, deget)
+    expect((alege.mock.calls[0]![0] as LocGrila).inceput).toEqual(ora(16))
+  })
+
+  it('coloana notițelor clinicii nu primește programări', () => {
+    expect(grila(vi.fn(), { doarNotite: true })).toBeNull()
+  })
+
+  it('fără `onProgrameaza`, grila rămâne doar de citit', () => {
+    expect(grila()).toBeNull()
+  })
+})
+
+describe('minutLaPozitie', () => {
+  it('rotunjește în jos la sfert și rămâne în grilă', () => {
+    expect(minutLaPozitie(0)).toBe(0)
+    expect(minutLaPozitie(la(8, 14))).toBe(0)
+    expect(minutLaPozitie(la(8, 15))).toBe(15)
+    expect(minutLaPozitie(-40)).toBe(0)
+    // Ultimul sfert începe la 19:45: un interval nu poate ieși din grilă.
+    expect(minutLaPozitie(la(23))).toBe(11 * 60 + 45)
+  })
+})

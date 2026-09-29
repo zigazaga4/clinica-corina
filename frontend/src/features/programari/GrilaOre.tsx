@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react'
-import type { NotitaDetaliu, ProgramareDetaliu } from '@/domain/types'
+import type { NotitaDetaliu, ProgramareDetaliu, Uuid } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { isToday, laData } from '@/lib/dates'
 import { ChipNotita } from './CardNotita'
 import { ChipProgramare } from './CardProgramare'
 import { useCuloarePersoana } from './culoriExecutanti'
 import { type ElementCalendar, elementeCalendar, intervalul } from './elemente'
+import { StratSelectie } from './StratSelectie'
 import {
   INALTIME_GRILA,
   MINUTE_VIZIBILE,
@@ -35,17 +36,31 @@ export interface ColoanaGrila {
   programari: ProgramareDetaliu[]
   /** Notițele coloanei, așezate în aceeași grilă, alături de programări. */
   notite?: NotitaDetaliu[]
+  /** Persoana coloanei, în vederea pe zi: o programare pusă aici este a ei. */
+  executantId?: Uuid
+  /** Coloana notițelor clinicii: nu primește programări. */
+  doarNotite?: boolean
+}
+
+/** Locul apăsat pe grilă: ora (și sfârșitul, dacă s-a tras) și coloana lui. */
+export interface LocGrila {
+  inceput: Date
+  sfarsit: Date | null
+  coloana: ColoanaGrila
 }
 
 export function GrilaOre({
   coloane,
   onAlegeProgramare,
   onAlegeNotita,
+  onProgrameaza,
   antetLipicios = true,
 }: {
   coloane: ColoanaGrila[]
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
   onAlegeNotita?: (notita: NotitaDetaliu) => void
+  /** Prezentă = spațiul liber al grilei se poate apăsa pentru o programare nouă. */
+  onProgrameaza?: (loc: LocGrila) => void
   antetLipicios?: boolean
 }) {
   const refDerulare = useRef<HTMLDivElement>(null)
@@ -99,6 +114,11 @@ export function GrilaOre({
                 zi={coloana.zi}
                 onAlegeProgramare={onAlegeProgramare}
                 onAlegeNotita={onAlegeNotita}
+                onAlegeLoc={
+                  onProgrameaza && !coloana.doarNotite
+                    ? (inceput, sfarsit) => onProgrameaza({ inceput, sfarsit, coloana })
+                    : undefined
+                }
               />
             </div>
           ))}
@@ -113,16 +133,21 @@ function ColoanaElemente({
   zi,
   onAlegeProgramare,
   onAlegeNotita,
+  onAlegeLoc,
 }: {
   elemente: ElementCalendar[]
   zi?: Date
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
   onAlegeNotita?: (notita: NotitaDetaliu) => void
+  onAlegeLoc?: (inceput: Date, sfarsit: Date | null) => void
 }) {
   const asezate = asazaFaraSuprapunere(elemente)
 
   return (
     <div className="relative" style={{ height: INALTIME_GRILA }}>
+      {/* Primul, deci dedesubt: programările și notițele se apasă peste el. */}
+      {zi && onAlegeLoc && <StratSelectie zi={zi} onAlege={onAlegeLoc} />}
+
       {/* Liniile orelor */}
       {ORE.map((ora) => (
         <div
@@ -130,7 +155,9 @@ function ColoanaElemente({
           // Linia orei este reperul după care se citește la ce oră stă o
           // programare. Subțire și spălăcită, se pierdea pe ecranul de la
           // recepție; acum are grosime întreagă și culoarea neatenuată.
-          className="absolute inset-x-0 border-t-2 border-line"
+          // Apăsarea trece prin ea, la stratul de dedesubt: altfel ora fixă —
+          // exact locul pe care îl nimerește cine vrea „la 10” — n-ar răspunde.
+          className="pointer-events-none absolute inset-x-0 border-t-2 border-line"
           style={{ top: (ora - ORA_INCEPUT) * PIXELI_PE_ORA }}
           aria-hidden
         />

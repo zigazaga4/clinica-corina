@@ -1,6 +1,7 @@
+import { Plus } from 'lucide-react'
 import type { NotitaDetaliu, ProgramareDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
-import { formateazaZiScurt, isToday } from '@/lib/dates'
+import { formateazaZiLunga, formateazaZiScurt, isToday } from '@/lib/dates'
 import { ChipNotita } from './CardNotita'
 import { ChipProgramare } from './CardProgramare'
 import { dinZiua, elementeCalendar, intervalul } from './elemente'
@@ -12,8 +13,9 @@ const MAXIM_PE_ZI = 3
  * Vederea pe lună.
  *
  * Nu încearcă să arate orele — la 42 de zile pe ecran nu ar încăpea. Rolul ei
- * este densitatea: unde sunt zilele pline și unde sunt goluri. Apăsarea unei
- * zile trece în vederea pe zi, acolo unde detaliile chiar au loc.
+ * este densitatea: unde sunt zilele pline și unde sunt goluri. Apăsarea
+ * numărului zilei trece în vederea pe zi, acolo unde detaliile chiar au loc;
+ * apăsarea spațiului liber din zi (sau a „+”) deschide o programare nouă în ea.
  */
 export function GrilaLuna({
   zile,
@@ -23,6 +25,7 @@ export function GrilaLuna({
   onAlegeZi,
   onAlegeProgramare,
   onAlegeNotita,
+  onProgrameaza,
 }: {
   /** Cele 42 de zile ale grilei (6 săptămâni complete). */
   zile: Date[]
@@ -33,6 +36,8 @@ export function GrilaLuna({
   onAlegeZi: (zi: Date) => void
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
   onAlegeNotita?: (notita: NotitaDetaliu) => void
+  /** Prezentă = spațiul liber al unei zile deschide o programare nouă în ea. */
+  onProgrameaza?: (zi: Date) => void
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -56,28 +61,60 @@ export function GrilaLuna({
           return (
             <div
               key={zi.toISOString()}
+              // Doar spațiul liber al zilei: programările, notițele și butoanele
+              // din ea (toate sunt `button`) își păstrează apăsarea lor.
+              onClick={
+                onProgrameaza
+                  ? (e) => {
+                      if (!(e.target as Element).closest('button')) onProgrameaza(zi)
+                    }
+                  : undefined
+              }
               className={cn(
-                'flex min-h-24 flex-col gap-0.5 border-r-2 border-b-2 border-line p-1',
+                'group flex min-h-24 flex-col gap-0.5 border-r-2 border-b-2 border-line p-1',
                 // Zilele din lunile vecine rămân vizibile, dar estompate:
                 // săptămâna de la marginea lunii trebuie să arate completă.
                 !dinLunaCurenta && 'bg-muted/40',
+                onProgrameaza && 'cursor-pointer transition-colors hover:bg-primary-50/50',
               )}
             >
-              <button
-                type="button"
-                onClick={() => onAlegeZi(zi)}
-                className={cn(
-                  'mb-0.5 flex size-6 shrink-0 items-center justify-center self-start rounded-full',
-                  'text-[12px] font-medium tabular-nums transition-colors',
-                  azi
-                    ? 'bg-primary-600 text-white'
-                    : dinLunaCurenta
-                      ? 'text-ink hover:bg-muted'
-                      : 'text-ink-faint hover:bg-muted',
+              <div className="mb-0.5 flex shrink-0 items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => onAlegeZi(zi)}
+                  className={cn(
+                    'flex size-6 shrink-0 items-center justify-center rounded-full',
+                    'text-[12px] font-medium tabular-nums transition-colors',
+                    azi
+                      ? 'bg-primary-600 text-white'
+                      : dinLunaCurenta
+                        ? 'text-ink hover:bg-muted'
+                        : 'text-ink-faint hover:bg-muted',
+                  )}
+                >
+                  {zi.getDate()}
+                </button>
+                {/*
+                  Același lucru ca apăsarea spațiului liber, dar vizibil și
+                  atins de tastatură. Apare la trecerea mouse-ului, ca cele 42
+                  de zile să nu fie 42 de plusuri.
+                */}
+                {onProgrameaza && (
+                  <button
+                    type="button"
+                    onClick={() => onProgrameaza(zi)}
+                    aria-label={`Programare nouă pe ${formateazaZiLunga(zi)}`}
+                    title="Programare nouă"
+                    className={cn(
+                      'flex size-6 items-center justify-center rounded-full text-primary-600',
+                      'opacity-0 transition-opacity group-hover:opacity-100 hover:bg-primary-100',
+                      'focus-visible:opacity-100',
+                    )}
+                  >
+                    <Plus className="size-3.5" aria-hidden />
+                  </button>
                 )}
-              >
-                {zi.getDate()}
-              </button>
+              </div>
 
               {aleZilei.slice(0, MAXIM_PE_ZI).map((element) =>
                 element.fel === 'programare' ? (

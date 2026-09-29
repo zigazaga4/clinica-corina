@@ -36,3 +36,25 @@ export function pozitieVerticala(moment: Date): number {
 export function inaltimeInterval(inceput: Date, sfarsit: Date): number {
   return Math.max(20, pozitieVerticala(sfarsit) - pozitieVerticala(inceput))
 }
+
+/** Pasul în care se alege ora direct pe grilă: sfertul, ca în lista de ore a formularului. */
+export const PAS_MINUTE = 15
+
+/**
+ * Inversul lui `pozitieVerticala`: sfertul de oră în care cade un punct al
+ * grilei, în minute de la începutul ei. Rotunjit în JOS — sfertul pe care stă
+ * cursorul, nu cel mai apropiat — și ținut în grilă, ca ultimul sfert să
+ * înceapă cel târziu cu un pas înainte de închidere.
+ */
+export function minutLaPozitie(pixeli: number): number {
+  const sfert = Math.floor((pixeli / PIXELI_PE_ORA) * 60 / PAS_MINUTE) * PAS_MINUTE
+  return Math.max(0, Math.min(MINUTE_VIZIBILE - PAS_MINUTE, sfert))
+}
+
+/** Momentul aflat la `minute` de la începutul grilei, în ziua dată. */
+export function momentInZi(zi: Date, minute: number): Date {
+  const moment = new Date(zi)
+  // `setHours` duce singur minutele peste 59 în orele următoare.
+  moment.setHours(ORA_INCEPUT, minute, 0, 0)
+  return moment
+}

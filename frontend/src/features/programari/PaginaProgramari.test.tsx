@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { api } from '@/api'
 import { magazin } from '@/api/memory/store'
+import { addDays, formateazaZiLunga, intervalPentruVedere, laInputDate } from '@/lib/dates'
 import { autentifica, randeaza } from '@/test/render'
 import { PaginaProgramari } from './PaginaProgramari'
 
@@ -125,5 +126,32 @@ describe('notițe în calendar', () => {
         screen.queryByRole('button', { name: new RegExp(notita.titlu) }),
       ).not.toBeInTheDocument(),
     ASTEPTARE)
+  })
+})
+
+/*
+  Programare din locul apăsat în calendar — aici prin agendă, forma din jsdom
+  (și de pe telefon). Grila orară își are testele în `GrilaOre.test.tsx`.
+*/
+describe('programare direct din calendar', () => {
+  it('„+” pe o zi deschide „Programare nouă” în ziua aceea, la deschiderea clinicii', async () => {
+    await autentifica()
+    randeaza(<PaginaProgramari />)
+
+    // Săptămâna viitoare: nicio zi nu e azi, deci ora propusă e 8:00.
+    fireEvent.click(await screen.findByRole('button', { name: 'Interval următor' }, ASTEPTARE))
+    const luni = intervalPentruVedere(addDays(new Date(), 7), 'saptamana').zile[0]!
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: `Programare nouă pe ${formateazaZiLunga(luni)}` },
+        ASTEPTARE,
+      ),
+    )
+
+    const formular = within(await screen.findByRole('dialog', {}, ASTEPTARE))
+    expect(formular.getByText('Programare nouă')).toBeInTheDocument()
+    expect(formular.getByLabelText(/^Ziua/)).toHaveValue(laInputDate(luni))
+    expect(formular.getByLabelText(/^Ora/)).toHaveValue('08:00')
   })
 })

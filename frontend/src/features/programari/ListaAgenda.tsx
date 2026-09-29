@@ -1,4 +1,4 @@
-import { CalendarOff } from 'lucide-react'
+import { CalendarOff, Plus } from 'lucide-react'
 import type { NotitaDetaliu, ProgramareDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { formateazaZiLunga, isToday } from '@/lib/dates'
@@ -17,7 +17,8 @@ import { dinZiua, elementeCalendar } from './elemente'
  * care nu încape nici ora, necum numele clientului.
  *
  * Zilele goale sunt afișate explicit, nu sărite: un gol în agendă este o
- * informație — acolo se poate programa cineva.
+ * informație — acolo se poate programa cineva. Cu `onProgrameaza`, chiar se
+ * poate: ziua goală se apasă, iar fiecare zi are „+” în antet.
  */
 export function ListaAgenda({
   zile,
@@ -25,6 +26,7 @@ export function ListaAgenda({
   notite = [],
   onAlegeProgramare,
   onAlegeNotita,
+  onProgrameaza,
   cuExecutant = true,
   ascundeZileleGoale = false,
 }: {
@@ -33,6 +35,8 @@ export function ListaAgenda({
   notite?: NotitaDetaliu[]
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
   onAlegeNotita?: (notita: NotitaDetaliu) => void
+  /** Prezentă = fiecare zi deschide o programare nouă în ea. */
+  onProgrameaza?: (zi: Date) => void
   cuExecutant?: boolean
   /** În vederea pe lună, treizeci de zile goale ar îneca cele câteva pline. */
   ascundeZileleGoale?: boolean
@@ -50,7 +54,12 @@ export function ListaAgenda({
     })
     .filter((grup) => !ascundeZileleGoale || grup.aleZilei.length > 0)
 
-  if (grupuri.every((grup) => grup.aleZilei.length === 0)) {
+  // Cu `onProgrameaza`, o săptămână goală rămâne listată: fiecare zi liberă
+  // este chiar locul pe care se apasă ca să programezi.
+  if (
+    grupuri.every((grup) => grup.aleZilei.length === 0) &&
+    (!onProgrameaza || grupuri.length === 0)
+  ) {
     return (
       <StareGoala
         pictograma={<CalendarOff className="size-5" />}
@@ -72,13 +81,33 @@ export function ListaAgenda({
             )}
           >
             <span className="capitalize">{formateazaZiLunga(zi)}</span>
-            <span className="text-[12px] font-normal text-ink-faint">
+            <span className="flex items-center gap-2 text-[12px] font-normal text-ink-faint">
               {rezumatZilei(nrProgramari, nrNotite)}
+              {onProgrameaza && (
+                <button
+                  type="button"
+                  onClick={() => onProgrameaza(zi)}
+                  aria-label={`Programare nouă pe ${formateazaZiLunga(zi)}`}
+                  className="tinta-atingere -my-1 flex size-7 items-center justify-center rounded-full text-primary-600 hover:bg-primary-100"
+                >
+                  <Plus className="size-4" aria-hidden />
+                </button>
+              )}
             </span>
           </h3>
 
           {aleZilei.length === 0 ? (
-            <p className="px-4 py-3 text-[13px] text-ink-faint">Nicio programare.</p>
+            onProgrameaza ? (
+              <button
+                type="button"
+                onClick={() => onProgrameaza(zi)}
+                className="w-full px-4 py-3 text-left text-[13px] text-ink-faint transition-colors hover:bg-muted hover:text-primary-600"
+              >
+                Liber — apasă pentru o programare.
+              </button>
+            ) : (
+              <p className="px-4 py-3 text-[13px] text-ink-faint">Nicio programare.</p>
+            )
           ) : (
             <div className="divide-y divide-line/60">
               {aleZilei.map((element) =>

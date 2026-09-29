@@ -40,8 +40,9 @@ import { dinZiua } from './elemente'
 import { FormularNotita } from './FormularNotita'
 import { FormularProgramare } from './FormularProgramare'
 import { GrilaLuna } from './GrilaLuna'
-import { GrilaOre, type ColoanaGrila } from './GrilaOre'
+import { GrilaOre, type ColoanaGrila, type LocGrila } from './GrilaOre'
 import { ListaAgenda } from './ListaAgenda'
+import { inceputPeZi, type LocAles } from './locAles'
 
 /**
  * Calendarul (contract art. 3.1.B).
@@ -77,6 +78,8 @@ export function PaginaProgramari() {
 
   const [formularDeschis, setFormularDeschis] = useState(false)
   const [deModificat, setDeModificat] = useState<ProgramareDetaliu | null>(null)
+  // Locul apăsat în calendar, cu care pornește o programare nouă.
+  const [locAles, setLocAles] = useState<LocAles | null>(null)
   const [deVazut, setDeVazut] = useState<ProgramareDetaliu | null>(null)
 
   const [formularNotitaDeschis, setFormularNotitaDeschis] = useState(false)
@@ -121,6 +124,25 @@ export function PaginaProgramari() {
 
   const deschideFormular = (programare?: ProgramareDetaliu) => {
     setDeModificat(programare ?? null)
+    setLocAles(null)
+    setFormularDeschis(true)
+  }
+
+  /*
+    Programare nouă chiar din locul apăsat în calendar.
+
+    Persoana vine din coloană (vederea pe zi), altfel din filtrul de persoană;
+    clientul, din filtrul de client — cine caută „când mai vine doamna X?” și
+    apasă pe un gol vrea să o programeze pe ea.
+  */
+  const programeazaLa = (inceput: Date, sfarsit: Date | null, executantColoana?: Uuid) => {
+    setDeModificat(null)
+    setLocAles({
+      inceput,
+      sfarsit,
+      executantId: executantColoana ?? executantId,
+      clientId,
+    })
     setFormularDeschis(true)
   }
 
@@ -295,6 +317,10 @@ export function PaginaProgramari() {
               setAncora(zi)
               setVedere('zi')
             }}
+            onProgrameaza={({ inceput, sfarsit, coloana }) =>
+              programeazaLa(inceput, sfarsit, coloana.executantId)
+            }
+            onProgrameazaZi={(zi) => programeazaLa(inceputPeZi(zi), null)}
           />
         )}
       </Card>
@@ -303,6 +329,7 @@ export function PaginaProgramari() {
         deschisa={formularDeschis}
         onInchide={() => setFormularDeschis(false)}
         programare={deModificat}
+        loc={locAles}
       />
 
       <DetaliuProgramare
@@ -349,6 +376,8 @@ function Continut({
   onAlegeProgramare,
   onAlegeNotita,
   onAlegeZi,
+  onProgrameaza,
+  onProgrameazaZi,
 }: {
   vedere: VedereCalendar
   ecranMic: boolean
@@ -361,6 +390,10 @@ function Continut({
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
   onAlegeNotita: (notita: NotitaDetaliu) => void
   onAlegeZi: (zi: Date) => void
+  /** Un loc liber apăsat pe grila orară: ora știută. */
+  onProgrameaza: (loc: LocGrila) => void
+  /** O zi apăsată fără oră (luna, agenda): ora o propune `inceputPeZi`. */
+  onProgrameazaZi: (zi: Date) => void
 }) {
   // Pe telefon, orice vedere devine listă.
   if (ecranMic) {
@@ -372,6 +405,7 @@ function Continut({
           notite={notite}
           onAlegeProgramare={onAlegeProgramare}
           onAlegeNotita={onAlegeNotita}
+          onProgrameaza={onProgrameazaZi}
           cuExecutant={executantId === null}
           ascundeZileleGoale={vedere === 'luna'}
         />
@@ -390,6 +424,7 @@ function Continut({
           onAlegeZi={onAlegeZi}
           onAlegeProgramare={onAlegeProgramare}
           onAlegeNotita={onAlegeNotita}
+          onProgrameaza={onProgrameazaZi}
         />
       </div>
     )
@@ -409,6 +444,7 @@ function Continut({
         coloane={coloane}
         onAlegeProgramare={onAlegeProgramare}
         onAlegeNotita={onAlegeNotita}
+        onProgrameaza={onProgrameaza}
       />
     )
   }
@@ -435,6 +471,7 @@ function Continut({
     eticheta: persoana.nume,
     subeticheta: `${aleZilei.filter((p) => p.executant_id === persoana.id).length} programări`,
     zi,
+    executantId: persoana.id,
     programari: aleZilei.filter((p) => p.executant_id === persoana.id),
     // Filtrată pe o persoană, coloana ei primește și notițele clinicii — nu
     // mai există altă coloană care să le arate.
@@ -458,6 +495,7 @@ function Continut({
       zi,
       programari: [],
       notite: notiteClinicii,
+      doarNotite: true,
     })
   }
 
@@ -470,6 +508,7 @@ function Continut({
           notite={notiteZilei}
           onAlegeProgramare={onAlegeProgramare}
           onAlegeNotita={onAlegeNotita}
+          onProgrameaza={onProgrameazaZi}
         />
       </div>
     )
@@ -480,6 +519,7 @@ function Continut({
       coloane={coloane}
       onAlegeProgramare={onAlegeProgramare}
       onAlegeNotita={onAlegeNotita}
+      onProgrameaza={onProgrameaza}
     />
   )
 }

@@ -17,6 +17,7 @@ import { formateazaBani, parseNumar } from '@/lib/money'
 import { plural } from '@/lib/text'
 import { Buton, Input, Modala, Textarea, useNotificari } from '@/ui'
 import { CampuriInterval, proximulSfertDeOra } from './CampuriInterval'
+import type { LocAles } from './locAles'
 
 type CampFormular =
   | 'client_id'
@@ -40,20 +41,20 @@ export function FormularProgramare({
   deschisa,
   onInchide,
   programare,
-  /** Momentul pe care s-a apăsat în calendar, folosit ca oră de început. */
-  momentInitial,
+  loc,
   initial,
 }: {
   deschisa: boolean
   onInchide: () => void
   programare?: ProgramareDetaliu | null
-  momentInitial?: Date
+  /** Locul apăsat în calendar: ziua, ora și ce se mai știe de acolo. */
+  loc?: LocAles | null
   /** Ședința următoare a unui tratament — client și serviciu fixate. */
   initial?: ProgramareInitiala | null
 }) {
   const esteModificare = Boolean(programare)
   const dinTratament = Boolean(initial) && !esteModificare
-  const { utilizator } = useAutentificare()
+  const { utilizator, esteAdministrator } = useAutentificare()
   const notificari = useNotificari()
   const erori = useEroriFormular<CampFormular>()
 
@@ -76,6 +77,10 @@ export function FormularProgramare({
   // deja cu clientul.
   const [pretAtins, setPretAtins] = useState(false)
 
+  // Un interval TRAS în calendar este o alegere, nu o propunere: serviciul ales
+  // după aceea nu-i mai mută sfârșitul. O simplă apăsare lasă durata serviciului.
+  const intervalTras = useRef(false)
+
   const { data: sugestie } = usePretSugerat(clientId, articolId)
 
   // Valoarea afișată se DERIVĂ, nu se copiază într-un efect: altfel sugestia
@@ -88,6 +93,9 @@ export function FormularProgramare({
   useEffect(() => {
     if (!deschisa) return
     erori.goleste()
+    // La fiecare deschidere, din nou: o corectură deschisă după un interval
+    // tras nu are voie să moștenească regula lui.
+    intervalTras.current = !programare && Boolean(loc?.sfarsit)
 
     if (programare) {
       setClientId(programare.client_id)
@@ -103,21 +111,26 @@ export function FormularProgramare({
       return
     }
 
-    const inceput = momentInitial ?? proximulSfertDeOra()
-    setClientId(initial?.client_id ?? null)
+    const inceput = loc?.inceput ?? proximulSfertDeOra()
+    setClientId(initial?.client_id ?? loc?.clientId ?? null)
     setArticolId(initial?.articol_id ?? null)
     // Operatorul se programează cel mai des pe sine; e punctul de plecare cel
-    // mai probabil, iar schimbarea costă un clic.
-    setExecutantId(utilizator?.id ?? null)
+    // mai probabil, iar schimbarea costă un clic. Apăsat în coloana altei
+    // persoane, locul e al ei — dar numai pentru administrator: un operator
+    // obișnuit nu o poate alege (v. SelectorUtilizator), iar câmpul ar fi
+    // arătat gol peste un executant pe care nu-l vede.
+    setExecutantId(
+      (esteAdministrator ? loc?.executantId : null) ?? utilizator?.id ?? null,
+    )
     setIncepeLa(laInputDatetime(inceput))
-    setSeTerminaLa(laInputDatetime(addMinutes(inceput, 60)))
+    setSeTerminaLa(laInputDatetime(loc?.sfarsit ?? addMinutes(inceput, 60)))
     setNota('')
     setPret('')
     setPretAtins(false)
     // `erori` lipsește intenționat dintre dependențe: funcțiile lui sunt stabile
     // prin useCallback, iar obiectul se recreează la fiecare randare, deci
     // includerea lui ar reporni efectul și ar șterge ce tocmai s-a completat.
-  }, [deschisa, programare, momentInitial, initial, utilizator])
+  }, [deschisa, programare, loc, initial, utilizator, esteAdministrator])
 
   /*
     Durata serviciului fixat dinainte.
@@ -136,9 +149,10 @@ export function FormularProgramare({
     const serviciu = servicii.find((s) => s.id === initial.articol_id)
     if (!serviciu?.durata_minute) return
     durataAplicata.current = true
-    const inceput = momentInitial ?? proximulSfertDeOra()
+    if (intervalTras.current) return
+    const inceput = loc?.inceput ?? proximulSfertDeOra()
     setSeTerminaLa(laInputDatetime(addMinutes(inceput, serviciu.durata_minute)))
-  }, [deschisa, initial, servicii, momentInitial])
+  }, [deschisa, initial, servicii, loc])
 
   /**
    * Alegerea serviciului mută ora de sfârșit după `durata_minute`.
@@ -149,7 +163,7 @@ export function FormularProgramare({
    */
   const alegeServiciu = (id: Uuid | null) => {
     setArticolId(id)
-    if (!id || incepeLa === '') return
+    if (!id || incepeLa === '' || intervalTras.current) return
     const serviciu = servicii?.find((s) => s.id === id)
     if (!serviciu?.durata_minute) return
     setSeTerminaLa(laInputDatetime(addMinutes(new Date(incepeLa), serviciu.durata_minute)))

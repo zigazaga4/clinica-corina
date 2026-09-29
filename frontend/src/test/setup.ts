@@ -67,6 +67,14 @@ beforeAll(() => {
   if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = () => undefined
   }
+
+  // Tragerea unui interval pe grila calendarului (`StratSelectie`) ține
+  // indicatorul cu `setPointerCapture`, pe care jsdom nu îl are.
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = () => undefined
+    Element.prototype.releasePointerCapture = () => undefined
+    Element.prototype.hasPointerCapture = () => false
+  }
 })
 
 beforeEach(() => {
