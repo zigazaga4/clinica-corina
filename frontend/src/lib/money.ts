@@ -63,6 +63,17 @@ export function formateazaCantitate(valoare: number): string {
 }
 
 /**
+ * Un număr, în forma în care intră într-un câmp de formular: „1234,5”.
+ *
+ * Virgulă zecimală, fiindcă asta tastează recepția, și FĂRĂ separator de mii:
+ * „1.234,50” ar arăta mai frumos, dar `parseNumar` l-ar citi înapoi greșit.
+ * Perechea exactă a lui `parseNumar`.
+ */
+export function numarInCamp(valoare: number): string {
+  return String(valoare).replace('.', ',')
+}
+
+/**
  * Citește un număr dintr-un câmp de formular, acceptând atât virgula cât și
  * punctul ca separator zecimal — tastatura numerică românească dă virgulă.
  * Întoarce null pentru text care nu este număr, ca formularul să poată

@@ -83,6 +83,20 @@
   --color-persoana-bej: oklch(0.855 0.045 85);
   --color-persoana-bej-text: oklch(0.505 0.048 72);
 
+  /*
+    Seriile graficelor din Statistici.
+
+    Două identități — „încasat” și „cheltuit” — nu stări: de aceea nu sunt
+    `success`/`danger`, care rămân pentru semnul variațiilor (săgeată + text).
+    Prima este rozul aplicației; a doua, un albastru ales să rămână deosebit de
+    ea și pentru cine nu distinge roșul de verde. Perechea a trecut verificarea
+    automată de culori (luminozitate, saturație, separare la daltonism, contrast
+    peste 3:1 pe suprafața albă și pe cea întunecată) — schimbată de mână, o
+    nuanță „apropiată” poate pica exact acolo unde nu se vede cu ochiul.
+  */
+  --color-grafic-1: #d5528e;
+  --color-grafic-2: #2a78d6;
+
   --radius-camp: 0.625rem;
   --umbra-card: 0 1px 2px oklch(0.235 0.012 315 / 0.05);
   --umbra-ridicat:
@@ -150,6 +164,10 @@
   --color-persoana-bej: oklch(0.885 0.042 85);
   --color-persoana-bej-text: oklch(0.855 0.045 85);
 
+  /* Aceleași două serii, pașii lor pentru fundalul închis (verificați și ei). */
+  --color-grafic-1: #de6196;
+  --color-grafic-2: #3987e5;
+
   --umbra-card: 0 1px 2px oklch(0 0 0 / 0.35);
   --umbra-ridicat:
     0 10px 30px -12px oklch(0 0 0 / 0.6),
@@ -204,6 +222,9 @@
   --color-persoana-6: var(--color-persoana-6);
   --color-persoana-bej: var(--color-persoana-bej);
   --color-persoana-bej-text: var(--color-persoana-bej-text);
+
+  --color-grafic-1: var(--color-grafic-1);
+  --color-grafic-2: var(--color-grafic-2);
 
   --shadow-card: var(--umbra-card);
   --shadow-ridicat: var(--umbra-ridicat);

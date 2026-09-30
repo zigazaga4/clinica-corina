@@ -10,9 +10,12 @@
  */
 
 import type {
+  AccesStatistici,
   ApiClient,
   DateArticolModificat,
   DateArticolNou,
+  DateCheltuialaModificata,
+  DateCheltuialaNoua,
   DateClientModificat,
   DateClientNou,
   DateConsimtamantNou,
@@ -31,6 +34,7 @@ import type {
   DateVanzareModificata,
   DateVanzareNoua,
   FiltruArticole,
+  FiltruCheltuieli,
   FiltruClienti,
   FiltruConsimtaminte,
   FiltruJurnal,
@@ -38,14 +42,17 @@ import type {
   FiltruProgramari,
   FiltruTratamente,
   FiltruVanzari,
+  ListaCheltuieli,
   OptiuniStare,
   Paginat,
   PretSugerat,
   RaspunsLogin,
   ServiciuProgramare,
+  StareParolaStatistici,
 } from '@/api/contract'
 import {
   campVinovat,
+  eroareAccesStatistici,
   EroareApi,
   eroareConflict,
   eroareInterzis,
@@ -55,6 +62,8 @@ import {
 import { citesteTokenuri } from '@/api/session'
 import type {
   Articol,
+  Cheltuiala,
+  CheltuialaDetaliu,
   Client,
   ClientListItem,
   ConsimtamantDetaliu,
@@ -67,6 +76,7 @@ import type {
   Programare,
   ProgramareDetaliu,
   PunctLucru,
+  RaportStatistici,
   StareProgramare,
   Timestamptz,
   Tratament,
@@ -79,11 +89,12 @@ import type {
 } from '@/domain/types'
 import { acum, addDays, laTimestamptz } from '@/lib/dates'
 import { uuid } from '@/lib/id'
-import { rotunjeste, totalLinie } from '@/lib/money'
+import { rotunjeste, sumaTotal, totalLinie } from '@/lib/money'
 import { contine, doarCifre, normalizeaza } from '@/lib/text'
 import {
   ceruta,
   ceruteText,
+  dataCeruta,
   textOptional,
   verificaArticolProgramabil,
   verificaCantitate,
@@ -96,9 +107,11 @@ import {
   verificaParola,
   verificaPret,
   verificaStergereClient,
+  verificaSumaPozitiva,
   verificaSuprapunere,
 } from './constraints'
 import {
+  hidrateazaCheltuiala,
   hidrateazaClient,
   hidrateazaConsimtamant,
   hidrateazaJurnal,
@@ -112,6 +125,7 @@ import {
 } from './hydrate'
 import { diferenta, instantaneu, scrieJurnal } from './journal'
 import { populeaza } from './seed'
+import { calculeazaRaport } from './statistici'
 import {
   inTranzactie,
   magazin,
@@ -206,6 +220,86 @@ function cereAdministrator(): RandUtilizator {
     throw eroareInterzis('Această operațiune este permisă doar administratorului.')
   }
   return utilizator
+}
+
+// ---------------------------------------------------------------------------
+// Parola statisticilor — v. `backend/src/middleware/acces-statistici.ts`
+// ---------------------------------------------------------------------------
+
+/** Cât ține o deblocare, ca pe server. */
+const DURATA_ACCES_STATISTICI_MINUTE = 60
+
+/**
+ * Deblocarea curentă — echivalentul jetonului de pe server, legat la fel: de
+ * cont, de sesiune și de parola cu care s-a deschis. Stă în memoria modulului,
+ * nu în `localStorage`: o reîncărcare încuie statisticile.
+ */
+let accesStatistici: {
+  utilizator_id: Uuid
+  sesiune_id: Uuid
+  versiune: string
+  expira: number
+} | null = null
+
+/** Amprenta parolei curente: se schimbă la fiecare alegere a ei. */
+const versiuneParolaStatistici = (): string | null =>
+  magazin.parola_statistici
+    ? `${magazin.parola_statistici.actualizat_la}|${magazin.parola_statistici.parola_hash}`
+    : null
+
+function deschideStatisticile(utilizator: RandUtilizator): AccesStatistici {
+  const expira = Date.now() + DURATA_ACCES_STATISTICI_MINUTE * 60_000
+  accesStatistici = {
+    utilizator_id: utilizator.id,
+    sesiune_id: sesiuneCurenta()?.id ?? '',
+    versiune: versiuneParolaStatistici() ?? '',
+    expira,
+  }
+  return { expira_la: new Date(expira).toISOString() }
+}
+
+/** Rutele din spatele parolei statisticilor: întâi contul, apoi deblocarea. */
+function cereAccesStatistici(): RandUtilizator {
+  const utilizator = cereUtilizator()
+  const acces = accesStatistici
+  if (!acces) throw eroareAccesStatistici()
+  if (acces.expira <= Date.now()) {
+    accesStatistici = null
+    throw eroareAccesStatistici('Statisticile s-au încuiat singure după o oră. Scrie din nou parola.')
+  }
+  if (acces.utilizator_id !== utilizator.id || acces.sesiune_id !== sesiuneCurenta()?.id) {
+    throw eroareAccesStatistici()
+  }
+  if (acces.versiune !== versiuneParolaStatistici()) {
+    accesStatistici = null
+    throw eroareAccesStatistici('Parola statisticilor s-a schimbat. Scrie parola nouă.')
+  }
+  return utilizator
+}
+
+/** Are sesiunea statisticile deblocate? Pentru jurnal, care doar ascunde banii. */
+function areAccesStatistici(): boolean {
+  try {
+    cereAccesStatistici()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Entitățile ale căror date din jurnal se văd doar cu statisticile deblocate. */
+const ENTITATI_CU_BANI = new Set(['cheltuiala'])
+
+/**
+ * Categoria cheltuielii, scrisă ca data trecută: „chirie” se lipește de
+ * „Chirie”, altfel graficul ar fi arătat chiria în două felii.
+ */
+function categoriaCheltuielii(valoare: string | undefined): string {
+  const categorie = ceruteText(valoare, 'categorie', 'Categoria')
+  const existenta = [...magazin.cheltuiala.values()]
+    .filter((c) => c.categorie.toLowerCase() === categorie.toLowerCase())
+    .sort((a, b) => a.creat_la.localeCompare(b.creat_la))[0]
+  return existenta?.categorie ?? categorie
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +438,7 @@ export function creeazaApiInMemorie(): ApiClient {
       /** POST /auth/logout */
       async logout(refresh_token): Promise<void> {
         await intarziere()
+        accesStatistici = null
         const parti = refresh_token.split('.')
         const sesiune = parti.length === 3 ? magazin.sesiune.get(parti[1] as Uuid) : undefined
         // Delogarea unei sesiuni deja revocate nu este o eroare.
@@ -1302,10 +1397,10 @@ export function creeazaApiInMemorie(): ApiClient {
     // Vânzări
     // =======================================================================
     vanzari: {
-      /** GET /vanzari — orice rol */
+      /** GET /vanzari — orice rol, cu statisticile deblocate */
       async list(filtru: FiltruVanzari = {}): Promise<Paginat<VanzareDetaliu>> {
         await intarziere()
-        cereUtilizator()
+        cereAccesStatistici()
 
         const randuri: VanzareDetaliu[] = []
         for (const v of magazin.vanzare.values()) {
@@ -1520,6 +1615,200 @@ export function creeazaApiInMemorie(): ApiClient {
           date.efectuat_la ?? acum(),
           date.nota ?? null,
         )
+      },
+    },
+
+    // =======================================================================
+    // Statistici — în spatele parolei lor
+    // =======================================================================
+    statistici: {
+      /** GET /statistici/acces — orice rol */
+      async stare(): Promise<StareParolaStatistici> {
+        await intarziere()
+        cereUtilizator()
+        return { parola_setata: magazin.parola_statistici !== null }
+      },
+
+      /** POST /statistici/acces — orice rol */
+      async deblocheaza(parola): Promise<AccesStatistici> {
+        await intarziere()
+        const utilizator = cereUtilizator()
+        if (!parola) throw eroareValidare('Scrie parola statisticilor.', 'parola')
+
+        const rand = magazin.parola_statistici
+        if (!rand) {
+          throw eroareValidare(
+            'Parola statisticilor nu a fost aleasă încă. Un administrator o alege la prima deschidere.',
+            'parola',
+          )
+        }
+        if (rand.parola_hash !== parola) {
+          throw eroareValidare('Parola statisticilor nu este corectă.', 'parola')
+        }
+
+        scrieJurnal({ utilizator_id: utilizator.id, actiune: 'autentificare', entitate: 'statistici' })
+        return deschideStatisticile(utilizator)
+      },
+
+      /** PUT /statistici/parola — administrator */
+      async seteazaParola({ parola_noua, parola_curenta }): Promise<AccesStatistici> {
+        await intarziere()
+        const autor = cereAdministrator()
+
+        if ((parola_noua ?? '').length < 8) {
+          throw eroareValidare('Parola statisticilor trebuie să aibă cel puțin 8 caractere.', 'parola_noua')
+        }
+        if (parola_noua === autor.parola_hash) {
+          throw eroareValidare(
+            'Alege o parolă diferită de cea a contului tău — altfel oricine intră cu contul vede și statisticile.',
+            'parola_noua',
+          )
+        }
+
+        const existenta = magazin.parola_statistici
+        if (existenta) {
+          if (!parola_curenta) {
+            throw eroareValidare('Scrie parola curentă a statisticilor.', 'parola_curenta')
+          }
+          if (existenta.parola_hash !== parola_curenta) {
+            throw eroareValidare('Parola curentă a statisticilor nu este corectă.', 'parola_curenta')
+          }
+        }
+
+        // Un rând nou, nu unul modificat pe loc — vezi `RandParolaStatistici`.
+        magazin.parola_statistici = { parola_hash: parola_noua, actualizat_de: autor.id, actualizat_la: acum() }
+        scrieJurnal({
+          utilizator_id: autor.id,
+          actiune: existenta ? 'modificare' : 'creare',
+          entitate: 'parola_statistici',
+        })
+        return deschideStatisticile(autor)
+      },
+
+      blocheaza(): void {
+        accesStatistici = null
+      },
+
+      /** GET /statistici — cu statisticile deblocate */
+      async raport(filtru): Promise<RaportStatistici> {
+        await intarziere()
+        cereAccesStatistici()
+        return calculeazaRaport(filtru)
+      },
+    },
+
+    // =======================================================================
+    // Cheltuieli — tot în spatele parolei statisticilor
+    // =======================================================================
+    cheltuieli: {
+      /** GET /cheltuieli */
+      async list(filtru: FiltruCheltuieli = {}): Promise<ListaCheltuieli> {
+        await intarziere()
+        cereAccesStatistici()
+
+        const de_la = filtru.de_la ? dataCeruta(filtru.de_la, 'de_la', 'Începutul perioadei') : null
+        const pana_la = filtru.pana_la ? dataCeruta(filtru.pana_la, 'pana_la', 'Sfârșitul perioadei') : null
+        const q = (filtru.q ?? '').trim()
+
+        const randuri = [...magazin.cheltuiala.values()]
+          .filter((c) => (de_la === null || c.data >= de_la) && (pana_la === null || c.data <= pana_la))
+          .filter((c) => !filtru.categorie || c.categorie === filtru.categorie)
+          .filter((c) => q === '' || contine(c.categorie, q) || contine(c.descriere, q))
+          .sort(
+            (a, b) =>
+              b.data.localeCompare(a.data) ||
+              b.creat_la.localeCompare(a.creat_la) ||
+              a.id.localeCompare(b.id),
+          )
+
+        return {
+          ...pagineaza(randuri.map(hidrateazaCheltuiala), filtru.pagina, filtru.pe_pagina),
+          suma: sumaTotal(randuri.map((c) => c.suma)),
+        }
+      },
+
+      /** GET /cheltuieli/categorii — cele mai folosite întâi */
+      async categorii(): Promise<string[]> {
+        await intarziere()
+        cereAccesStatistici()
+        const numar = new Map<string, number>()
+        for (const c of magazin.cheltuiala.values()) numar.set(c.categorie, (numar.get(c.categorie) ?? 0) + 1)
+        return [...numar.entries()]
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ro'))
+          .map(([categorie]) => categorie)
+      },
+
+      /** POST /cheltuieli */
+      async create(date: DateCheltuialaNoua): Promise<CheltuialaDetaliu> {
+        await intarziere()
+        const autor = cereAccesStatistici()
+
+        const acumIso = acum()
+        const rand: Cheltuiala = {
+          id: uuid(),
+          data: dataCeruta(date.data, 'data', 'Data'),
+          categorie: categoriaCheltuielii(date.categorie),
+          descriere: textOptional(date.descriere),
+          suma: verificaSumaPozitiva(date.suma, 'suma', 'Suma'),
+          creat_de: autor.id,
+          creat_la: acumIso,
+          actualizat_la: acumIso,
+        }
+        magazin.cheltuiala.set(rand.id, rand)
+
+        scrieJurnal({
+          utilizator_id: autor.id,
+          actiune: 'creare',
+          entitate: 'cheltuiala',
+          entitate_id: rand.id,
+          date_noi: instantaneu(rand as unknown as Record<string, unknown>),
+        })
+        return hidrateazaCheltuiala(rand)
+      },
+
+      /** PATCH /cheltuieli/:id */
+      async update(id, date: DateCheltuialaModificata): Promise<CheltuialaDetaliu> {
+        await intarziere()
+        const autor = cereAccesStatistici()
+        const rand = ceruta(magazin.cheltuiala, id, 'Cheltuiala')
+        if (Object.values(date).every((v) => v === undefined)) {
+          throw eroareValidare('Nu ai trimis niciun câmp de modificat.')
+        }
+
+        // Totul se verifică înainte de a scrie ceva, ca pe server: o sumă
+        // greșită nu are voie să lase data deja schimbată.
+        const dupa: Cheltuiala = {
+          ...rand,
+          ...(date.data !== undefined ? { data: dataCeruta(date.data, 'data', 'Data') } : {}),
+          ...(date.categorie !== undefined ? { categorie: categoriaCheltuielii(date.categorie) } : {}),
+          ...(date.descriere !== undefined ? { descriere: textOptional(date.descriere) } : {}),
+          ...(date.suma !== undefined ? { suma: verificaSumaPozitiva(date.suma, 'suma', 'Suma') } : {}),
+        }
+        const dif = diferenta(
+          rand as unknown as Record<string, unknown>,
+          dupa as unknown as Record<string, unknown>,
+        )
+        if (dif) {
+          atinge(dupa)
+          magazin.cheltuiala.set(id, dupa)
+          scrieJurnal({ utilizator_id: autor.id, actiune: 'modificare', entitate: 'cheltuiala', entitate_id: id, ...dif })
+        }
+        return hidrateazaCheltuiala(magazin.cheltuiala.get(id) ?? dupa)
+      },
+
+      /** DELETE /cheltuieli/:id — urma rămâne în jurnal */
+      async remove(id): Promise<void> {
+        await intarziere()
+        const autor = cereAccesStatistici()
+        const rand = ceruta(magazin.cheltuiala, id, 'Cheltuiala')
+        scrieJurnal({
+          utilizator_id: autor.id,
+          actiune: 'stergere',
+          entitate: 'cheltuiala',
+          entitate_id: id,
+          date_vechi: instantaneu(rand as unknown as Record<string, unknown>),
+        })
+        magazin.cheltuiala.delete(id)
       },
     },
 
@@ -1865,6 +2154,8 @@ export function creeazaApiInMemorie(): ApiClient {
         cereAdministrator()
 
         const actiuni = filtru.actiune && filtru.actiune.length > 0 ? new Set(filtru.actiune) : null
+        // Ca pe server: sumele cheltuielilor nu se văd în jurnal fără parola statisticilor.
+        const vedeBanii = areAccesStatistici()
 
         const randuri: JurnalOperatiuneDetaliu[] = []
         for (const j of magazin.jurnal_operatiuni) {
@@ -1873,7 +2164,12 @@ export function creeazaApiInMemorie(): ApiClient {
           if (filtru.entitate_id && j.entitate_id !== filtru.entitate_id) continue
           if (filtru.utilizator_id && j.utilizator_id !== filtru.utilizator_id) continue
           if (actiuni && !actiuni.has(j.actiune)) continue
-          randuri.push(hidrateazaJurnal(j))
+          const rand = hidrateazaJurnal(j)
+          randuri.push(
+            vedeBanii || !ENTITATI_CU_BANI.has(rand.entitate)
+              ? rand
+              : { ...rand, date_vechi: null, date_noi: null },
+          )
         }
 
         randuri.sort((a, b) => b.creat_la.localeCompare(a.creat_la) || b.id - a.id)

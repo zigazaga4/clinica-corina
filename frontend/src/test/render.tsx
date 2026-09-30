@@ -101,3 +101,18 @@ export async function autentifica(email = 'admin@clinica.ro') {
   })
   return raspuns.utilizator
 }
+
+/** Parola statisticilor în teste — alta decât a conturilor, ca în aplicație. */
+export const PAROLA_STATISTICI_TEST = 'statistici-test'
+
+/**
+ * Deblochează statisticile pentru sesiunea curentă: le alege parola, dacă nu
+ * există încă (cere un administrator autentificat), altfel o folosește.
+ * Pentru ecranele din spatele ei — lista încasărilor, cheltuielile, raportul.
+ */
+export async function deschideStatisticile(parola = PAROLA_STATISTICI_TEST) {
+  const { parola_setata } = await api.statistici.stare()
+  return parola_setata
+    ? api.statistici.deblocheaza(parola)
+    : api.statistici.seteazaParola({ parola_noua: parola })
+}

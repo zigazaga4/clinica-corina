@@ -23,12 +23,14 @@ const TABELE = [
   'abonament', 'abonament_sedinta', 'plata',
   'sesiune', 'jurnal_operatiuni',
   'consimtamant', 'notita', 'tratament',
+  'cheltuiala', 'parola_statistici',
 ]
 
 const VEDERI = [
   'v_client_detaliu', 'v_programare_detaliu',
   'v_vanzare_detaliu', 'v_vanzare_linie_detaliu',
   'v_consimtamant_detaliu', 'v_notita_detaliu', 'v_tratament_detaliu',
+  'v_cheltuiala_detaliu',
 ]
 
 /** Adresa de conectare, fără parolă — ieșirea ajunge des într-un e-mail. */
@@ -70,6 +72,9 @@ async function ruleaza(): Promise<void> {
     'vanzare_neachitata_idx',
     // Semnul migrației cu mai multe servicii într-o programare.
     'programare_vizita_idx',
+    // Semnul migrației statisticilor: fără ele, profitul ar primi cheltuieli de zero lei.
+    'cheltuiala_suma_ck',
+    'cheltuiala_data_idx',
   ]
   const gasite = await multe<{ conname: string }>(
     pool,

@@ -14,7 +14,7 @@ import type { Articol, ProgramareDetaliu, Uuid } from '@/domain/types'
 import { addMinutes, dinInputDatetime, laInputDatetime } from '@/lib/dates'
 import { useEroriFormular } from '@/lib/formular'
 import { uuid } from '@/lib/id'
-import { formateazaBani, parseNumar, sumaTotal } from '@/lib/money'
+import { formateazaBani, numarInCamp, parseNumar, sumaTotal } from '@/lib/money'
 import { plural } from '@/lib/text'
 import { Buton, Input, Modala, Textarea, useNotificari } from '@/ui'
 import { CampuriInterval, proximulSfertDeOra } from './CampuriInterval'
@@ -119,7 +119,7 @@ export function FormularProgramare({
   // întârziere de o randare, exact peste ce tocmai s-a tastat.
   const pretAfisat = (rand: RandServiciu, i: number) => {
     const sugestie = sugestii[i]
-    return rand.pretAtins || !sugestie ? rand.pret : laText(sugestie.pret)
+    return rand.pretAtins || !sugestie ? rand.pret : numarInCamp(sugestie.pret)
   }
 
   // Reîncărcarea valorilor la fiecare deschidere: dialogul rămâne montat, deci
@@ -145,7 +145,7 @@ export function FormularProgramare({
           existent: s,
           articolId: s.articol_id,
           tratamentId: null,
-          pret: laText(s.pret),
+          pret: numarInCamp(s.pret),
           pretAtins: true,
         })),
       )
@@ -563,11 +563,6 @@ function RandServiciuFormular({
       )}
     </div>
   )
-}
-
-/** Sumele intră în câmp cu virgulă zecimală, forma pe care o tastează recepția. */
-function laText(valoare: number): string {
-  return String(valoare).replace('.', ',')
 }
 
 /** De unde vine prețul propus — ca operatoarea să știe de ce nu e cel din nomenclator. */

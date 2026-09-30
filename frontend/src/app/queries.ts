@@ -17,17 +17,21 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query'
-import { useMemo } from 'react'
-import { api } from '@/api'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { api, esteStatisticiIncuiate } from '@/api'
 import type {
+  AccesStatistici,
   DateArticolModificat,
   DateArticolNou,
+  DateCheltuialaModificata,
+  DateCheltuialaNoua,
   DateClientModificat,
   DateClientNou,
   DateConsimtamantNou,
   DateIncasare,
   DateNotitaModificata,
   DateNotitaNoua,
+  DateParolaStatistici,
   DateProgramareModificata,
   DateProgramareNoua,
   DateTratamentModificat,
@@ -37,19 +41,24 @@ import type {
   DateVanzareModificata,
   DateVanzareNoua,
   FiltruArticole,
+  FiltruCheltuieli,
   FiltruClienti,
   FiltruConsimtaminte,
   FiltruJurnal,
   FiltruNotite,
   FiltruProgramari,
+  FiltruStatistici,
   FiltruTratamente,
   FiltruVanzari,
+  ListaCheltuieli,
   OptiuniStare,
   Paginat,
   PretSugerat,
+  StareParolaStatistici,
 } from '@/api/contract'
 import type {
   Articol,
+  CheltuialaDetaliu,
   Client,
   ClientListItem,
   ConsimtamantDetaliu,
@@ -58,6 +67,7 @@ import type {
   NotaClientDetaliu,
   NotitaDetaliu,
   ProgramareDetaliu,
+  RaportStatistici,
   StareProgramare,
   TratamentDetaliu,
   Utilizator,
@@ -103,8 +113,20 @@ export const chei = {
   },
   vanzari: {
     tot: ['vanzari'] as const,
+    /** Lista întreagă a încasărilor — în spatele parolei statisticilor. */
+    liste: ['vanzari', 'lista'] as const,
     lista: (filtru: FiltruVanzari) => ['vanzari', 'lista', filtru] as const,
     una: (id: Uuid) => ['vanzari', 'una', id] as const,
+  },
+  statistici: {
+    tot: ['statistici'] as const,
+    parola: ['statistici', 'parola'] as const,
+    raport: (filtru: FiltruStatistici) => ['statistici', 'raport', filtru] as const,
+  },
+  cheltuieli: {
+    tot: ['cheltuieli'] as const,
+    lista: (filtru: FiltruCheltuieli) => ['cheltuieli', 'lista', filtru] as const,
+    categorii: ['cheltuieli', 'categorii'] as const,
   },
   articole: {
     tot: ['articole'] as const,
@@ -327,6 +349,8 @@ function invalideazaProgramari(qc: ReturnType<typeof useQueryClient>, client_id?
   // Tot ce știe un tratament se numără din ședințele lui: câte s-au făcut,
   // cât s-a împărțit, care e următoarea. O ședință nouă sau mutată le schimbă.
   void qc.invalidateQueries({ queryKey: chei.tratamente.tot })
+  // Programările onorate, neprezentările și restanțele din Statistici.
+  void qc.invalidateQueries({ queryKey: chei.statistici.tot })
   if (client_id) void qc.invalidateQueries({ queryKey: chei.clienti.istoric(client_id) })
 }
 
@@ -568,6 +592,8 @@ function invalideazaVanzari(qc: ReturnType<typeof useQueryClient>, client_id?: U
   // plată. Fără linia asta, calendarul și fișa ar continua să arate „De plată”
   // pe o ședință tocmai încasată.
   void qc.invalidateQueries({ queryKey: chei.programari.tot })
+  // Banii intrați sunt jumătate din Statistici.
+  void qc.invalidateQueries({ queryKey: chei.statistici.tot })
   if (client_id) void qc.invalidateQueries({ queryKey: chei.clienti.istoric(client_id) })
 }
 
@@ -601,6 +627,157 @@ export function useModificaVanzare(): UseMutationResult<
       qc.setQueryData(chei.vanzari.una(vanzare.id), vanzare)
       invalideazaVanzari(qc, vanzare.client_id)
     },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Statistici — în spatele parolei lor
+// ---------------------------------------------------------------------------
+
+/** Există parola statisticilor? Dacă nu, un administrator o alege. */
+export function useStareParolaStatistici(): UseQueryResult<StareParolaStatistici> {
+  return useQuery({
+    queryKey: chei.statistici.parola,
+    queryFn: () => api.statistici.stare(),
+  })
+}
+
+export function useDeblocheazaStatistici(): UseMutationResult<AccesStatistici, Error, string> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (parola: string) => api.statistici.deblocheaza(parola),
+    // Deschiderea rămâne în jurnal.
+    onSuccess: () => void qc.invalidateQueries({ queryKey: chei.jurnal.tot }),
+  })
+}
+
+export function useSeteazaParolaStatistici(): UseMutationResult<
+  AccesStatistici,
+  Error,
+  DateParolaStatistici
+> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (date: DateParolaStatistici) => api.statistici.seteazaParola(date),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: chei.statistici.parola })
+      void qc.invalidateQueries({ queryKey: chei.jurnal.tot })
+    },
+  })
+}
+
+/**
+ * Încuie statisticile: clientul API uită deblocarea, iar ce se citise cu ea
+ * dispare din memoria interfeței.
+ *
+ * Fără a doua parte, cifrele ar fi rămas în cache după plecarea din pagină și
+ * ar fi reapărut, pentru o clipă, la următoarea deschidere — înainte de parolă.
+ * Se cheamă DUPĂ ce ecranele care le citeau s-au închis: șterse de sub ochii
+ * lor, s-ar fi cerut din nou, fără deblocare.
+ */
+export function useBlocheazaStatistici(): () => void {
+  const qc = useQueryClient()
+  return useCallback(() => {
+    api.statistici.blocheaza()
+    qc.removeQueries({ queryKey: chei.statistici.tot, predicate: (q) => q.queryKey[1] !== 'parola' })
+    qc.removeQueries({ queryKey: chei.cheltuieli.tot })
+    qc.removeQueries({ queryKey: chei.vanzari.liste })
+  }, [qc])
+}
+
+/**
+ * Anunță când serverul spune că statisticile s-au încuiat — deblocarea a
+ * expirat sau parola s-a schimbat de pe alt calculator.
+ *
+ * Ascultă memoria interogărilor, nu fiecare ecran în parte: raportul, lista
+ * de cheltuieli, lista de încasări, o salvare din formular — oricare ar afla
+ * primul, pagina se încuie o singură dată, din același loc.
+ */
+export function useLaStatisticiIncuiate(laIncuiere: (mesaj: string) => void): void {
+  const qc = useQueryClient()
+  const ultima = useRef(laIncuiere)
+  useEffect(() => {
+    ultima.current = laIncuiere
+  }, [laIncuiere])
+
+  useEffect(() => {
+    const verifica = (eroare: unknown) => {
+      if (esteStatisticiIncuiate(eroare)) ultima.current(eroare.message)
+    }
+    const interogari = qc.getQueryCache().subscribe((e) => {
+      if (e.type === 'updated' && e.action.type === 'error') verifica(e.action.error)
+    })
+    const mutatii = qc.getMutationCache().subscribe((e) => {
+      if (e.type === 'updated' && e.action.type === 'error') verifica(e.action.error)
+    })
+    return () => {
+      interogari()
+      mutatii()
+    }
+  }, [qc])
+}
+
+export function useRaportStatistici(filtru: FiltruStatistici): UseQueryResult<RaportStatistici> {
+  return useQuery({
+    queryKey: chei.statistici.raport(filtru),
+    queryFn: () => api.statistici.raport(filtru),
+    // Graficele țin cadrul vechi cât sosesc cifrele noi — fără salt, fără schelet.
+    placeholderData: (anterioare) => anterioare,
+    // Întoarcerea la fereastră reverifică deblocarea: o parolă schimbată de pe
+    // alt calculator încuie ecranul de aici atunci, nu abia peste o oră.
+    refetchOnWindowFocus: true,
+  })
+}
+
+export function useCheltuieli(filtru: FiltruCheltuieli = {}): UseQueryResult<ListaCheltuieli> {
+  return useQuery({
+    queryKey: chei.cheltuieli.lista(filtru),
+    queryFn: () => api.cheltuieli.list(filtru),
+    placeholderData: (anterioare) => anterioare,
+    refetchOnWindowFocus: true,
+  })
+}
+
+export function useCategoriiCheltuieli(): UseQueryResult<string[]> {
+  return useQuery({
+    queryKey: chei.cheltuieli.categorii,
+    queryFn: () => api.cheltuieli.categorii(),
+  })
+}
+
+/** O cheltuială mută profitul — lista ei, categoriile, raportul și jurnalul. */
+function invalideazaCheltuieli(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: chei.cheltuieli.tot })
+  void qc.invalidateQueries({ queryKey: chei.statistici.tot })
+  void qc.invalidateQueries({ queryKey: chei.jurnal.tot })
+}
+
+export function useCreeazaCheltuiala(): UseMutationResult<CheltuialaDetaliu, Error, DateCheltuialaNoua> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (date: DateCheltuialaNoua) => api.cheltuieli.create(date),
+    onSuccess: () => invalideazaCheltuieli(qc),
+  })
+}
+
+export function useModificaCheltuiala(): UseMutationResult<
+  CheltuialaDetaliu,
+  Error,
+  { id: Uuid; date: DateCheltuialaModificata }
+> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, date }: { id: Uuid; date: DateCheltuialaModificata }) =>
+      api.cheltuieli.update(id, date),
+    onSuccess: () => invalideazaCheltuieli(qc),
+  })
+}
+
+export function useStergeCheltuiala(): UseMutationResult<void, Error, Uuid> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: Uuid) => api.cheltuieli.remove(id),
+    onSuccess: () => invalideazaCheltuieli(qc),
   })
 }
 

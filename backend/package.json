@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "db:schema": "psql -v ON_ERROR_STOP=1 -d \"${DATABASE_URL:-clinica}\" -f sql/01_schema.sql",
     "seed": "tsx src/seed.ts",
+    "parola-statistici": "tsx src/parola-statistici.ts",
     "test:db": "tsx src/test-db.ts",
     "test:api": "tsx src/test-api.ts"
   },

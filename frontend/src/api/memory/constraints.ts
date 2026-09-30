@@ -248,3 +248,31 @@ export function textOptional(valoare: string | null | undefined): string | null 
   const text = (valoare ?? '').trim()
   return text === '' ? null : text
 }
+
+/**
+ * O zi calendaristică `YYYY-MM-DD`, care chiar există — ca `dataCeruta` de pe
+ * server. „2026-02-30” nu alunecă tăcut în 2 martie, iar un moment cu oră nu
+ * trece drept zi.
+ */
+export function dataCeruta(valoare: string | null | undefined, camp: string, eticheta: string): string {
+  const text = ceruteText(valoare, camp, eticheta)
+  const parti = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text)
+  const zi = parti ? new Date(Date.UTC(Number(parti[1]), Number(parti[2]) - 1, Number(parti[3]))) : null
+  if (!parti || !zi || zi.getUTCMonth() !== Number(parti[2]) - 1 || zi.getUTCDate() !== Number(parti[3])) {
+    throw eroareValidare(`${eticheta} nu este o dată validă (AAAA-LL-ZZ).`, camp)
+  }
+  return text
+}
+
+/**
+ * CHECK (suma > 0) pe `numeric(10,2)` — o cheltuială de zero lei nu mută
+ * nimic din profit și este, aproape sigur, un formular salvat prea devreme.
+ */
+export function verificaSumaPozitiva(suma: number, camp: string, eticheta: string): number {
+  if (!Number.isFinite(suma)) throw eroareValidare(`${eticheta} trebuie să fie un număr.`, camp)
+  if (suma <= 0) throw eroareValidare(`${eticheta} trebuie să fie mai mare ca zero.`, camp)
+  if (Math.abs(Math.round(suma * 100) / 100) >= 1e8) {
+    throw eroareValidare(`${eticheta} nu poate depăși 99.999.999,99.`, camp)
+  }
+  return suma
+}

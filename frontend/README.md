@@ -112,6 +112,29 @@ de fapt — înainte de a intra în încasare.
 În cod, secțiunea se numește în continuare `vanzari` — tabelele și rutele §7
 nu s-au schimbat. Doar ecranul spune „Încasări”, pentru că asta este.
 
+## Statistici — în spatele unei parole separate
+
+Ecranul **Statistici** a luat locul fostului ecran „Încasări”: încasările,
+cheltuielile și profitul clinicii, cu grafice. Se deschide doar cu **parola
+statisticilor**, alta decât parola oricărui cont — o alege primul administrator
+care intră acolo; schimbarea ei cere parola veche. Se încuie la plecarea din
+pagină, la „Încuie”, după o oră și când parola se schimbă de pe alt calculator.
+
+- **Rezumat** — pe o perioadă aleasă („Luna aceasta”, „Anul trecut”, un
+  interval oarecare), comparată cu perioada firească de dinainte: încasat,
+  cheltuieli, profit, rămas de încasat, programări onorate, clienți,
+  încasarea medie, neprezentări; graficul încasări–cheltuieli în timp și
+  desfacerile pe servicii, produse, persoane, categorii de cheltuieli, zilele
+  săptămânii și clienți. Fiecare grafic are și un tabel geamăn.
+- **Încasări** — fosta listă de încasări, neschimbată (și „Vinde produse”).
+- **Cheltuieli** — chiria, salariile, consumabilele: se scad din încasări în
+  profit. Singurul loc din aplicație de unde se scriu.
+
+Profitul este **încasat minus cheltuieli**: banii intrați după ziua plății, nu
+după ziua ședinței. Ce înseamnă fiecare cifră stă scris în
+`backend/src/lib/raport-statistici.ts`; `src/api/memory/statistici.ts` o
+calculează la fel pentru modul demonstrativ.
+
 ## Tratamente — serviciile în mai multe ședințe
 
 „Epilare IPL axile, 6 ședințe”, „anti-acnee, 4 ședințe”: serviciul se cumpără
@@ -278,8 +301,8 @@ apare deloc (ședința e deja în cronologie, cu preț, cu „Achitat” și cu 
 plății), iar una cu produse apare redusă la liniile de produs. Altfel aceeași
 ședință s-ar fi citit de două ori, iar coloana de sume ar fi dat dublul realității.
 
-Pe ecranul **Încasări** bonul rămâne întreg: acolo se citesc banii, și un bon
-fără ședințele pe care le-a stins ar fi un bon fals.
+Pe fila **Încasări** din Statistici bonul rămâne întreg: acolo se citesc banii,
+și un bon fără ședințele pe care le-a stins ar fi un bon fals.
 
 Prețul „ținut minte” pentru un client **nu** este o tabelă nouă: este prețul
 ultimei lui ședințe la acel serviciu, ignorând ședințele anulate. O tabelă în
@@ -330,7 +353,8 @@ src/
 │   ├── programari/   calendar zi / săptămână / lună + agendă, preț și plată
 │   ├── clienti/      listă, fișă, note, istoric, încasarea restanțelor
 │   ├── tratamente/   serviciile în mai multe ședințe: progres, bani, programare
-│   ├── vanzari/      încasările (ruta /incasari): plăți și produse
+│   ├── vanzari/      încasările: plăți, produse, lista din Statistici
+│   ├── statistici/   ruta /statistici: parola ei, rezumat, grafice, cheltuieli
 │   ├── nomenclator/  servicii și produse
 │   ├── utilizatori/  conturi și roluri
 │   └── jurnal/       jurnalul operațiunilor

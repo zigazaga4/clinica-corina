@@ -72,6 +72,9 @@ export const etichetaEntitate: Record<string, string> = {
   tratament: 'Tratament',
   vanzare: 'Vânzare',
   vanzare_linie: 'Linie vânzare',
+  cheltuiala: 'Cheltuială',
+  statistici: 'Statistici',
+  parola_statistici: 'Parola statisticilor',
   sesiune: 'Sesiune',
 }
 

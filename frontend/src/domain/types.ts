@@ -340,6 +340,26 @@ export interface VanzareLinie {
   programare_id: Uuid | null
 }
 
+/**
+ * Tabela `cheltuiala` — banii ieșiți: chirie, salarii, consumabile, marfă.
+ *
+ * Jumătatea profitului pe care nu o spune nicio altă tabelă. `data` este ziua
+ * plății, fără oră; `categorie` este text liber, iar serverul o lipește de una
+ * existentă care diferă doar prin majuscule. Se poate șterge — urma rămâne în
+ * jurnal.
+ */
+export interface Cheltuiala {
+  id: Uuid
+  data: DateOnly
+  categorie: string
+  descriere: string | null
+  /** CHECK (suma > 0) */
+  suma: number
+  creat_de: Uuid | null
+  creat_la: Timestamptz
+  actualizat_la: Timestamptz
+}
+
 /** Tabela `jurnal_operatiuni` — append-only: fără UPDATE, fără DELETE. */
 export interface JurnalOperatiune {
   /** bigserial — volum mare, secvențial. */
@@ -494,6 +514,116 @@ export interface ConsimtamantDetaliu extends Consimtamant {
 /** Rând din jurnal, cu numele utilizatorului care a operat. */
 export interface JurnalOperatiuneDetaliu extends JurnalOperatiune {
   utilizator_nume: string | null
+}
+
+/** `v_cheltuiala_detaliu` — cheltuiala, cu cine a scris-o (NULL dacă i s-a șters contul). */
+export interface CheltuialaDetaliu extends Cheltuiala {
+  creat_de_nume: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Statistici — GET /statistici
+//
+// Totul de aici se CALCULEAZĂ la cerere; nimic nu e coloană. Ce înseamnă
+// fiecare cifră stă scris o singură dată, pe server, în
+// `backend/src/lib/raport-statistici.ts`, iar implementarea din memorie
+// (`@/api/memory/statistici.ts`) o repetă întocmai.
+// ---------------------------------------------------------------------------
+
+/** Cât cuprinde o bară din graficul în timp. */
+export const PAS_STATISTICI = ['zi', 'saptamana', 'luna'] as const
+export type PasStatistici = (typeof PAS_STATISTICI)[number]
+
+/** Cifrele unei perioade — rândul de sus al Statisticilor. */
+export interface TotaluriStatistici {
+  /** Banii intrați: liniile vânzărilor achitate în perioadă, după ziua plății. */
+  incasat: number
+  /** Din `incasat`: cât au adus serviciile (ședințele)… */
+  incasat_servicii: number
+  /** …și cât produsele. */
+  incasat_produse: number
+  /** Câte încasări (bonuri) s-au achitat. */
+  incasari: number
+  /** Cheltuielile cu `data` în perioadă. */
+  cheltuieli: number
+  /** `incasat − cheltuieli`. Negativ = pierdere. */
+  profit: number
+  /**
+   * Ce s-a lucrat în perioadă și nu s-a plătit încă: ședințe onorate fără
+   * încasare și produse date pe datorie.
+   */
+  neachitat: number
+  /** Programările din calendar după stare — o programare cu trei servicii este UNA. */
+  programari_onorate: number
+  programari_neprezentate: number
+  programari_anulate: number
+  programari_programate: number
+  /** Clienți diferiți serviți: cu o programare onorată sau o cumpărătură. */
+  clienti: number
+  /** Fișe deschise în perioadă. */
+  clienti_noi: number
+}
+
+/** O bară din graficul în timp. */
+export interface PerioadaStatistici {
+  /** Prima zi a barei: ziua, lunea săptămânii sau data de 1 a lunii. */
+  inceput: DateOnly
+  incasat_servicii: number
+  incasat_produse: number
+  cheltuieli: number
+}
+
+/** Un serviciu sau un produs, după banii aduși în perioadă. */
+export interface StatisticaArticol {
+  articol_id: Uuid
+  denumire: string
+  /** Ședințe încasate (servicii) sau bucăți vândute (produse). */
+  cantitate: number
+  suma: number
+}
+
+/** O persoană din clinică: ce a lucrat și ce s-a încasat din serviciile ei. */
+export interface StatisticaPersoana {
+  utilizator_id: Uuid
+  nume: string
+  /** Programări onorate în perioadă, după ziua lor. */
+  programari_onorate: number
+  /** Încasat din serviciile ei, după ziua plății. Produsele nu au executant. */
+  incasat: number
+}
+
+export interface StatisticaCategorie {
+  categorie: string
+  suma: number
+  /** Câte cheltuieli are categoria în perioadă. */
+  numar: number
+}
+
+export interface StatisticaClient {
+  client_id: Uuid
+  nume: string
+  incasat: number
+  /** Câte încasări (bonuri). */
+  incasari: number
+}
+
+export interface RaportStatistici {
+  de_la: DateOnly
+  pana_la: DateOnly
+  pas: PasStatistici
+  total: TotaluriStatistici
+  /** Aceleași cifre pe perioada cu care se compară; null dacă nu s-a cerut una. */
+  comparatie: TotaluriStatistici | null
+  /** Barele graficului în timp, TOATE — și cele fără nimic. */
+  perioade: PerioadaStatistici[]
+  servicii: StatisticaArticol[]
+  produse: StatisticaArticol[]
+  persoane: StatisticaPersoana[]
+  cheltuieli: StatisticaCategorie[]
+  /** Programările onorate pe zilele săptămânii: luni = 1 … duminică = 7, toate șapte. */
+  zile_saptamana: { zi: number; programari: number }[]
+  /** Cei zece clienți care au adus cei mai mulți bani în perioadă. */
+  clienti: StatisticaClient[]
 }
 
 /**

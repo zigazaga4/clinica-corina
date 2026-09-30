@@ -72,6 +72,10 @@ const ETICHETE_CAMP: Record<string, string> = {
   total_linie: 'Total linie',
   numar_linii: 'Număr de linii',
   linii_inlocuite: 'Linii înlocuite',
+  data: 'Data',
+  categorie: 'Categorie',
+  descriere: 'Descriere',
+  suma: 'Sumă',
 }
 
 /** Enumerările au deja etichete de domeniu; le refolosim, nu le rescriem. */
@@ -82,7 +86,7 @@ const TRADUCERI_ENUM: Record<string, (valoare: string) => string> = {
   articol_tip: (v) => etichetaTipArticol[v as TipArticol] ?? v,
 }
 
-const CHEI_BANI = new Set(['pret_lista', 'pret_unitar', 'total_linie', 'total'])
+const CHEI_BANI = new Set(['pret_lista', 'pret_unitar', 'total_linie', 'total', 'suma'])
 
 /**
  * Câmpurile după care se recunoaște înregistrarea atinsă, în ordinea în care
@@ -91,6 +95,7 @@ const CHEI_BANI = new Set(['pret_lista', 'pret_unitar', 'total_linie', 'total'])
 const CHEI_IDENTIFICATOR = [
   'nume',
   'denumire',
+  'categorie',
   'dispozitiv',
   'text',
   'email',
@@ -131,7 +136,7 @@ export function formateazaValoare(cheie: string, valoare: unknown): string {
     if (cheie.endsWith('_la') || cheie === 'ultima_autentificare') {
       return formateazaDataOra(valoare)
     }
-    if (cheie === 'data_nasterii') return formateazaData(valoare)
+    if (cheie === 'data_nasterii' || cheie === 'data') return formateazaData(valoare)
     return valoare
   }
 
@@ -146,6 +151,26 @@ export function campuriSchimbate(intrare: JurnalOperatiuneDetaliu): string[] {
   for (const cheie of Object.keys(intrare.date_vechi ?? {})) chei.add(cheie)
   for (const cheie of Object.keys(intrare.date_noi ?? {})) chei.add(cheie)
   return [...chei]
+}
+
+/**
+ * Intrările care nu poartă date — parola nu se scrie niciodată în jurnal, nici
+ * măcar hash-ul ei — își spun singure ce au fost.
+ */
+const REZUMAT_ENTITATE: Record<string, Partial<Record<string, string>>> = {
+  statistici: { autentificare: 'Statistici deschise cu parola lor' },
+  // Datele cheltuielilor se văd doar cu statisticile deblocate; fără ele,
+  // rândul spune măcar ce s-a întâmplat.
+  cheltuiala: {
+    creare: 'Cheltuială adăugată',
+    modificare: 'Cheltuială modificată',
+    stergere: 'Cheltuială ștearsă',
+  },
+  parola_statistici: {
+    creare: 'Parola statisticilor aleasă',
+    modificare: 'Parola statisticilor schimbată',
+    stergere: 'Parola statisticilor ștearsă de pe server',
+  },
 }
 
 const REZUMAT_IMPLICIT: Record<string, string> = {
@@ -164,6 +189,9 @@ const REZUMAT_IMPLICIT: Record<string, string> = {
  * mai bine decât lista completă a coloanelor scrise.
  */
 export function rezumatSchimbare(intrare: JurnalOperatiuneDetaliu): string {
+  const propriu = REZUMAT_ENTITATE[intrare.entitate]?.[intrare.actiune]
+  if (propriu) return propriu
+
   if (intrare.actiune === 'modificare') {
     const campuri = campuriSchimbate(intrare)
     if (campuri.length === 0) return '—'

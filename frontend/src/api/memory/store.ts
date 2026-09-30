@@ -13,6 +13,7 @@
 
 import type {
   Articol,
+  Cheltuiala,
   Client,
   Consimtamant,
   JurnalOperatiune,
@@ -59,6 +60,20 @@ export interface RandConsimtamant extends Consimtamant {
   document: Uint8Array
 }
 
+/**
+ * `parola_statistici` — un singur rând, sau niciunul cât timp nu e aleasă.
+ *
+ * Ca la conturi, parola stă în clar: aici nu există server care să o apere,
+ * iar o amprentă falsă ar da doar impresia de securitate. Se înlocuiește
+ * întreagă la schimbare, nu se modifică pe loc — `inTranzactie` copiază doar
+ * referința valorilor care nu sunt tabele.
+ */
+export interface RandParolaStatistici {
+  parola_hash: string
+  actualizat_de: Uuid | null
+  actualizat_la: string
+}
+
 export interface Magazin {
   utilizator: Map<Uuid, RandUtilizator>
   punct_lucru: Map<Uuid, PunctLucru>
@@ -71,6 +86,8 @@ export interface Magazin {
   notita: Map<Uuid, Notita>
   vanzare: Map<Uuid, Vanzare>
   vanzare_linie: Map<Uuid, VanzareLinie>
+  cheltuiala: Map<Uuid, Cheltuiala>
+  parola_statistici: RandParolaStatistici | null
   sesiune: Map<Uuid, RandSesiune>
   jurnal_operatiuni: JurnalOperatiune[]
   /** Echivalentul secvenței `bigserial` a jurnalului. */
@@ -90,6 +107,8 @@ function magazinGol(): Magazin {
     notita: new Map(),
     vanzare: new Map(),
     vanzare_linie: new Map(),
+    cheltuiala: new Map(),
+    parola_statistici: null,
     sesiune: new Map(),
     jurnal_operatiuni: [],
     urmatorId_jurnal: 1,

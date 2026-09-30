@@ -173,6 +173,14 @@ const mesajeConstrangeri: Record<string, { mesaj: string; camp?: string }> = {
   abonament_sedinte_ck: {
     mesaj: 'Abonamentul nu mai are ședințe disponibile.',
   },
+  cheltuiala_categorie_ck: {
+    mesaj: 'Alege categoria cheltuielii.',
+    camp: 'categorie',
+  },
+  cheltuiala_suma_ck: {
+    mesaj: 'Suma cheltuielii trebuie să fie mai mare ca zero.',
+    camp: 'suma',
+  },
 }
 
 /**

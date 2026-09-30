@@ -562,6 +562,8 @@ describe('vânzări', () => {
         achitat: false,
         linii: [{ articol_id: produs().id, cantitate: 1 }],
       })
+      // Lista întreagă a încasărilor cere statisticile deblocate.
+      await api.statistici.seteazaParola({ parola_noua: 'statistici-test' })
       const neachitate = await api.vanzari.list({ achitat: false, pe_pagina: 500 })
       expect(neachitate.randuri.some((v) => v.id === vanzare.id)).toBe(true)
       expect(neachitate.randuri.every((v) => !v.achitat)).toBe(true)

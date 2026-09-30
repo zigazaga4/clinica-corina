@@ -17,6 +17,7 @@
 
 import type {
   Articol,
+  CheltuialaDetaliu,
   Client,
   ClientListItem,
   ConsimtamantDetaliu,
@@ -26,8 +27,10 @@ import type {
   JurnalOperatiuneDetaliu,
   NotaClientDetaliu,
   NotitaDetaliu,
+  PasStatistici,
   ProgramareDetaliu,
   PunctLucru,
+  RaportStatistici,
   RolUtilizator,
   StareProgramare,
   Timestamptz,
@@ -548,7 +551,11 @@ export interface DateIncasare {
 }
 
 export interface ApiVanzari {
-  /** GET /vanzari — orice rol. Filtrare: client, interval, punct, operator, articol. */
+  /**
+   * GET /vanzari — orice rol, CU STATISTICILE DEBLOCATE (v. `ApiStatistici`).
+   * Lista tuturor încasărilor este ea însăși o statistică. Filtrare: client,
+   * interval, punct, operator, articol. Încuiată -> 403 pe `acces_statistici`.
+   */
   list(filtru?: FiltruVanzari): Promise<Paginat<VanzareDetaliu>>
   /** GET /vanzari/:id — orice rol. Vânzarea cu liniile ei. */
   get(id: Uuid): Promise<VanzareDetaliu>
@@ -561,6 +568,108 @@ export interface ApiVanzari {
    * Stinge într-o singură plată ședințele rămase de achitat ale unui client.
    */
   incaseaza(date: DateIncasare): Promise<VanzareDetaliu>
+}
+
+// ---------------------------------------------------------------------------
+// Statistici — în spatele unei parole separate
+// ---------------------------------------------------------------------------
+
+/**
+ * Deblocarea statisticilor, așa cum o vede interfața.
+ *
+ * Jetonul propriu-zis NU iese de aici: îl păstrează clientul API, în memorie,
+ * și îl pune singur pe cererile care îl cer. Nu ajunge în `localStorage` —
+ * o reîncărcare a paginii încuie din nou statisticile, exact ca ieșirea din ele.
+ */
+export interface AccesStatistici {
+  /**
+   * Când se încuie ecranul — pe ceasul ACESTUI calculator (acum + cât ține
+   * deblocarea), nu pe al serverului, ca un ceas care o ia înainte să nu
+   * încuie ecranul imediat după parolă.
+   */
+  expira_la: Timestamptz
+}
+
+export interface StareParolaStatistici {
+  /** false = nimeni n-a ales-o încă; un administrator o alege la prima deschidere. */
+  parola_setata: boolean
+}
+
+export interface DateParolaStatistici {
+  /** Cel puțin 8 caractere, diferită de parola contului care o alege. */
+  parola_noua: string
+  /** Obligatorie când există deja o parolă: fără ea nu se schimbă. */
+  parola_curenta?: string
+}
+
+export interface FiltruStatistici {
+  /** Prima zi a perioadei, inclusiv. */
+  de_la: DateOnly
+  /** Ultima zi a perioadei, inclusiv. */
+  pana_la: DateOnly
+  /** Cât cuprinde o bară. Maximum 400 de bare (un an zi cu zi). */
+  pas: PasStatistici
+  /** Fusul orar în care se citesc zilele, ex. „Europe/Bucharest”. Lipsă = al clinicii. */
+  fus?: string
+  /** Perioada cu care se compară totalurile; amândouă capetele sau niciunul. */
+  comparatie_de_la?: DateOnly
+  comparatie_pana_la?: DateOnly
+}
+
+export interface ApiStatistici {
+  /** GET /statistici/acces — orice rol. Există parola? */
+  stare(): Promise<StareParolaStatistici>
+  /**
+   * POST /statistici/acces — orice rol. Parola bună deblochează statisticile.
+   * Greșită -> 400 pe `parola` (NU 401: sesiunea aplicației rămâne).
+   */
+  deblocheaza(parola: string): Promise<AccesStatistici>
+  /**
+   * PUT /statistici/parola — administrator. Prima dată fără `parola_curenta`;
+   * apoi numai cu ea. Deblochează pe loc și încuie toate deblocările vechi.
+   */
+  seteazaParola(date: DateParolaStatistici): Promise<AccesStatistici>
+  /** Uită deblocarea. Nu cere nimic serverului — jetonul pur și simplu dispare. */
+  blocheaza(): void
+  /** GET /statistici — cere deblocarea. Încuiată -> 403 pe `acces_statistici`. */
+  raport(filtru: FiltruStatistici): Promise<RaportStatistici>
+}
+
+export interface FiltruCheltuieli extends ParametriPaginare {
+  de_la?: DateOnly
+  pana_la?: DateOnly
+  categorie?: string
+  /** Căutare în categorie și descriere. */
+  q?: string
+}
+
+/** Lista cheltuielilor, cu suma TUTUROR celor din filtru — nu doar a paginii. */
+export interface ListaCheltuieli extends Paginat<CheltuialaDetaliu> {
+  suma: number
+}
+
+export interface DateCheltuialaNoua {
+  data: DateOnly
+  categorie: string
+  /** CHECK (suma > 0) */
+  suma: number
+  descriere?: string | null
+}
+
+export type DateCheltuialaModificata = Partial<DateCheltuialaNoua>
+
+/** Toate rutele cer statisticile deblocate. */
+export interface ApiCheltuieli {
+  /** GET /cheltuieli — cele mai noi întâi. */
+  list(filtru?: FiltruCheltuieli): Promise<ListaCheltuieli>
+  /** GET /cheltuieli/categorii — cele folosite deja, cele mai folosite întâi. */
+  categorii(): Promise<string[]>
+  /** POST /cheltuieli */
+  create(date: DateCheltuialaNoua): Promise<CheltuialaDetaliu>
+  /** PATCH /cheltuieli/:id */
+  update(id: Uuid, date: DateCheltuialaModificata): Promise<CheltuialaDetaliu>
+  /** DELETE /cheltuieli/:id — urma rămâne în jurnal. */
+  remove(id: Uuid): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
@@ -681,6 +790,8 @@ export interface ApiClient {
   notite: ApiNotite
   tratamente: ApiTratamente
   vanzari: ApiVanzari
+  statistici: ApiStatistici
+  cheltuieli: ApiCheltuieli
   articole: ApiArticole
   puncteLucru: ApiPuncteLucru
   utilizatori: ApiUtilizatori

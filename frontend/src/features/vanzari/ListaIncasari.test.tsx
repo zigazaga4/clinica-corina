@@ -1,11 +1,14 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, it } from 'vitest'
 import { api } from '@/api'
-import { autentifica, randeaza } from '@/test/render'
-import { PaginaVanzari } from './PaginaVanzari'
+import { autentifica, deschideStatisticile, randeaza } from '@/test/render'
+import { ListaIncasari } from './ListaIncasari'
 
 /*
   Traseul complet al unei încasări de produse, prin interfața reală.
+
+  Lista stă acum în Statistici, în spatele parolei lor; fiecare test o
+  deblochează întâi, cum face omul la ușa ecranului.
 
   Testele din `@/api/memory/client.test.ts` verifică regulile bazei. Acesta
   verifică altceva: că ecranul chiar le folosește — că formularul oprește o
@@ -45,9 +48,10 @@ async function deIncasat(nume: string): Promise<number> {
 
 it('afișează lista de încasări cu datele din magazin', async () => {
   await autentifica()
-  randeaza(<PaginaVanzari />)
+  await deschideStatisticile()
+  randeaza(<ListaIncasari />)
 
-  expect(await screen.findByRole('heading', { name: 'Încasări' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: /Vinde produse/ })).toBeInTheDocument()
   await waitFor(() =>
     expect(document.querySelectorAll('tbody tr').length).toBeGreaterThan(1),
   )
@@ -55,7 +59,8 @@ it('afișează lista de încasări cu datele din magazin', async () => {
 
 it('oprește trimiterea unei încasări incomplete', async () => {
   await autentifica()
-  randeaza(<PaginaVanzari />)
+  await deschideStatisticile()
+  randeaza(<ListaIncasari />)
 
   fireEvent.click(await screen.findByRole('button', { name: /Vinde produse/ }))
   fireEvent.click(await screen.findByRole('button', { name: 'Salvează vânzarea' }))
@@ -67,7 +72,8 @@ it('oprește trimiterea unei încasări incomplete', async () => {
 
 it('copiază prețul de listă în linie și înregistrează încasarea', async () => {
   await autentifica()
-  randeaza(<PaginaVanzari />)
+  await deschideStatisticile()
+  randeaza(<ListaIncasari />)
 
   fireEvent.click(await screen.findByRole('button', { name: /Vinde produse/ }))
   await screen.findByRole('button', { name: 'Salvează vânzarea' })
@@ -99,8 +105,9 @@ it('copiază prețul de listă în linie și înregistrează încasarea', async 
 */
 it('vinde produse neachitate, apoi le trece achitate de pe bon', async () => {
   await autentifica()
+  await deschideStatisticile()
   const maria = await api.clienti.create({ nume: 'Maria Cremă' })
-  randeaza(<PaginaVanzari />)
+  randeaza(<ListaIncasari />)
 
   fireEvent.click(await screen.findByRole('button', { name: /Vinde produse/ }))
   const formular = within(await screen.findByRole('dialog'))

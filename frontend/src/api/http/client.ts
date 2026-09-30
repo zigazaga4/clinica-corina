@@ -13,8 +13,10 @@
  */
 
 import type {
+  AccesStatistici,
   ApiClient,
   FiltruArticole,
+  FiltruCheltuieli,
   FiltruClienti,
   FiltruConsimtaminte,
   FiltruJurnal,
@@ -22,11 +24,18 @@ import type {
   FiltruProgramari,
   FiltruTratamente,
   FiltruVanzari,
+  ListaCheltuieli,
   Paginat,
   PretSugerat,
   RaspunsLogin,
+  StareParolaStatistici,
 } from '@/api/contract'
-import { EroareApi, type CodEroare } from '@/api/errors'
+import {
+  CAMP_ACCES_STATISTICI,
+  eroareAccesStatistici,
+  EroareApi,
+  type CodEroare,
+} from '@/api/errors'
 import {
   aExpirat,
   citesteTokenuri,
@@ -35,6 +44,7 @@ import {
 } from '@/api/session'
 import type {
   Articol,
+  CheltuialaDetaliu,
   Client,
   ClientListItem,
   ConsimtamantDetaliu,
@@ -44,12 +54,20 @@ import type {
   NotitaDetaliu,
   ProgramareDetaliu,
   PunctLucru,
+  RaportStatistici,
   TratamentDetaliu,
   Utilizator,
   VanzareDetaliu,
 } from '@/domain/types'
 
-type Metoda = 'GET' | 'POST' | 'PATCH' | 'DELETE'
+/** Ce trimite serverul la deblocare; jetonul rămâne în client, nu pleacă spre ecran. */
+interface RaspunsAccesStatistici extends AccesStatistici {
+  jeton: string
+  /** Cât ține deblocarea — numărat de pe ceasul de aici, nu de pe al serverului. */
+  durata_secunde: number
+}
+
+type Metoda = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 const codPentruStatus = (status: number): CodEroare => {
   if (status === 400 || status === 422) return 'validare'
@@ -88,6 +106,24 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
 
   /** Reînnoirea se face o singură dată chiar dacă mai multe cereri o cer. */
   let reinnoireInCurs: Promise<void> | null = null
+
+  /*
+    Deblocarea statisticilor. Doar aici, în memoria clientului: nu în
+    `localStorage` ca sesiunea, fiindcă o reîncărcare trebuie să le încuie.
+  */
+  let jetonStatistici: string | null = null
+
+  const pastreazaAccesul = (raspuns: RaspunsAccesStatistici): AccesStatistici => {
+    jetonStatistici = raspuns.jeton
+    /*
+      Expirarea, pe ceasul ACESTUI calculator: acum + cât ține. `expira_la` al
+      serverului, comparat cu un ceas care o ia înainte cu o oră, ar fi încuiat
+      ecranul imediat după fiecare parolă; cu unul în urmă, l-ar fi ținut
+      deschis peste termen.
+    */
+    const durata = Number.isFinite(raspuns.durata_secunde) ? raspuns.durata_secunde : 3600
+    return { expira_la: new Date(Date.now() + durata * 1000).toISOString() }
+  }
 
   async function reinnoiesteTokenul(): Promise<void> {
     const tokenuri = citesteTokenuri()
@@ -134,8 +170,19 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
        * expirată ar fi întors altfel o pagină de eroare deghizată în fișier.
        */
       binar?: boolean
+      /** Ruta cere statisticile deblocate: pleacă și jetonul lor. */
+      statistici?: boolean
     } = {},
   ): Promise<T> {
+    // Fără deblocare, răspunsul e știut dinainte; nu merită drumul până la server.
+    if (optiuni.statistici && !jetonStatistici) throw eroareAccesStatistici()
+    /*
+      Jetonul cu care pleacă cererea, ținut minte: dacă între timp s-a primit
+      altul (o deblocare nouă, o parolă schimbată), un refuz întârziat pentru
+      cel vechi nu are voie să-l șteargă pe cel nou.
+    */
+    const jetonTrimis = optiuni.statistici ? jetonStatistici : null
+
     if (!optiuni.public) {
       const tokenuri = citesteTokenuri()
       if (!tokenuri) throw new EroareApi('neautentificat', 'Nu ești autentificat.')
@@ -156,6 +203,7 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
         const t = citesteTokenuri()
         if (t) antete['Authorization'] = `Bearer ${t.access_token}`
       }
+      if (jetonTrimis) antete['X-Acces-Statistici'] = jetonTrimis
       return fetch(`${radacina}${cale}${qs(optiuni.parametri)}`, {
         method: metoda,
         headers: antete,
@@ -190,6 +238,16 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
 
     if (!raspuns.ok) {
       const corp = (date ?? {}) as { mesaj?: string; message?: string; camp?: string }
+      // Deblocarea a expirat sau parola s-a schimbat: jetonul nu mai deschide
+      // nimic, deci se uită — următoarea cerere nu-l mai poartă degeaba.
+      if (
+        raspuns.status === 403 &&
+        corp.camp === CAMP_ACCES_STATISTICI &&
+        jetonTrimis !== null &&
+        jetonStatistici === jetonTrimis
+      ) {
+        jetonStatistici = null
+      }
       throw new EroareApi(
         codPentruStatus(raspuns.status),
         corp.mesaj ?? corp.message ?? `Cererea a eșuat (${raspuns.status}).`,
@@ -206,8 +264,12 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
         cerere<RaspunsLogin>('POST', '/auth/login', { corp: credentiale, public: true }),
       refresh: (refresh_token) =>
         cerere<RaspunsLogin>('POST', '/auth/refresh', { corp: { refresh_token }, public: true }),
-      logout: (refresh_token) =>
-        cerere<void>('POST', '/auth/logout', { corp: { refresh_token } }),
+      logout: (refresh_token) => {
+        // Serverul oricum n-ar mai primi jetonul (e legat de sesiune); uitat
+        // aici, nu rămâne nici în memoria ferestrei pentru următorul cont.
+        jetonStatistici = null
+        return cerere<void>('POST', '/auth/logout', { corp: { refresh_token } })
+      },
       utilizatorCurent: async () => {
         if (!citesteTokenuri()) return null
         try {
@@ -288,11 +350,39 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
 
     vanzari: {
       list: (filtru?: FiltruVanzari) =>
-        cerere<Paginat<VanzareDetaliu>>('GET', '/vanzari', { parametri: filtru }),
+        cerere<Paginat<VanzareDetaliu>>('GET', '/vanzari', { parametri: filtru, statistici: true }),
       get: (id) => cerere<VanzareDetaliu>('GET', `/vanzari/${id}`),
       create: (date) => cerere<VanzareDetaliu>('POST', '/vanzari', { corp: date }),
       update: (id, date) => cerere<VanzareDetaliu>('PATCH', `/vanzari/${id}`, { corp: date }),
       incaseaza: (date) => cerere<VanzareDetaliu>('POST', '/vanzari/incasare', { corp: date }),
+    },
+
+    statistici: {
+      stare: () => cerere<StareParolaStatistici>('GET', '/statistici/acces'),
+      deblocheaza: async (parola) =>
+        pastreazaAccesul(
+          await cerere<RaspunsAccesStatistici>('POST', '/statistici/acces', { corp: { parola } }),
+        ),
+      seteazaParola: async (date) =>
+        pastreazaAccesul(
+          await cerere<RaspunsAccesStatistici>('PUT', '/statistici/parola', { corp: date }),
+        ),
+      blocheaza: () => {
+        jetonStatistici = null
+      },
+      raport: (filtru) =>
+        cerere<RaportStatistici>('GET', '/statistici', { parametri: filtru, statistici: true }),
+    },
+
+    cheltuieli: {
+      list: (filtru?: FiltruCheltuieli) =>
+        cerere<ListaCheltuieli>('GET', '/cheltuieli', { parametri: filtru, statistici: true }),
+      categorii: () => cerere<string[]>('GET', '/cheltuieli/categorii', { statistici: true }),
+      create: (date) =>
+        cerere<CheltuialaDetaliu>('POST', '/cheltuieli', { corp: date, statistici: true }),
+      update: (id, date) =>
+        cerere<CheltuialaDetaliu>('PATCH', `/cheltuieli/${id}`, { corp: date, statistici: true }),
+      remove: (id) => cerere<void>('DELETE', `/cheltuieli/${id}`, { statistici: true }),
     },
 
     articole: {

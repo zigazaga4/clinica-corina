@@ -17,7 +17,7 @@
 
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { creeazaApiHttp } from './client'
-import { esteEroareApi } from '@/api/errors'
+import { esteEroareApi, esteStatisticiIncuiate } from '@/api/errors'
 import { scrieTokenuri, stergeTokenuri, type TokenuriSesiune } from '@/api/session'
 import type { ApiClient } from '@/api/contract'
 import type { Articol, Uuid } from '@/domain/types'
@@ -233,5 +233,46 @@ describe.skipIf(!ADRESA)('clientul HTTP împotriva serverului real', () => {
 
     expect(esteEroareApi(a_doua)).toBe(true)
     if (esteEroareApi(a_doua)) expect(a_doua.cod).toBe('conflict')
+  })
+
+  /*
+    Statisticile, prin antetul lor. Parola de pe baza de dezvoltare poate fi
+    deja aleasă — de rularea trecută sau de `npm run test:api`, care o lasă pe
+    a lui. Se încearcă cele cunoscute; altfel testul spune ce parolă îi lipsește.
+  */
+  it('statisticile se deschid cu parola lor și trimit singure deblocarea', async () => {
+    api.statistici.blocheaza()
+    const incuiata = await api.vanzari.list({ pe_pagina: 1 }).catch((e: unknown) => e)
+    expect(esteStatisticiIncuiate(incuiata)).toBe(true)
+
+    const cunoscute = [process.env['API_LIVE_PAROLA_STATISTICI'], 'statistici-test-2', 'statistici-live-1']
+    if (!(await api.statistici.stare()).parola_setata) {
+      await api.statistici.seteazaParola({ parola_noua: 'statistici-live-1' })
+    } else {
+      let deschisa = false
+      for (const parola of cunoscute) {
+        if (!parola) continue
+        deschisa = await api.statistici.deblocheaza(parola).then(() => true, () => false)
+        if (deschisa) break
+      }
+      if (!deschisa) {
+        throw new Error('Parola statisticilor nu e una cunoscută testului: dă-o în API_LIVE_PAROLA_STATISTICI.')
+      }
+    }
+
+    const lista = await api.vanzari.list({ pe_pagina: 1 })
+    expect(typeof lista.total).toBe('number')
+
+    const azi = new Date().toISOString().slice(0, 10)
+    const cheltuiala = await api.cheltuieli.create({ data: azi, categorie: eticheta, suma: 12.5 })
+    expect(cheltuiala.suma).toBe(12.5)
+    const raport = await api.statistici.raport({ de_la: azi, pana_la: azi, pas: 'zi' })
+    expect(raport.cheltuieli.find((c) => c.categorie === eticheta)?.suma).toBe(12.5)
+    expect(raport.perioade).toHaveLength(1)
+    await api.cheltuieli.remove(cheltuiala.id)
+
+    // Încuiată la loc: nici măcar nu mai pleacă spre server.
+    api.statistici.blocheaza()
+    expect(esteStatisticiIncuiate(await api.cheltuieli.list().catch((e: unknown) => e))).toBe(true)
   })
 })

@@ -11,7 +11,7 @@ import { ModalaAcordGdpr } from '@/features/consimtamant/ModalaAcordGdpr'
 import { BaniTratament, etichetaSedinta, ProgresSedinte } from '@/features/tratamente/ProgresTratament'
 import type { ProgramareDetaliu, Uuid } from '@/domain/types'
 import { cn } from '@/lib/cn'
-import { formateazaBani, parseNumar, sumaTotal } from '@/lib/money'
+import { formateazaBani, numarInCamp, parseNumar, sumaTotal } from '@/lib/money'
 import { Buton, Input, Modala, Spinner, useNotificari } from '@/ui'
 
 /**
@@ -84,12 +84,12 @@ export function ModalaOnorare({
   useEffect(() => {
     if (!deschisa) return
     setAcordRezolvat(false)
-    setSume(Object.fromEntries(servicii.map((s) => [s.id, laText(s.pret)])))
+    setSume(Object.fromEntries(servicii.map((s) => [s.id, numarInCamp(s.pret)])))
     setEroriSume({})
     // `servicii` se citește prin `cheiePreturi`, care o rezumă exact.
   }, [deschisa, cheiePreturi])
 
-  const sumaDe = (s: ProgramareDetaliu) => parseNumar(sume[s.id] ?? laText(s.pret))
+  const sumaDe = (s: ProgramareDetaliu) => parseNumar(sume[s.id] ?? numarInCamp(s.pret))
   const deIncasat = servicii.filter((s) => !s.achitat)
   const totalDeIncasat = sumaTotal(deIncasat.map((s) => sumaDe(s) ?? 0))
 
@@ -300,11 +300,6 @@ export function ModalaOnorare({
       )}
     </>
   )
-}
-
-/** Sumele intră în câmp cu virgulă zecimală, forma pe care o tastează recepția. */
-function laText(valoare: number): string {
-  return String(valoare).replace('.', ',')
 }
 
 /**

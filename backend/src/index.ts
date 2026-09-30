@@ -44,6 +44,7 @@ import cors from 'cors'
 import helmet from 'helmet'
 import { trateazaErori } from './lib/erori.js'
 import authRouter from './routes/auth.js'
+import cheltuieliRouter from './routes/cheltuieli.js'
 import clientiRouter from './routes/clienti.js'
 import consimtaminteRouter from './routes/consimtaminte.js'
 import notiteRouter from './routes/notite.js'
@@ -56,6 +57,7 @@ import puncteLucruRouter from './routes/puncte-lucru.js'
 import utilizatoriRouter from './routes/utilizatori.js'
 import jurnalRouter from './routes/jurnal.js'
 import referintaRouter from './routes/referinta.js'
+import statisticiRouter from './routes/statistici.js'
 
 /*
   Secretul se verifică la pornire, nu la prima autentificare.
@@ -350,6 +352,9 @@ app.use('/programari', programariRouter)
 app.use('/notite', notiteRouter)
 app.use('/tratamente', tratamenteRouter)
 app.use('/vanzari', vanzariRouter)
+// În spatele parolei statisticilor — vezi `middleware/acces-statistici.ts`.
+app.use('/statistici', statisticiRouter)
+app.use('/cheltuieli', cheltuieliRouter)
 app.use('/articole', articoleRouter)
 app.use('/puncte-lucru', puncteLucruRouter)
 app.use('/utilizatori', utilizatoriRouter)

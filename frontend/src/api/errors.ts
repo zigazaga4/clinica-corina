@@ -77,6 +77,24 @@ export function esteEroareApi(e: unknown): e is EroareApi {
 }
 
 /**
+ * Câmpul după care se recunoaște „statisticile sunt încuiate”.
+ *
+ * Refuzul vine ca 403, nu 401 — sesiunea aplicației e în regulă, doar parola
+ * statisticilor lipsește sau a expirat. Un 401 ar fi pornit reînnoirea
+ * sesiunii și, la al doilea, delogarea. Câmpul îl deosebește de un 403 de rol.
+ */
+export const CAMP_ACCES_STATISTICI = 'acces_statistici'
+
+export const eroareAccesStatistici = (
+  mesaj = 'Statisticile sunt încuiate. Scrie parola lor ca să le vezi.',
+) => new EroareApi('interzis', mesaj, { camp: CAMP_ACCES_STATISTICI })
+
+/** Eroarea spune că statisticile trebuie deblocate (din nou)? */
+export function esteStatisticiIncuiate(e: unknown): e is EroareApi {
+  return esteEroareApi(e) && e.cod === 'interzis' && e.camp === CAMP_ACCES_STATISTICI
+}
+
+/**
  * Câmpul de formular vinovat de eroare, oriunde ar fi ajuns.
  *
  * Erorile de validare îl poartă direct în `camp`. Cele de conflict îl au în

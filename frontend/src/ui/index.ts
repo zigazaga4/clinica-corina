@@ -32,6 +32,17 @@ export {
   type SelectProps,
   type TextareaProps,
 } from './Field'
+export {
+  CardGrafic,
+  formateazaAxa,
+  GraficBare,
+  GraficColoane,
+  gradatii,
+  type PunctGrafic,
+  type RandBare,
+  type SerieGrafic,
+  type TabelGrafic,
+} from './Grafice'
 export { ElementMeniu, Meniu, SeparatorMeniu, TitluMeniu, type MeniuProps } from './Menu'
 export {
   Modala,

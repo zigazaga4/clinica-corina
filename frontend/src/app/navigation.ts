@@ -1,7 +1,7 @@
 import {
   CalendarDays,
+  ChartColumnBig,
   Layers,
-  Receipt,
   ScrollText,
   Tags,
   UserCog,
@@ -51,12 +51,17 @@ export const NAVIGARE: ElementNavigare[] = [
     pictograma: Layers,
     descriere: 'Serviciile în mai multe ședințe: unde a ajuns fiecare client',
   },
+  /*
+    În locul fostului ecran „Încasări”, pe același loc: lista încasărilor a
+    devenit o filă a Statisticilor, în spatele parolei lor. Vizibil pentru
+    toate rolurile — parola, nu rolul, hotărăște cine vede cifrele.
+  */
   {
-    cale: '/incasari',
-    eticheta: 'Încasări',
-    pictograma: Receipt,
+    cale: '/statistici',
+    eticheta: 'Statistici',
+    pictograma: ChartColumnBig,
     principal: true,
-    descriere: 'Banii intrați: ședințe achitate și produse vândute',
+    descriere: 'Încasări, cheltuieli și profit — cu parola statisticilor',
   },
   {
     cale: '/nomenclator',

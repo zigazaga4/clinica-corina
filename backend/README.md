@@ -57,6 +57,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 | `npm run seed` | rescrie datele de pornire (**șterge** ce era) |
 | `npm run test:db` | „văd baza? are schema și constrângerile?” |
 | `npm run test:api` | verifică întreg contractul, pe serverul pornit |
+| `npm run parola-statistici` | **șterge** parola statisticilor uitată; primul administrator o alege din nou |
 
 ---
 
@@ -116,6 +117,7 @@ banilor.
 | `v_vanzare_detaliu` | antetul încasării, hidratat |
 | `v_vanzare_linie_detaliu` | linia, cu articolul și data ședinței stinse |
 | `v_client_detaliu` | fișa cu contoare, ultima vizită și restanța |
+| `v_cheltuiala_detaliu` | cheltuiala, cu numele celui care a scris-o |
 
 ---
 
@@ -161,11 +163,21 @@ PATCH  /tratamente/:id          { numar_sedinte?, pret_total?, nota? }
 POST   /tratamente/:id/incheiere
 POST   /tratamente/:id/redeschidere
 
-GET    /vanzari                 ?client_id= &operator_id= &articol_id= &de_la= &pana_la= &achitat=
+GET    /vanzari                 ?client_id= &operator_id= &articol_id= &de_la= &pana_la= &achitat=   (+ deblocare statistici)
 POST   /vanzari                 { ..., achitat? }   false = produse pe datorie
 POST   /vanzari/incasare        { client_id, programare_ids[], linii[]? }
 GET    /vanzari/:id
 PATCH  /vanzari/:id             { ..., achitat? }   true = plătită acum, false = datoria revine
+
+GET    /statistici/acces        { parola_setata }
+POST   /statistici/acces        { parola }  ->  { jeton, expira_la }   parola statisticilor, NU a contului
+PUT    /statistici/parola       administrator — { parola_noua, parola_curenta? }  ->  { jeton, expira_la }
+GET    /statistici              ?de_la= &pana_la= &pas=zi|saptamana|luna &fus= &comparatie_de_la= &comparatie_pana_la=
+GET    /cheltuieli              ?de_la= &pana_la= &categorie= &q= &pagina= &pe_pagina=   ->  paginat + suma
+GET    /cheltuieli/categorii
+POST   /cheltuieli              { data, categorie, suma, descriere? }
+PATCH  /cheltuieli/:id
+DELETE /cheltuieli/:id
 
 GET    /articole                ?tip= &activ= &q=
 POST   /articole                administrator
@@ -186,6 +198,18 @@ GET    /jurnal                  administrator
 
 Rutele `/abonamente` și `/*-ref` rămân din varianta inițială a serverului. Nu
 fac parte din contractul interfeței.
+
+### Parola statisticilor
+
+`GET /statistici`, toate rutele `/cheltuieli` și lista `GET /vanzari` cer, pe
+lângă sesiune, antetul `X-Acces-Statistici: <jeton>` — jetonul primit de la
+`POST /statistici/acces` cu parola statisticilor (tabela `parola_statistici`,
+un singur rând, Argon2id). E altă parolă decât a oricărui cont: o alege primul
+administrator care deschide ecranul, iar schimbarea ei cere parola curentă.
+Jetonul ține o oră și este legat de cont, de sesiune și de parolă — schimbată,
+încuie pe loc toate statisticile deschise. Fără el răspunsul este `403` cu
+`camp: "acces_statistici"`, nu `401`: sesiunea aplicației rămâne neatinsă.
+Uitată de toți, parola se șterge doar de pe server: `npm run parola-statistici`.
 
 ### Forme de răspuns
 
@@ -249,7 +273,7 @@ la prima instalare în clinică. `CORS_ORIGINS` adaugă la listă, nu o înlocui
 Verificarea că cele două chiar se înțeleg:
 
 ```bash
-npm run test:api                       # 142 de verificări, din partea serverului
+npm run test:api                       # 221 de verificări, din partea serverului
 # și, din proiectul de interfață:
 API_LIVE=http://localhost:3001 npx vitest run src/api/http
 ```

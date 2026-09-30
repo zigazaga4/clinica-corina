@@ -95,6 +95,21 @@ export function verificaPret(pret: number, camp = 'pret_lista'): number {
   return pret
 }
 
+/**
+ * O sumă de bani strict pozitivă — CHECK (suma > 0) pe `numeric(10,2)`.
+ *
+ * O cheltuială de zero lei nu mută nimic din profit și este, aproape sigur, un
+ * formular salvat înainte de a scrie suma.
+ */
+export function verificaSumaPozitiva(valoare: unknown, camp: string, eticheta: string): number {
+  const suma = numarCerut(valoare, camp, eticheta)
+  if (suma <= 0) throw eroareValidare(`${eticheta} trebuie să fie mai mare ca zero.`, camp)
+  if (pesteNumeric(suma, 10, 2)) {
+    throw eroareValidare(`${eticheta} nu poate depăși 99.999.999,99.`, camp)
+  }
+  return suma
+}
+
 /** CHECK (cantitate > 0), plus limita coloanei `numeric(10,3)`. */
 export function verificaCantitate(cantitate: number): number {
   if (!Number.isFinite(cantitate)) {
@@ -243,6 +258,21 @@ export function momentCerut(valoare: unknown, camp: string, eticheta: string): s
   const text = ceruteText(valoare, camp, eticheta)
   if (!esteMomentIso(text)) {
     throw eroareValidare(`${eticheta} nu este o dată validă.`, camp)
+  }
+  return text
+}
+
+/**
+ * O zi calendaristică, `YYYY-MM-DD`, fără oră.
+ *
+ * Coloanele `date` și perioadele statisticilor se citesc ca zile, nu ca
+ * momente: „2026-09-05T00:00:00Z” ar ajunge pe 4 septembrie într-un fus aflat
+ * la vest de Greenwich. Se cere forma scurtă, și calendarul trebuie să existe.
+ */
+export function dataCeruta(valoare: unknown, camp: string, eticheta: string): string {
+  const text = ceruteText(valoare, camp, eticheta)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || !esteMomentIso(text)) {
+    throw eroareValidare(`${eticheta} nu este o dată validă (AAAA-LL-ZZ).`, camp)
   }
   return text
 }

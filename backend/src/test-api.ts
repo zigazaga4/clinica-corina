@@ -11,11 +11,15 @@
  */
 
 import 'dotenv/config'
+import pool from './lib/db.js'
 
 const BAZA = process.env.API_URL ?? `http://localhost:${process.env.PORT ?? 3000}`
 const EMAIL_ADMIN = 'admin@clinica.ro'
 const EMAIL_OPERATOR = 'andreea.popescu@clinica.ro'
 const PAROLA = 'parola123'
+/** Parolele statisticilor folosite de test — diferite de cea a conturilor. */
+const PAROLA_STATISTICI = 'statistici-test-1'
+const PAROLA_STATISTICI_NOUA = 'statistici-test-2'
 
 let trecute = 0
 const esuate: string[] = []
@@ -35,11 +39,13 @@ interface Raspuns<T> { status: number; corp: T }
 async function cere<T = any>(
   metoda: string,
   cale: string,
-  optiuni: { corp?: unknown; token?: string } = {},
+  /** `statistici` = jetonul primit la deblocarea statisticilor. */
+  optiuni: { corp?: unknown; token?: string; statistici?: string } = {},
 ): Promise<Raspuns<T>> {
   const antete: Record<string, string> = { Accept: 'application/json' }
   if (optiuni.corp !== undefined) antete['Content-Type'] = 'application/json'
   if (optiuni.token) antete['Authorization'] = `Bearer ${optiuni.token}`
+  if (optiuni.statistici) antete['X-Acces-Statistici'] = optiuni.statistici
 
   const raspuns = await fetch(`${BAZA}${cale}`, {
     method: metoda,
@@ -113,6 +119,118 @@ async function ruleaza(): Promise<void> {
   const operator = (await cere('POST', '/auth/login', {
     corp: { email: EMAIL_OPERATOR, parola: PAROLA },
   })).corp.access_token as string
+
+  // -------------------------------------------------------------------------
+  console.log('\nStatistici — parola separată')
+
+  /*
+    Singurul loc în care testul scrie direct în bază: parola statisticilor nu
+    se poate șterge prin API (tocmai asta o apără), iar o parolă rămasă de la
+    rularea trecută — sau aleasă de mână pe baza de dezvoltare — ar face
+    pașii de mai jos imposibili. Exact ce face `npm run parola-statistici`.
+  */
+  // Doar pe un server de pe mașina asta: `DATABASE_URL` e baza de aici, iar un
+  // `API_URL` spre alt calculator ar fi șters parola unei baze pe care nu o testăm.
+  const serverLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(BAZA)
+  if (!serverLocal) {
+    throw new Error(`test:api șterge parola statisticilor din baza locală; ${BAZA} nu e un server local.`)
+  }
+  await pool.query(`DELETE FROM parola_statistici`)
+
+  const stareInitiala = await cere('GET', '/statistici/acces', { token: operator })
+  verifica('GET /statistici/acces -> parola încă nealeasă',
+    stareInitiala.status === 200 && stareInitiala.corp?.parola_setata === false,
+    JSON.stringify(stareInitiala.corp))
+
+  const deschidereFaraParola = await cere('POST', '/statistici/acces', {
+    token: admin, corp: { parola: PAROLA_STATISTICI },
+  })
+  verifica('deblocare înainte să existe parola -> 400 pe „parola”',
+    deschidereFaraParola.status === 400 && deschidereFaraParola.corp?.camp === 'parola',
+    JSON.stringify(deschidereFaraParola.corp))
+
+  const raportIncuiat = await cere('GET', '/statistici?de_la=2026-01-01&pana_la=2026-01-31', { token: admin })
+  verifica('raportul fără deblocare -> 403 pe „acces_statistici”',
+    raportIncuiat.status === 403 && raportIncuiat.corp?.camp === 'acces_statistici',
+    JSON.stringify(raportIncuiat.corp))
+
+  const vanzariIncuiate = await cere('GET', '/vanzari', { token: admin })
+  verifica('lista încasărilor fără deblocare -> 403 (e și ea o statistică)',
+    vanzariIncuiate.status === 403 && vanzariIncuiate.corp?.camp === 'acces_statistici',
+    JSON.stringify(vanzariIncuiate.corp))
+
+  const alegereOperator = await cere('PUT', '/statistici/parola', {
+    token: operator, corp: { parola_noua: PAROLA_STATISTICI },
+  })
+  verifica('parola o alege doar un administrator -> 403', alegereOperator.status === 403)
+
+  const preaScurta = await cere('PUT', '/statistici/parola', {
+    token: admin, corp: { parola_noua: 'scurta' },
+  })
+  verifica('parolă sub 8 caractere -> 400 pe „parola_noua”',
+    preaScurta.status === 400 && preaScurta.corp?.camp === 'parola_noua',
+    JSON.stringify(preaScurta.corp))
+
+  const caAContului = await cere('PUT', '/statistici/parola', {
+    token: admin, corp: { parola_noua: PAROLA },
+  })
+  verifica('parola contului nu poate fi și parola statisticilor -> 400',
+    caAContului.status === 400 && caAContului.corp?.camp === 'parola_noua',
+    JSON.stringify(caAContului.corp))
+
+  const aleasa = await cere('PUT', '/statistici/parola', {
+    token: admin, corp: { parola_noua: PAROLA_STATISTICI },
+  })
+  verifica('PUT /statistici/parola -> aleasă, cu deblocarea în răspuns',
+    aleasa.status === 200 && typeof aleasa.corp?.jeton === 'string'
+      && typeof aleasa.corp?.expira_la === 'string',
+    JSON.stringify(aleasa.corp))
+  verifica('deblocarea expiră în aproximativ o oră',
+    Math.abs(new Date(aleasa.corp?.expira_la).getTime() - Date.now() - 3_600_000) < 120_000,
+    aleasa.corp?.expira_la)
+  verifica('și spune cât ține, ca ecranul să numere pe ceasul lui',
+    aleasa.corp?.durata_secunde === 3600, JSON.stringify(aleasa.corp?.durata_secunde))
+  verifica('GET /statistici/acces -> parola aleasă',
+    (await cere('GET', '/statistici/acces', { token: operator })).corp?.parola_setata === true)
+
+  const faraCurenta = await cere('PUT', '/statistici/parola', {
+    token: admin, corp: { parola_noua: PAROLA_STATISTICI_NOUA },
+  })
+  verifica('o parolă existentă nu se schimbă fără cea curentă -> 400 pe „parola_curenta”',
+    faraCurenta.status === 400 && faraCurenta.corp?.camp === 'parola_curenta',
+    JSON.stringify(faraCurenta.corp))
+
+  const gresitaOperator = await cere('POST', '/statistici/acces', {
+    token: operator, corp: { parola: 'nu-e-asta' },
+  })
+  verifica('parolă greșită -> 400 pe „parola”, nu 401 (sesiunea rămâne)',
+    gresitaOperator.status === 400 && gresitaOperator.corp?.camp === 'parola',
+    JSON.stringify(gresitaOperator.corp))
+
+  const deschisaOperator = await cere('POST', '/statistici/acces', {
+    token: operator, corp: { parola: PAROLA_STATISTICI },
+  })
+  verifica('orice rol deschide statisticile cu parola bună',
+    deschisaOperator.status === 200 && typeof deschisaOperator.corp?.jeton === 'string')
+  const statOperator = deschisaOperator.corp?.jeton as string
+
+  const deschisaAdmin = await cere('POST', '/statistici/acces', {
+    token: admin, corp: { parola: PAROLA_STATISTICI },
+  })
+  const stat = deschisaAdmin.corp?.jeton as string
+  verifica('POST /statistici/acces -> jeton', deschisaAdmin.status === 200 && Boolean(stat))
+
+  const jetonStrain = await cere('GET', '/vanzari', { token: admin, statistici: statOperator })
+  verifica('jetonul altui cont nu deschide nimic -> 403',
+    jetonStrain.status === 403 && jetonStrain.corp?.camp === 'acces_statistici')
+
+  const jetonCaAcces = await cere('GET', '/clienti', { token: stat })
+  verifica('jetonul statisticilor nu ține loc de sesiune -> 401', jetonCaAcces.status === 401,
+    `a venit ${jetonCaAcces.status}`)
+
+  const deschise = await cere('GET', '/vanzari?pe_pagina=1', { token: admin, statistici: stat })
+  verifica('cu jetonul, lista încasărilor se deschide', deschise.status === 200,
+    JSON.stringify(deschise.corp))
 
   // -------------------------------------------------------------------------
   console.log('\nNomenclator')
@@ -440,12 +558,12 @@ async function ruleaza(): Promise<void> {
   verifica('istoricul e ordonat descrescător',
     new Date(istoric.corp[0].la) >= new Date(istoric.corp[1].la))
 
-  const vanzari = await cere('GET', `/vanzari?client_id=${client_id}`, { token: admin })
+  const vanzari = await cere('GET', `/vanzari?client_id=${client_id}`, { token: admin, statistici: stat })
   verifica('GET /vanzari -> anvelopă paginată cu linii',
     Array.isArray(vanzari.corp?.randuri) && vanzari.corp.randuri[0]?.linii?.length === 2
       && typeof vanzari.corp.total === 'number')
 
-  const dupaArticol = await cere('GET', `/vanzari?articol_id=${produs.id}`, { token: admin })
+  const dupaArticol = await cere('GET', `/vanzari?articol_id=${produs.id}`, { token: admin, statistici: stat })
   verifica('GET /vanzari filtrează pe articolul de pe linii',
     dupaArticol.corp?.randuri?.every((v: any) =>
       v.linii.some((l: any) => l.articol_id === produs.id)),
@@ -476,11 +594,15 @@ async function ruleaza(): Promise<void> {
   verifica('produsele neachitate intră în de_incasat', fisaDatoare.corp?.de_incasat === 300,
     JSON.stringify(fisaDatoare.corp?.de_incasat))
 
-  const doarDatorii = await cere('GET', `/vanzari?client_id=${client_id}&achitat=false`, { token: admin })
+  const doarDatorii = await cere('GET', `/vanzari?client_id=${client_id}&achitat=false`, {
+    token: admin, statistici: stat,
+  })
   verifica('GET /vanzari?achitat=false aduce doar datoriile',
     doarDatorii.corp?.total === 1 && doarDatorii.corp?.randuri?.[0]?.id === datorie_id,
     JSON.stringify(doarDatorii.corp?.randuri?.map((v: any) => v.id)))
-  const doarAchitate = await cere('GET', `/vanzari?client_id=${client_id}&achitat=true`, { token: admin })
+  const doarAchitate = await cere('GET', `/vanzari?client_id=${client_id}&achitat=true`, {
+    token: admin, statistici: stat,
+  })
   verifica('GET /vanzari?achitat=true le lasă deoparte',
     doarAchitate.corp?.randuri?.every((v: any) => v.achitat === true)
       && !doarAchitate.corp?.randuri?.some((v: any) => v.id === datorie_id))
@@ -522,6 +644,78 @@ async function ruleaza(): Promise<void> {
     debifata.corp?.achitat === false
       && (await cere('GET', `/clienti/${client_id}`, { token: admin })).corp?.de_incasat === 300)
   await cere('PATCH', `/vanzari/${datorie_id}`, { token: admin, corp: { achitat: true } })
+
+  // -------------------------------------------------------------------------
+  console.log('\nRecepția, fără parola statisticilor — vede datoria și încasează')
+
+  /*
+    Parola statisticilor încuie rapoartele și lista TUTUROR încasărilor, nu
+    banii unui client anume. Totul de aici e făcut cu contul de operator și
+    FĂRĂ antetul statisticilor: exact ce are recepția la îndemână.
+  */
+  const clientRec = (await cere('POST', '/clienti', {
+    token: operator, corp: { nume: `Client Recepție ${Date.now()}` },
+  })).corp
+  const sedintaRec = await cere('POST', '/programari', {
+    token: operator,
+    corp: {
+      client_id: clientRec?.id, articol_id: serviciu.id, executant_id: executant.id,
+      pret: 200, ...interval(33, 9),
+    },
+  })
+  await cere('PATCH', `/programari/${sedintaRec.corp?.id}/stare`, {
+    token: operator, corp: { stare: 'onorat' },
+  })
+  const datorieRec = await cere('POST', '/vanzari', {
+    token: operator,
+    corp: {
+      client_id: clientRec?.id, efectuat_la: new Date().toISOString(), achitat: false,
+      linii: [{ articol_id: produs.id, cantitate: 1, pret_unitar: 50 }],
+    },
+  })
+  verifica('operatorul programează, onorează și vinde pe datorie fără parola statisticilor',
+    sedintaRec.status === 201 && datorieRec.status === 201,
+    JSON.stringify({ sedinta: sedintaRec.corp?.mesaj, vanzare: datorieRec.corp?.mesaj }))
+
+  const listaRec = await cere('GET', '/vanzari', { token: operator })
+  verifica('pentru el, lista tuturor încasărilor rămâne încuiată -> 403',
+    listaRec.status === 403 && listaRec.corp?.camp === 'acces_statistici')
+
+  const fisaRec = await cere('GET', `/clienti/${clientRec?.id}`, { token: operator })
+  verifica('dar vede pe fișă cât are clientul de plată (ședința + produsul)',
+    fisaRec.status === 200 && fisaRec.corp?.de_incasat === 250,
+    JSON.stringify(fisaRec.corp?.de_incasat ?? fisaRec.corp))
+
+  const cautareRec = await cere('GET', `/clienti?q=${encodeURIComponent(clientRec?.nume ?? '')}`, {
+    token: operator,
+  })
+  verifica('și în lista clienților, pe coloana „De plată”',
+    cautareRec.corp?.randuri?.find((c: any) => c.id === clientRec?.id)?.de_incasat === 250,
+    JSON.stringify(cautareRec.corp?.randuri?.map((c: any) => c.de_incasat)))
+
+  const istoricRec = await cere('GET', `/clienti/${clientRec?.id}/istoric`, { token: operator })
+  verifica('istoricul clientului arată ce e neachitat, cu prețul',
+    istoricRec.status === 200
+      && istoricRec.corp?.some((i: any) => i.fel === 'programare'
+        && i.programare.achitat === false && i.programare.pret === 200)
+      && istoricRec.corp?.some((i: any) => i.fel === 'vanzare'
+        && i.vanzare.achitat === false && i.vanzare.total === 50),
+    JSON.stringify(istoricRec.corp?.map((i: any) => i.fel)))
+
+  const bonRec = await cere('GET', `/vanzari/${datorieRec.corp?.id}`, { token: operator })
+  verifica('un bon anume se deschide fără parolă', bonRec.status === 200 && bonRec.corp?.total === 50)
+
+  const incasareRec = await cere('POST', '/vanzari/incasare', {
+    token: operator, corp: { client_id: clientRec?.id, programare_ids: [sedintaRec.corp?.id] },
+  })
+  const achitareRec = await cere('PATCH', `/vanzari/${datorieRec.corp?.id}`, {
+    token: operator, corp: { achitat: true },
+  })
+  verifica('operatorul încasează ședința și produsele luate pe datorie',
+    incasareRec.status === 201 && achitareRec.status === 200 && achitareRec.corp?.achitat === true,
+    JSON.stringify({ incasare: incasareRec.corp?.mesaj, achitare: achitareRec.corp?.mesaj }))
+  verifica('după plată, fișa nu mai are nimic de încasat',
+    (await cere('GET', `/clienti/${clientRec?.id}`, { token: operator })).corp?.de_incasat === 0)
 
   // -------------------------------------------------------------------------
   console.log('\nCorecții — reprogramare, bon editat, nomenclator')
@@ -1069,6 +1263,217 @@ async function ruleaza(): Promise<void> {
     JSON.stringify({ n: cuPatru?.length, ultimul: cuPatru?.[3]?.stare, de_incasat: fisaVizitator.corp?.de_incasat }))
 
   // -------------------------------------------------------------------------
+  console.log('\nStatistici — raportul și cheltuielile')
+
+  /*
+    O zi numai a acestei rulări, departe în viitor: raportul numără TOT ce are
+    loc în perioadă, deci cifrele se pot aștepta exact doar într-o zi în care
+    nu mai scrie nimeni altcineva. Între 2080 și 2099 sunt 7300 de zile; două
+    rulări nimeresc aceeași zi o dată la câteva mii.
+  */
+  const ZI_MS = 86_400_000
+  const ziText = (d: Date) => d.toISOString().slice(0, 10)
+  const D = new Date(Date.UTC(2080, 0, 1) + Math.floor(Math.random() * 7300) * ZI_MS)
+  const ziua = ziText(D)
+  const ziuaDinainte = ziText(new Date(D.getTime() - ZI_MS))
+  // Orele sunt UTC; 07:00–13:00 UTC cad în aceeași zi și la București (+2/+3).
+  const la = (ora: number) => new Date(D.getTime() + ora * 3_600_000).toISOString()
+  const ora = (inceput: number) => ({ incepe_la: la(inceput), se_termina_la: la(inceput + 0.75) })
+
+  const clientStat = (await cere('POST', '/clienti', {
+    token: admin, corp: { nume: `Test Statistici ${Date.now()}` },
+  })).corp
+  const programeaza = async (inceput: number, pret: number) =>
+    (await cere('POST', '/programari', {
+      token: admin,
+      corp: { client_id: clientStat.id, articol_id: serviciu.id, executant_id: executant.id, pret, ...ora(inceput) },
+    })).corp
+
+  // A: onorată și plătită, cu două produse pe același bon. B: onorată, neplătită.
+  // C: neprezentare.
+  const sedintaA = await programeaza(7, 200)
+  const sedintaB = await programeaza(8, 80)
+  const sedintaC = await programeaza(9, 150)
+  await cere('PATCH', `/programari/${sedintaA.id}/stare`, { token: admin, corp: { stare: 'onorat' } })
+  await cere('PATCH', `/programari/${sedintaB.id}/stare`, { token: admin, corp: { stare: 'onorat' } })
+  await cere('PATCH', `/programari/${sedintaC.id}/stare`, { token: admin, corp: { stare: 'neprezentat' } })
+  const bonStat = await cere('POST', '/vanzari/incasare', {
+    token: admin,
+    corp: {
+      client_id: clientStat.id,
+      programare_ids: [sedintaA.id],
+      efectuat_la: la(12),
+      linii: [{ articol_id: produs.id, cantitate: 2, pret_unitar: 50 }],
+    },
+  })
+  verifica('pregătire: bonul zilei, 300 lei', bonStat.corp?.total === 300, JSON.stringify(bonStat.corp))
+  // O cremă dată pe datorie în aceeași zi.
+  await cere('POST', '/vanzari', {
+    token: admin,
+    corp: {
+      client_id: clientStat.id, efectuat_la: la(10), achitat: false,
+      linii: [{ articol_id: produs.id, cantitate: 1, pret_unitar: 40 }],
+    },
+  })
+
+  const cheltuieliIncuiate = await cere('GET', '/cheltuieli', { token: admin })
+  verifica('cheltuielile fără deblocare -> 403', cheltuieliIncuiate.status === 403
+    && cheltuieliIncuiate.corp?.camp === 'acces_statistici')
+
+  const acces = { token: admin, statistici: stat }
+  const chirie = await cere('POST', '/cheltuieli', {
+    ...acces, corp: { data: ziua, categorie: 'Chirie test', suma: 120, descriere: 'Chiria lunii' },
+  })
+  verifica('POST /cheltuieli -> 201, cu autorul',
+    chirie.status === 201 && chirie.corp?.suma === 120 && chirie.corp?.data === ziua
+      && typeof chirie.corp?.creat_de_nume === 'string',
+    JSON.stringify(chirie.corp))
+  const chirieMica = await cere('POST', '/cheltuieli', {
+    ...acces, corp: { data: ziua, categorie: '  chirie TEST ', suma: 30 },
+  })
+  verifica('categoria scrisă altfel se lipește de cea existentă',
+    chirieMica.status === 201 && chirieMica.corp?.categorie === 'Chirie test',
+    JSON.stringify(chirieMica.corp?.categorie))
+
+  for (const [corp, camp] of [
+    [{ data: ziua, categorie: 'X', suma: 0 }, 'suma'],
+    [{ data: '2081-02-30', categorie: 'X', suma: 5 }, 'data'],
+    [{ data: `${ziua}T10:00:00Z`, categorie: 'X', suma: 5 }, 'data'],
+    [{ data: ziua, categorie: '   ', suma: 5 }, 'categorie'],
+  ] as const) {
+    const r = await cere('POST', '/cheltuieli', { ...acces, corp })
+    verifica(`cheltuială greșită -> 400 pe „${camp}”`, r.status === 400 && r.corp?.camp === camp,
+      JSON.stringify(r.corp))
+  }
+
+  const cheltuieliZilei = await cere('GET', `/cheltuieli?de_la=${ziua}&pana_la=${ziua}`, acces)
+  verifica('GET /cheltuieli -> paginat, cu suma filtrului',
+    cheltuieliZilei.corp?.total === 2 && cheltuieliZilei.corp?.suma === 150
+      && cheltuieliZilei.corp?.randuri?.length === 2,
+    JSON.stringify({ total: cheltuieliZilei.corp?.total, suma: cheltuieliZilei.corp?.suma }))
+  const categorii = await cere('GET', '/cheltuieli/categorii', acces)
+  verifica('GET /cheltuieli/categorii -> listă de texte',
+    Array.isArray(categorii.corp) && categorii.corp.includes('Chirie test'))
+
+  const raportZi = (extra = '') =>
+    cere('GET', `/statistici?de_la=${ziua}&pana_la=${ziua}&pas=zi&fus=Europe/Bucharest${extra}`, acces)
+  const raport = await raportZi(`&comparatie_de_la=${ziuaDinainte}&comparatie_pana_la=${ziuaDinainte}`)
+  const t = raport.corp?.total
+  verifica('GET /statistici -> 200', raport.status === 200, JSON.stringify(raport.corp))
+  verifica('încasat = bonul plătit (300 = 200 ședință + 100 produse)',
+    t?.incasat === 300 && t?.incasat_servicii === 200 && t?.incasat_produse === 100 && t?.incasari === 1,
+    JSON.stringify(t))
+  verifica('cheltuieli 150, profit 150', t?.cheltuieli === 150 && t?.profit === 150, JSON.stringify(t))
+  verifica('neachitat = ședința neplătită (80) + crema pe datorie (40)', t?.neachitat === 120,
+    JSON.stringify(t?.neachitat))
+  verifica('programările după stare: 2 onorate, 1 neprezentată',
+    t?.programari_onorate === 2 && t?.programari_neprezentate === 1
+      && t?.programari_anulate === 0 && t?.programari_programate === 0,
+    JSON.stringify(t))
+  verifica('un client servit, niciunul nou în ziua aceea', t?.clienti === 1 && t?.clienti_noi === 0,
+    JSON.stringify(t))
+  verifica('comparația cu ziua dinainte e goală',
+    raport.corp?.comparatie?.incasat === 0 && raport.corp?.comparatie?.programari_onorate === 0,
+    JSON.stringify(raport.corp?.comparatie))
+  verifica('o bară pe zi, cu banii ei',
+    raport.corp?.perioade?.length === 1 && raport.corp.perioade[0].inceput === ziua
+      && raport.corp.perioade[0].incasat_servicii === 200
+      && raport.corp.perioade[0].incasat_produse === 100
+      && raport.corp.perioade[0].cheltuieli === 150,
+    JSON.stringify(raport.corp?.perioade))
+  verifica('serviciile și produsele, după bani',
+    raport.corp?.servicii?.[0]?.articol_id === serviciu.id && raport.corp.servicii[0].suma === 200
+      && raport.corp.servicii[0].cantitate === 1
+      && raport.corp?.produse?.[0]?.articol_id === produs.id && raport.corp.produse[0].cantitate === 2,
+    JSON.stringify({ s: raport.corp?.servicii, p: raport.corp?.produse }))
+  const persoana = raport.corp?.persoane?.find((p: any) => p.utilizator_id === executant.id)
+  verifica('pe persoane: ședințele ei și banii din ele',
+    persoana?.incasat === 200 && persoana?.programari_onorate === 2, JSON.stringify(raport.corp?.persoane))
+  verifica('cheltuielile pe categorii',
+    raport.corp?.cheltuieli?.length === 1 && raport.corp.cheltuieli[0].categorie === 'Chirie test'
+      && raport.corp.cheltuieli[0].suma === 150 && raport.corp.cheltuieli[0].numar === 2,
+    JSON.stringify(raport.corp?.cheltuieli))
+  const isodow = ((D.getUTCDay() + 6) % 7) + 1
+  verifica('zilele săptămânii: toate șapte, cu cele două onorate în ziua lor',
+    raport.corp?.zile_saptamana?.length === 7
+      && raport.corp.zile_saptamana.find((z: any) => z.zi === isodow)?.programari === 2,
+    JSON.stringify(raport.corp?.zile_saptamana))
+  verifica('clienții după bani',
+    raport.corp?.clienti?.[0]?.client_id === clientStat.id && raport.corp.clienti[0].incasat === 300
+      && raport.corp.clienti[0].incasari === 1,
+    JSON.stringify(raport.corp?.clienti))
+
+  const peSaptamani = await cere('GET',
+    `/statistici?de_la=${ziua}&pana_la=${ziText(new Date(D.getTime() + 20 * ZI_MS))}&pas=saptamana`, acces)
+  const lunile = (peSaptamani.corp?.perioade ?? []) as any[]
+  verifica('pe săptămâni: bare care încep lunea, la 7 zile una de alta',
+    lunile.length >= 3 && lunile.every((p, i) =>
+      new Date(`${p.inceput}T00:00:00Z`).getUTCDay() === 1
+      && (i === 0 || new Date(p.inceput).getTime() - new Date(lunile[i - 1].inceput).getTime() === 7 * ZI_MS)),
+    JSON.stringify(lunile.map((p) => p.inceput)))
+  verifica('suma barelor = totalul perioadei',
+    lunile.reduce((s, p) => s + p.incasat_servicii + p.incasat_produse, 0) === peSaptamani.corp?.total?.incasat)
+
+  const peLuni = await cere('GET',
+    `/statistici?de_la=${ziua}&pana_la=${ziText(new Date(D.getTime() + 40 * ZI_MS))}&pas=luna`, acces)
+  verifica('pe luni: prima bară începe pe 1',
+    peLuni.corp?.perioade?.[0]?.inceput === `${ziua.slice(0, 7)}-01`,
+    JSON.stringify(peLuni.corp?.perioade?.map((p: any) => p.inceput)))
+
+  for (const [interogare, camp] of [
+    [`de_la=${ziua}&pana_la=${ziuaDinainte}`, 'pana_la'],
+    [`de_la=${ziua}&pana_la=${ziua}&pas=ora`, 'pas'],
+    [`de_la=${ziua}&pana_la=${ziua}&fus=Marte/Olimp`, 'fus'],
+    [`de_la=${ziua}&pana_la=${ziua}&fus=${encodeURIComponent('+02:00')}`, 'fus'],
+    [`de_la=${ziua}&pana_la=${ziua}&pas=toString`, 'pas'],
+    [`de_la=${ziua}&pana_la=${ziua}&pas=__proto__`, 'pas'],
+    [`de_la=ieri&pana_la=${ziua}`, 'de_la'],
+    [`de_la=2080-01-01&pana_la=2082-01-01&pas=zi`, 'pas'],
+    [`de_la=${ziua}&pana_la=${ziua}&comparatie_de_la=${ziua}`, 'comparatie_pana_la'],
+  ] as const) {
+    const r = await cere('GET', `/statistici?${interogare}`, acces)
+    verifica(`raport cerut greșit -> 400 pe „${camp}”`, r.status === 400 && r.corp?.camp === camp,
+      `${r.status} ${JSON.stringify(r.corp)}`)
+  }
+  verifica('un an întreg zi cu zi încape',
+    (await cere('GET', '/statistici?de_la=2081-01-01&pana_la=2081-12-31&pas=zi', acces)).status === 200)
+
+  const corectata = await cere('PATCH', `/cheltuieli/${chirieMica.corp?.id}`, { ...acces, corp: { suma: 60 } })
+  verifica('PATCH /cheltuieli/:id -> suma nouă', corectata.status === 200 && corectata.corp?.suma === 60)
+  const cheltuialaStearsa = await cere('DELETE', `/cheltuieli/${chirie.corp?.id}`, acces)
+  verifica('DELETE /cheltuieli/:id -> 204', cheltuialaStearsa.status === 204)
+  const dupaCorectii = (await raportZi()).corp?.total
+  verifica('profitul urmează cheltuielile corectate (300 − 60)',
+    dupaCorectii?.cheltuieli === 60 && dupaCorectii?.profit === 240, JSON.stringify(dupaCorectii))
+  const urmaChirie = await cere('GET', `/jurnal?entitate=cheltuiala&entitate_id=${chirie.corp?.id}`, acces)
+  verifica('ștergerea cheltuielii rămâne în jurnal, întreagă cu deblocarea',
+    urmaChirie.corp?.randuri?.some((r: any) => r.actiune === 'stergere' && r.date_vechi?.suma === 120),
+    JSON.stringify(urmaChirie.corp?.randuri?.map((r: any) => r.date_vechi)))
+  const urmaAscunsa = await cere('GET', `/jurnal?entitate=cheltuiala&entitate_id=${chirie.corp?.id}`, { token: admin })
+  verifica('fără deblocare, jurnalul arată cine și când, dar nu sumele cheltuielilor',
+    urmaAscunsa.corp?.randuri?.length > 0
+      && urmaAscunsa.corp.randuri.every((r: any) => r.date_vechi === null && r.date_noi === null),
+    JSON.stringify(urmaAscunsa.corp?.randuri?.map((r: any) => [r.date_vechi, r.date_noi])))
+  const urmaDeschideri = await cere('GET', '/jurnal?entitate=statistici', { token: admin })
+  verifica('fiecare deschidere a statisticilor rămâne în jurnal',
+    urmaDeschideri.corp?.randuri?.some((r: any) => r.actiune === 'autentificare'))
+
+  const schimbata = await cere('PUT', '/statistici/parola', {
+    token: admin, corp: { parola_curenta: PAROLA_STATISTICI, parola_noua: PAROLA_STATISTICI_NOUA },
+  })
+  verifica('parola se schimbă cu cea curentă -> 200 și deblocare nouă',
+    schimbata.status === 200 && typeof schimbata.corp?.jeton === 'string', JSON.stringify(schimbata.corp))
+  const vechea = await raportZi()
+  verifica('schimbarea parolei încuie deblocările vechi -> 403',
+    vechea.status === 403 && vechea.corp?.camp === 'acces_statistici', JSON.stringify(vechea.corp))
+  const nouaMerge = await cere('GET', `/statistici?de_la=${ziua}&pana_la=${ziua}`, {
+    token: admin, statistici: schimbata.corp?.jeton,
+  })
+  verifica('deblocarea nouă merge', nouaMerge.status === 200)
+  const veche = await cere('POST', '/statistici/acces', { token: admin, corp: { parola: PAROLA_STATISTICI } })
+  verifica('parola veche nu mai deschide', veche.status === 400 && veche.corp?.camp === 'parola')
+
+  // -------------------------------------------------------------------------
   console.log('\nArhivare, ștergere, sesiuni')
 
   const arhivat = await cere('POST', `/clienti/${injectat.corp.id}/arhivare`, { token: admin })
@@ -1119,7 +1524,11 @@ async function ruleaza(): Promise<void> {
   }
 }
 
-ruleaza().catch((e) => {
-  console.error('\nTestul s-a oprit:', e)
-  process.exitCode = 1
-})
+ruleaza()
+  .catch((e) => {
+    console.error('\nTestul s-a oprit:', e)
+    process.exitCode = 1
+  })
+  // Legătura directă cu baza, deschisă pentru parola statisticilor, ar ține
+  // procesul în viață după ultima verificare.
+  .finally(() => pool.end())

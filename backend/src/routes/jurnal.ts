@@ -11,8 +11,12 @@ import { Router, Response } from 'express'
 import pool, { multe } from '../lib/db.js'
 import { ruta } from '../lib/erori.js'
 import { Conditii, impacheteaza, listaDin, paginareDin, textDin } from '../lib/filtre.js'
+import { areAccesStatistici } from '../middleware/acces-statistici.js'
 import { requireAuth, requireRole, AuthRequest } from '../middleware/auth.js'
 import type { JurnalOperatiuneDetaliu } from '../types/database.js'
+
+/** Entitățile ale căror date din jurnal se văd doar cu statisticile deblocate. */
+const ENTITATI_CU_BANI = new Set(['cheltuiala'])
 
 const router = Router()
 router.use(requireAuth, requireRole('administrator'))
@@ -51,7 +55,21 @@ router.get('/', ruta(async (req: AuthRequest, res: Response) => {
     ),
   ])
 
-  res.json(impacheteaza(randuri, numarate[0]?.total ?? 0, p))
+  /*
+    Cheltuielile se jurnalizează întregi — sumă, categorie, descriere — ca o
+    ștergere să poată fi refăcută. Dar jurnalul îl vede orice administrator,
+    iar suma chiriei și a salariilor este tocmai ce păzește parola
+    statisticilor; rolul singur nu trebuie să ajungă. Fără deblocare, rândul
+    rămâne (cine, când, ce operațiune), doar datele lui se ascund.
+  */
+  const vedeBanii = await areAccesStatistici(req)
+  const vizibile = vedeBanii
+    ? randuri
+    : randuri.map((r) =>
+        ENTITATI_CU_BANI.has(r.entitate) ? { ...r, date_vechi: null, date_noi: null } : r,
+      )
+
+  res.json(impacheteaza(vizibile, numarate[0]?.total ?? 0, p))
 }))
 
 export default router

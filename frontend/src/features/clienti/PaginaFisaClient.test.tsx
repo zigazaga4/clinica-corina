@@ -2,8 +2,9 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, it } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
 import { api } from '@/api'
+import { esteStatisticiIncuiate } from '@/api/errors'
 import type { Uuid } from '@/domain/types'
-import { autentifica, randeaza } from '@/test/render'
+import { autentifica, deschideStatisticile, randeaza } from '@/test/render'
 import { PaginaFisaClient } from './PaginaFisaClient'
 
 /*
@@ -113,6 +114,8 @@ it('încasează într-o singură plată toate ședințele rămase', async () => 
   const confirma = await fereastra.findByRole('button', { name: /^Încasează / })
   expect(sumaDinText(confirma.textContent ?? '')).toBe(total)
 
+  // Lista încasărilor e în spatele parolei statisticilor; testul o deschide ca să numere.
+  await deschideStatisticile()
   const inainte = (await api.vanzari.list({ client_id: id })).total
   fireEvent.click(confirma)
 
@@ -200,6 +203,47 @@ it('adună produsele neachitate la „De plată” și le încasează odată cu 
     expect((await api.vanzari.get(datorie.id)).achitat).toBe(true)
     const lista = await api.clienti.list({ q: 'Ana Restantă', pe_pagina: 500 })
     expect(lista.randuri.find((c) => c.id === id)?.de_incasat).toBe(0)
+  })
+  await waitFor(() => expect(screen.queryByText(/De plată:/)).toBeNull())
+})
+
+it('recepția, fără parola statisticilor, vede cât are clientul de plată și încasează', async () => {
+  // Parola statisticilor încuie rapoartele și lista TUTUROR încasărilor — nu
+  // banii unui client anume. Recepția trebuie să-i vadă datoria și s-o încaseze.
+  const { id, total, programare_ids } = await clientCuDouaRestante()
+  const produs = (await api.articole.list({ tip: 'produs', activ: true }))[0]
+  if (!produs) throw new Error('Datele demo nu conțin niciun produs activ.')
+  const datorie = await api.vanzari.create({
+    client_id: id,
+    efectuat_la: new Date().toISOString(),
+    achitat: false,
+    linii: [{ articol_id: produs.id, cantitate: 1, pret_unitar: 100 }],
+  })
+
+  await autentifica('andreea.popescu@clinica.ro')
+  expect((await api.auth.utilizatorCurent())?.rol).toBe('utilizator')
+  // Statisticile chiar sunt încuiate pentru ea — altfel testul n-ar dovedi nimic.
+  await expect(api.vanzari.list({ client_id: id })).rejects.toSatisfy(esteStatisticiIncuiate)
+
+  // Coloana „De plată” din lista clienților.
+  const lista = await api.clienti.list({ q: 'Ana Restantă', pe_pagina: 500 })
+  expect(lista.randuri.find((c) => c.id === id)?.de_incasat).toBe(total + 100)
+
+  randeazaFisa(id)
+  const banda = await screen.findByText(/De plată:/)
+  expect(sumaDinText(banda.textContent ?? '')).toBe(total + 100)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Încasează' }))
+  const fereastra = within(screen.getByRole('dialog'))
+  const confirma = await fereastra.findByRole('button', { name: /^Încasează / })
+  expect(sumaDinText(confirma.textContent ?? '')).toBe(total + 100)
+  fireEvent.click(confirma)
+
+  await waitFor(async () => {
+    expect((await api.vanzari.get(datorie.id)).achitat).toBe(true)
+    for (const programare_id of programare_ids) {
+      expect((await api.programari.get(programare_id)).achitat).toBe(true)
+    }
   })
   await waitFor(() => expect(screen.queryByText(/De plată:/)).toBeNull())
 })

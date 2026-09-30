@@ -1,11 +1,11 @@
 import { Router, Request, Response } from 'express'
-import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import argon2 from 'argon2'
 import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 import pool, { tranzactie, unuSauNimic, type Executor } from '../lib/db.js'
 import { eroareInterzis, eroareNeautentificat, eroareValidare, ruta } from '../lib/erori.js'
 import { adresaCererii, scrieJurnal } from '../lib/jurnal.js'
+import { cheieAdresa, LIMITA_ADRESA, LIMITA_CONT, limitator } from '../lib/limitare.js'
 import { requireAuth, AuthRequest, cont } from '../middleware/auth.js'
 import {
   JwtPayload,
@@ -68,55 +68,11 @@ const amprenta = (token: string) => crypto.createHash('sha256').update(token).di
   ruleze serverul în mai multe copii (`cluster`), fiecare copie va număra
   separat și limitele efective se înmulțesc cu numărul lor — atunci e nevoie de
   un store comun (Redis), nu de alte cifre aici.
+
+  Unealta însăși (`limitator`, fereastra, limitele) stă în `lib/limitare.ts`,
+  fiindcă o folosește și parola statisticilor. Cheile de mai jos sunt ale
+  autentificării.
 */
-const FEREASTRA_MS = 10 * 60_000
-
-/** Câte încercări EȘUATE tolerăm într-o fereastră, pe fiecare dimensiune. */
-const LIMITA_CONT = 12
-const LIMITA_ADRESA = 60
-
-/** Construiește un limitator peste cheia dată — vezi cheile de mai jos. */
-function limitator(limita: number, cheie: (req: Request) => string) {
-  return rateLimit({
-    windowMs: FEREASTRA_MS,
-    limit: limita,
-
-    /*
-      Se numără DOAR ce a eșuat. O zi de lucru normală înseamnă zeci de
-      autentificări reușite — ele nu trebuie să apropie pe nimeni de limită,
-      altfel protecția s-ar întoarce împotriva clinicii tocmai în zilele
-      aglomerate.
-    */
-    skipSuccessfulRequests: true,
-
-    keyGenerator: cheie,
-
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-
-    /*
-      Răspunsul păstrează forma contractului — `{ mesaj }` — nu HTML-ul sau
-      `{ error }` cu care vine biblioteca. Interfața despachetează un singur
-      câmp; orice altceva ajunge la operatoare drept „Cererea a eșuat (429)”.
-      Compunerea se face aici, nu în `trateazaErori`, pentru că `EroareApi` nu
-      are cod pentru 429; `Retry-After` îl pune biblioteca.
-    */
-    handler: (_req: Request, res: Response) => {
-      res.status(429).json({
-        mesaj: 'Prea multe încercări eșuate. Așteaptă câteva minute și încearcă din nou.',
-      })
-    },
-  })
-}
-
-/*
-  Cheile numărătorilor.
-
-  `ipKeyGenerator` normalizează IPv6 la subrețea: fără el, cine are un /64 —
-  adică orice abonat obișnuit — capătă o găleată nouă la fiecare cerere, doar
-  schimbând ultimele cifre ale adresei.
-*/
-const cheieAdresa = (req: Request): string => ipKeyGenerator(req.ip ?? '')
 
 /** Adresa de e-mail din corpul cererii, normalizată ca la căutarea din bază. */
 const contulCerut = (req: Request): string => {

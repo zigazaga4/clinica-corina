@@ -29,6 +29,7 @@ import {
 import { adresaCererii, diferenta, scrieJurnal } from '../lib/jurnal.js'
 import { atasaLinii, DIN_VANZARI, punctImplicit, vanzareDetaliu, vanzariDetaliu } from '../lib/proiectii.js'
 import { momentCerut, textOptional } from '../lib/validare.js'
+import { cereAccesStatistici } from '../middleware/acces-statistici.js'
 import { requireAuth, AuthRequest, cont } from '../middleware/auth.js'
 import type {
   CreateVanzareRequest,
@@ -181,10 +182,14 @@ router.post('/incasare', ruta(async (req: AuthRequest, res: Response) => {
 }))
 
 // ---------------------------------------------------------------------------
-// GET /vanzari — orice rol
+// GET /vanzari — orice rol, cu statisticile deblocate
+//
+// Lista tuturor încasărilor clinicii ESTE o statistică: cine o are adună
+// singur cât a intrat. De aceea stă în spatele aceleiași parole ca restul
+// banilor. Bonul singur (`/:id`), deschis de pe fișa unui client, rămâne liber.
 // ---------------------------------------------------------------------------
 
-router.get('/', ruta(async (req: AuthRequest, res: Response) => {
+router.get('/', cereAccesStatistici, ruta(async (req: AuthRequest, res: Response) => {
   const unde = new Conditii()
   const p = paginareDin(req)
 

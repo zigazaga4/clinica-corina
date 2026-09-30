@@ -544,6 +544,72 @@ CREATE UNIQUE INDEX IF NOT EXISTS vanzare_linie_programare_uk
 
 
 -- ---------------------------------------------------------------------------
+-- cheltuiala — banii ieșiți: chirie, salarii, consumabile, marfă
+-- ---------------------------------------------------------------------------
+
+/*
+  Jumătatea care lipsea profitului.
+
+  Încasările spun cât a intrat; nicio altă tabelă nu spune cât a ieșit. Fără
+  rândurile de aici, „profitul” din Statistici ar fi fost doar încasarea sub
+  alt nume — o cifră mare și falsă, exact pe ecranul pe care se iau decizii.
+
+  `data` este ziua plății, fără oră: chiria se plătește „pe 5”, nu „pe 5 la
+  10:42”, iar o oră inventată ar fi mutat-o în altă zi pe un calculator cu alt
+  fus. `categorie` este text liber, nu o listă fixă: fiecare clinică își
+  împarte altfel cheltuielile, iar formularul propune categoriile folosite deja.
+
+  Se poate ȘTERGE, ca notița: o cheltuială scrisă de două ori ar strica
+  profitul fiecărei luni în care apare. Urma rămâne în jurnal.
+*/
+CREATE TABLE IF NOT EXISTS cheltuiala (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  data           date NOT NULL,
+  categorie      text NOT NULL,
+  descriere      text,
+  suma           numeric(10,2) NOT NULL,
+  creat_de       uuid REFERENCES utilizator(id) ON DELETE SET NULL,
+  creat_la       timestamptz NOT NULL DEFAULT now(),
+  actualizat_la  timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT cheltuiala_categorie_ck CHECK (btrim(categorie) <> ''),
+  CONSTRAINT cheltuiala_suma_ck CHECK (suma > 0)
+);
+
+-- Statisticile citesc câte o perioadă; lista, cele mai noi întâi.
+CREATE INDEX IF NOT EXISTS cheltuiala_data_idx ON cheltuiala (data DESC);
+
+DROP TRIGGER IF EXISTS cheltuiala_actualizat_la ON cheltuiala;
+CREATE TRIGGER cheltuiala_actualizat_la BEFORE UPDATE ON cheltuiala
+  FOR EACH ROW EXECUTE FUNCTION set_actualizat_la();
+
+
+-- ---------------------------------------------------------------------------
+-- parola_statistici — parola separată a ecranului „Statistici”
+-- ---------------------------------------------------------------------------
+
+/*
+  Banii clinicii se văd cu o parolă a lor, nu cu a contului.
+
+  Contul de la recepție îl folosesc, în fapt, mai mulți oameni, iar unele
+  calculatoare rămân deschise toată ziua. Parola de aici o știe doar cine
+  trebuie să vadă încasările, cheltuielile și profitul — oricine ar fi
+  autentificat în aplicație.
+
+  Un singur rând, oricât ar încerca cineva: cheia este `true` și nu poate fi
+  altceva. Lipsa rândului înseamnă „încă nealeasă” — o alege primul
+  administrator care deschide ecranul. Argon2id, ca parolele conturilor, și
+  la fel ca ele nu părăsește niciodată serverul.
+*/
+CREATE TABLE IF NOT EXISTS parola_statistici (
+  id             boolean PRIMARY KEY DEFAULT true CHECK (id),
+  parola_hash    text NOT NULL,
+  actualizat_de  uuid REFERENCES utilizator(id) ON DELETE SET NULL,
+  actualizat_la  timestamptz NOT NULL DEFAULT now()
+);
+
+
+-- ---------------------------------------------------------------------------
 -- sesiune — refresh token-urile emise
 -- ---------------------------------------------------------------------------
 
@@ -791,6 +857,15 @@ SELECT
 FROM notita n
 LEFT JOIN utilizator e ON e.id = n.executant_id
 LEFT JOIN utilizator u ON u.id = n.creat_de;
+
+
+-- Cheltuiala, cu numele celui care a scris-o. NULL dacă i s-a șters contul.
+CREATE OR REPLACE VIEW v_cheltuiala_detaliu AS
+SELECT
+  ch.*,
+  u.nume AS creat_de_nume
+FROM cheltuiala ch
+LEFT JOIN utilizator u ON u.id = ch.creat_de;
 
 
 -- Linia de vânzare, cu denumirea articolului și data ședinței stinse.

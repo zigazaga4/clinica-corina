@@ -334,6 +334,94 @@ export interface NotitaDetaliu extends Notita {
   creat_de_nume: string | null
 }
 
+/** O cheltuială — banii ieșiți. `data` este ziua plății, `YYYY-MM-DD`. */
+export interface Cheltuiala {
+  id: string
+  data: string
+  categorie: string
+  descriere: string | null
+  suma: number
+  creat_de: string | null
+  creat_la: string
+  actualizat_la: string
+}
+
+/** `v_cheltuiala_detaliu`. */
+export interface CheltuialaDetaliu extends Cheltuiala {
+  creat_de_nume: string | null
+}
+
+// ── Statistici — GET /statistici ─────────────────────────────
+//
+// Gemene cu `src/domain/types.ts` din aplicație; vezi comentariile de acolo.
+
+export type PasStatistici = 'zi' | 'saptamana' | 'luna'
+
+export interface TotaluriStatistici {
+  incasat: number
+  incasat_servicii: number
+  incasat_produse: number
+  incasari: number
+  cheltuieli: number
+  profit: number
+  neachitat: number
+  programari_onorate: number
+  programari_neprezentate: number
+  programari_anulate: number
+  programari_programate: number
+  clienti: number
+  clienti_noi: number
+}
+
+export interface PerioadaStatistici {
+  inceput: string
+  incasat_servicii: number
+  incasat_produse: number
+  cheltuieli: number
+}
+
+export interface StatisticaArticol {
+  articol_id: string
+  denumire: string
+  cantitate: number
+  suma: number
+}
+
+export interface StatisticaPersoana {
+  utilizator_id: string
+  nume: string
+  programari_onorate: number
+  incasat: number
+}
+
+export interface StatisticaCategorie {
+  categorie: string
+  suma: number
+  numar: number
+}
+
+export interface StatisticaClient {
+  client_id: string
+  nume: string
+  incasat: number
+  incasari: number
+}
+
+export interface RaportStatistici {
+  de_la: string
+  pana_la: string
+  pas: PasStatistici
+  total: TotaluriStatistici
+  comparatie: TotaluriStatistici | null
+  perioade: PerioadaStatistici[]
+  servicii: StatisticaArticol[]
+  produse: StatisticaArticol[]
+  persoane: StatisticaPersoana[]
+  cheltuieli: StatisticaCategorie[]
+  zile_saptamana: { zi: number; programari: number }[]
+  clienti: StatisticaClient[]
+}
+
 /**
  * Datele clientului așa cum arătau în clipa semnării.
  *

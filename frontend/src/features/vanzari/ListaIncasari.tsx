@@ -3,7 +3,7 @@ import { Clock3, Receipt, ShoppingBag, Wallet } from 'lucide-react'
 import type { FiltruVanzari } from '@/api/contract'
 import { mesajEroare } from '@/api/errors'
 import { useVanzari } from '@/app/queries'
-import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
+import { BaraFiltre } from '@/components/Pagina'
 import { InsemnPlata } from '@/components/insemne'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
 import type { Uuid, VanzareDetaliu } from '@/domain/types'
@@ -40,6 +40,11 @@ import { FormularVanzare } from './FormularVanzare'
  * Lista răspunde la o singură întrebare practică: cât s-a încasat, pe ce filtru.
  * De aceea rezumatul de sus și tabelul citesc ACELEAȘI filtre; un total calculat
  * peste altceva decât rândurile afișate ar fi imposibil de verificat la casă.
+ *
+ * A fost un ecran al lui, „Încasări”. Acum este o filă din Statistici, în
+ * spatele parolei lor: lista tuturor banilor intrați ESTE o statistică — oricine
+ * o vede adună singur cât a câștigat clinica. Serverul o păzește la fel
+ * (`GET /vanzari` cere deblocarea); bonul unui client rămâne pe fișa lui.
  */
 
 const PE_PAGINA = 25
@@ -77,7 +82,7 @@ const FILTRE_PLATA: { valoare: boolean | null; eticheta: string }[] = [
   { valoare: false, eticheta: 'Neachitate' },
 ]
 
-export function PaginaVanzari() {
+export function ListaIncasari() {
   const [filtre, setFiltre] = useState<StareFiltre>(FILTRE_GOALE)
   const [pagina, setPagina] = useState(1)
   const [formular, setFormular] = useState<{ vanzare?: VanzareDetaliu } | null>(null)
@@ -172,17 +177,17 @@ export function PaginaVanzari() {
   ]
 
   return (
-    <Pagina>
-      <AntetPagina
-        titlu="Încasări"
-        descriere="Ședințele achitate și produsele vândute — plătite sau rămase de plată — cu clientul, momentul și operatorul lor."
-        actiuni={
-          <Buton varianta="primar" onClick={() => setFormular({})}>
-            <ShoppingBag className="size-4" />
-            Vinde produse
-          </Buton>
-        }
-      />
+    <>
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <p className="text-[13px] text-ink-faint">
+          Ședințele achitate și produsele vândute — plătite sau rămase de plată — cu clientul,
+          momentul și operatorul lor.
+        </p>
+        <Buton varianta="primar" onClick={() => setFormular({})} className="shrink-0">
+          <ShoppingBag className="size-4" />
+          Vinde produse
+        </Buton>
+      </div>
 
       <div className="mb-3 grid grid-cols-2 gap-3 sm:max-w-2xl sm:grid-cols-3">
         <Statistica
@@ -337,7 +342,7 @@ export function PaginaVanzari() {
           onInchide={() => setFormular(null)}
         />
       )}
-    </Pagina>
+    </>
   )
 }
 

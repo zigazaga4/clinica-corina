@@ -13,6 +13,7 @@
 
 import type {
   Articol,
+  Cheltuiala,
   Client,
   NotaClient,
   Notita,
@@ -24,7 +25,7 @@ import type {
   Vanzare,
   VanzareLinie,
 } from '@/domain/types'
-import { addDays, addMinutes, laTimestamptz, startOfDay } from '@/lib/dates'
+import { addDays, addMinutes, laInputDate, laTimestamptz, startOfDay } from '@/lib/dates'
 import { uuid } from '@/lib/id'
 import { totalLinie } from '@/lib/money'
 import { alege, generator, goleste, intreg, magazin, sansa, type RandUtilizator } from './store'
@@ -666,7 +667,45 @@ export function populeaza(): void {
     j.id = i + 1
   })
   magazin.urmatorId_jurnal = magazin.jurnal_operatiuni.length + 1
+
+  // --- cheltuieli ----------------------------------------------------------
+  // Ultimele două luni, ca Statisticile să aibă din ce scădea profitul. Fixe,
+  // fără `rnd`, și scrise la urmă: o tragere în plus ar fi mutat tot restul
+  // datelor demo. Doar zile trecute — o chirie „plătită” mâine ar fi o minciună.
+  // Parola statisticilor NU se scrie: o alege administratorul, la prima deschidere.
+  const administrator = utilizatori.find((u) => u.rol === 'administrator') ?? utilizatori[0]
+  for (const [zile, categorie, suma, descriere] of CHELTUIELI) {
+    const moment = laTimestamptz(addMinutes(addDays(azi, zile), 12 * 60))
+    const rand: Cheltuiala = {
+      id: uuid(),
+      data: laInputDate(addDays(azi, zile)),
+      categorie,
+      descriere,
+      suma,
+      creat_de: administrator?.id ?? null,
+      creat_la: moment,
+      actualizat_la: moment,
+    }
+    magazin.cheltuiala.set(rand.id, rand)
+  }
 }
+
+/** [zile față de azi, categorie, sumă, descriere] */
+const CHELTUIELI: readonly (readonly [number, string, number, string | null])[] = [
+  [-58, 'Salarii', 7200, 'Salariile lunii trecute'],
+  [-55, 'Chirie', 3500, 'Chiria spațiului'],
+  [-50, 'Utilități', 640, 'Curent și apă'],
+  [-44, 'Consumabile', 420, 'Mănuși, comprese, dezinfectant'],
+  [-38, 'Produse pentru vânzare', 1250, 'Seruri și creme de la distribuitor'],
+  [-28, 'Salarii', 7200, 'Salariile lunii'],
+  [-25, 'Chirie', 3500, 'Chiria spațiului'],
+  [-20, 'Utilități', 590, 'Curent și apă'],
+  [-16, 'Echipamente', 980, 'Lampă nouă pentru cabinetul 2'],
+  [-12, 'Consumabile', 380, 'Hârtie de canapea, geluri'],
+  [-9, 'Produse pentru vânzare', 860, null],
+  [-6, 'Marketing', 300, 'Promovare pe rețele'],
+  [-2, 'Consumabile', 145, null],
+]
 
 // ---------------------------------------------------------------------------
 // Ajutătoare

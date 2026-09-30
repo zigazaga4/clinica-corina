@@ -9,7 +9,7 @@ import type { Uuid, VanzareDetaliu } from '@/domain/types'
 import { dinInputDatetime, formateazaData, laInputDatetime } from '@/lib/dates'
 import { useEroriFormular } from '@/lib/formular'
 import { uuid } from '@/lib/id'
-import { formateazaBani, parseNumar, sumaTotal, totalLinie } from '@/lib/money'
+import { formateazaBani, numarInCamp, parseNumar, sumaTotal, totalLinie } from '@/lib/money'
 import { Buton, Camp, Input, Modala, Textarea, useNotificari } from '@/ui'
 import { AlegerePlata } from './PlataVanzarii'
 
@@ -113,8 +113,8 @@ export function FormularVanzare({
       ? vanzare.linii.map((l) => ({
           cheie: uuid(),
           articol_id: l.articol_id,
-          cantitate: laText(l.cantitate),
-          pret_unitar: laText(l.pret_unitar),
+          cantitate: numarInCamp(l.cantitate),
+          pret_unitar: numarInCamp(l.pret_unitar),
           programare_id: l.programare_id,
           ...(l.programare_id
             ? {
@@ -151,7 +151,7 @@ export function FormularVanzare({
     // prețuri nu are voie să rescrie încasările deja înregistrate.
     schimbaLinie(cheie, {
       articol_id: articolId,
-      ...(pret === undefined ? {} : { pret_unitar: laText(pret) }),
+      ...(pret === undefined ? {} : { pret_unitar: numarInCamp(pret) }),
     })
   }
 
@@ -529,9 +529,4 @@ function linieGoala(): LinieFormular {
 /** Totalul liniei, cu aceeași formulă ca a coloanei generate din bază. */
 function totalulLiniei(linie: LinieFormular): number {
   return totalLinie(parseNumar(linie.cantitate) ?? 0, parseNumar(linie.pret_unitar) ?? 0)
-}
-
-/** Numerele intră în câmpuri cu virgulă zecimală, forma pe care o tastează recepția. */
-function laText(valoare: number): string {
-  return String(valoare).replace('.', ',')
 }

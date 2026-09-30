@@ -12,6 +12,8 @@
  */
 
 import type {
+  Cheltuiala,
+  CheltuialaDetaliu,
   Client,
   ClientListItem,
   ConsimtamantDetaliu,
@@ -221,6 +223,11 @@ export function hidrateazaNotita(n: Notita): NotitaDetaliu {
     executant_nume: numeUtilizator(n.executant_id),
     creat_de_nume: numeUtilizator(n.creat_de),
   }
+}
+
+/** Ca `v_cheltuiala_detaliu`: cheltuiala, cu cine a scris-o. */
+export function hidrateazaCheltuiala(c: Cheltuiala): CheltuialaDetaliu {
+  return { ...c, creat_de_nume: numeUtilizator(c.creat_de) }
 }
 
 /**

@@ -104,7 +104,8 @@ async function ruleaza(): Promise<void> {
     // Ordinea contează: copiii înaintea părinților, altfel cheile RESTRICT
     // opresc ștergerea.
     await ex.query(`TRUNCATE vanzare_linie, vanzare, abonament_sedinta, plata, abonament,
-                             programare, tratament, nota_client, jurnal_operatiuni, sesiune
+                             programare, tratament, nota_client, jurnal_operatiuni, sesiune,
+                             cheltuiala
                     RESTART IDENTITY CASCADE`)
     // Nomenclatorul și fișele se rescriu întregi. Se pot șterge doar fiindcă
     // tabelele care le referă tocmai au fost golite; ordinea inversă ar lovi în
@@ -305,12 +306,34 @@ async function ruleaza(): Promise<void> {
         'De verificat dacă mai are produsul de acasă.',
       ],
     )
+
+    /*
+      Cheltuielile ultimelor două luni, ca Statisticile să aibă din ce scădea
+      profitul. Doar zile trecute: o chirie „plătită” mâine ar fi o minciună.
+    */
+    const ziua = (zile: number) => la(zile, 12).toISOString().slice(0, 10)
+    for (const [zile, categorie, suma, descriere] of [
+      [-55, 'Chirie', 3500, 'Chiria spațiului'],
+      [-50, 'Utilități', 640, 'Curent și apă'],
+      [-40, 'Consumabile', 420, 'Mănuși, comprese, dezinfectant'],
+      [-35, 'Produse pentru vânzare', 1250, 'Seruri și creme de la distribuitor'],
+      [-25, 'Chirie', 3500, 'Chiria spațiului'],
+      [-20, 'Utilități', 590, 'Curent și apă'],
+      [-12, 'Consumabile', 380, 'Hârtie de canapea, geluri'],
+      [-6, 'Marketing', 300, 'Promovare pe rețele'],
+    ] as const) {
+      await ex.query(
+        `INSERT INTO cheltuiala (data, categorie, suma, descriere, creat_de) VALUES ($1, $2, $3, $4, $5)`,
+        [ziua(zile), categorie, suma, descriere, admin_id],
+      )
+    }
   })
 
   console.log('Date de pornire scrise.\n')
   console.log(`  ${CONTURI.length} conturi, ${SERVICII.length} servicii, ${PRODUSE.length} produse,`)
   console.log(`  ${CLIENTE.length} cliente, 18 programări, 2 tratamente în curs, 1 încasare,`)
-  console.log(`  1 vânzare de produse neachitată.\n`)
+  console.log(`  1 vânzare de produse neachitată, 8 cheltuieli.\n`)
+  console.log('  Parola statisticilor NU se scrie: o alege primul administrator care le deschide.')
   console.log(`  Autentificare:  admin@clinica.ro  /  ${PAROLA_DEMO}`)
   console.log('  Schimbă parolele înainte de a pune serverul în folosință.')
 }
