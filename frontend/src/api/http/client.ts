@@ -350,7 +350,11 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
 
     vanzari: {
       list: (filtru?: FiltruVanzari) =>
-        cerere<Paginat<VanzareDetaliu>>('GET', '/vanzari', { parametri: filtru, statistici: true }),
+        // Lista datoriilor (`achitat: false`) nu cere parola statisticilor — v. serverul.
+        cerere<Paginat<VanzareDetaliu>>('GET', '/vanzari', {
+          parametri: filtru,
+          statistici: filtru?.achitat !== false,
+        }),
       get: (id) => cerere<VanzareDetaliu>('GET', `/vanzari/${id}`),
       create: (date) => cerere<VanzareDetaliu>('POST', '/vanzari', { corp: date }),
       update: (id, date) => cerere<VanzareDetaliu>('PATCH', `/vanzari/${id}`, { corp: date }),

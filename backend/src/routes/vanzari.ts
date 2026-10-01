@@ -16,7 +16,7 @@
  * ei, iar `PATCH { achitat: true }` o trece plătită în momentul apăsării.
  */
 
-import { Router, Response } from 'express'
+import { Router, Response, type RequestHandler } from 'express'
 import pool, { alege, multe, tranzactie, unu, type Executor } from '../lib/db.js'
 import { eroareValidare, ruta } from '../lib/erori.js'
 import { boolDin, Conditii, impacheteaza, paginareDin, textDin } from '../lib/filtre.js'
@@ -189,7 +189,20 @@ router.post('/incasare', ruta(async (req: AuthRequest, res: Response) => {
 // banilor. Bonul singur (`/:id`), deschis de pe fișa unui client, rămâne liber.
 // ---------------------------------------------------------------------------
 
-router.get('/', cereAccesStatistici, ruta(async (req: AuthRequest, res: Response) => {
+/*
+  Excepția: lista datoriilor (`achitat=false`) nu cere parola statisticilor.
+
+  Nu spune cât a intrat — spune cine mai are de plătit, iar recepția are nevoie
+  de ea zilnic, în Nomenclator → Produse, ca să bifeze „Achitat” când clienta
+  vine cu banii. Fiecare datorie se vedea oricum, una câte una, pe fișa
+  clientei; lista doar le adună la un loc.
+*/
+const accesListaVanzari: RequestHandler = (req, res, next) => {
+  if (boolDin(req.query['achitat']) === false) return next()
+  return cereAccesStatistici(req, res, next)
+}
+
+router.get('/', accesListaVanzari, ruta(async (req: AuthRequest, res: Response) => {
   const unde = new Conditii()
   const p = paginareDin(req)
 

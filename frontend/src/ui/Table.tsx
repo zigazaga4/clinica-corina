@@ -37,6 +37,13 @@ export interface TabelProps<T> {
   /** Card afișat în locul rândului pe ecrane înguste. */
   randMobil?: (rand: T) => ReactNode
   onRandClick?: (rand: T) => void
+  /**
+   * Acțiune lângă cardul de pe telefon, în afara zonei apăsabile.
+   *
+   * Cardul întreg este un buton când rândul se poate deschide, iar un buton
+   * pus înăuntrul altuia nu este HTML valid — apăsarea ar ajunge la amândouă.
+   */
+  actiuneMobil?: (rand: T) => ReactNode
   incarca?: boolean
   eroare?: string | null
   onReincearca?: () => void
@@ -59,6 +66,7 @@ export function Tabel<T>({
   cheieRand,
   randMobil,
   onRandClick,
+  actiuneMobil,
   incarca = false,
   eroare = null,
   onReincearca,
@@ -153,18 +161,19 @@ export function Tabel<T>({
       {randMobil && (
         <ul className="divide-y divide-line sm:hidden">
           {randuri.map((rand) => (
-            <li key={cheieRand(rand)}>
+            <li key={cheieRand(rand)} className="flex items-center">
               {onRandClick ? (
                 <button
                   type="button"
                   onClick={() => onRandClick(rand)}
-                  className="w-full px-4 py-3 text-left transition-colors active:bg-muted"
+                  className="min-w-0 flex-1 px-4 py-3 text-left transition-colors active:bg-muted"
                 >
                   {randMobil(rand)}
                 </button>
               ) : (
-                <div className="px-4 py-3">{randMobil(rand)}</div>
+                <div className="min-w-0 flex-1 px-4 py-3">{randMobil(rand)}</div>
               )}
+              {actiuneMobil && <div className="shrink-0 pr-4">{actiuneMobil(rand)}</div>}
             </li>
           ))}
         </ul>

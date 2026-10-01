@@ -5,7 +5,7 @@ import { useAutentificare, useUtilizator } from '@/app/auth'
 import { useArticole, useCreeazaVanzare, useModificaVanzare } from '@/app/queries'
 import { GrilaFormular, PeToataLatimea } from '@/components/Pagina'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
-import type { Uuid, VanzareDetaliu } from '@/domain/types'
+import type { Articol, Uuid, VanzareDetaliu } from '@/domain/types'
 import { dinInputDatetime, formateazaData, laInputDatetime } from '@/lib/dates'
 import { useEroriFormular } from '@/lib/formular'
 import { uuid } from '@/lib/id'
@@ -75,12 +75,15 @@ interface LinieFormular {
 export function FormularVanzare({
   vanzare,
   clientInitial,
+  produsInitial,
   onInchide,
 }: {
   /** Prezentă = se corectează o vânzare existentă; absentă = una nouă. */
   vanzare?: VanzareDetaliu
   /** Clientul deja ales la o vânzare nouă — deschisă de pe fișa lui. */
   clientInitial?: Uuid
+  /** Produsul de pe primul rând — vânzarea pornită din butonul „Vinde” al lui. */
+  produsInitial?: Articol
   onInchide: () => void
 }) {
   const utilizator = useUtilizator()
@@ -125,7 +128,7 @@ export function FormularVanzare({
               }
             : {}),
         }))
-      : [linieGoala()],
+      : [produsInitial ? linieCuProdus(produsInitial) : linieGoala()],
   )
 
   // Aceleași opțiuni pe care le încarcă și `SelectorArticol`, deci fără cerere
@@ -524,6 +527,15 @@ function RandLinie({
 
 function linieGoala(): LinieFormular {
   return { cheie: uuid(), articol_id: null, cantitate: '1', pret_unitar: '', programare_id: null }
+}
+
+/** Primul rând deja completat: produsul apăsat, o bucată, la prețul de listă. */
+function linieCuProdus(produs: Articol): LinieFormular {
+  return {
+    ...linieGoala(),
+    articol_id: produs.id,
+    pret_unitar: numarInCamp(produs.pret_lista),
+  }
 }
 
 /** Totalul liniei, cu aceeași formulă ca a coloanei generate din bază. */

@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
+import { ShoppingBag } from 'lucide-react'
 import { InsemnInactiv } from '@/components/insemne'
 import type { Articol, TipArticol } from '@/domain/types'
 import { formateazaDurata } from '@/lib/dates'
 import { formateazaBani } from '@/lib/money'
-import { Badge, CelulaDubla, Tabel, type Coloana } from '@/ui'
+import { Badge, Buton, CelulaDubla, Tabel, type Coloana } from '@/ui'
 
 /*
   Listele nomenclatorului.
@@ -34,7 +35,30 @@ function InsemnStare({ activ }: { activ: boolean }) {
 // Servicii și produse
 // ---------------------------------------------------------------------------
 
-function coloaneArticol(tip: TipArticol): Coloana<Articol>[] {
+/*
+  „Vinde” pe fiecare produs: recepția caută crema în listă și o vinde de acolo,
+  cu produsul deja pus pe bon. Clicul nu urcă la rând — rândul deschide
+  modificarea produsului, iar vânzarea nu trebuie să deschidă și fereastra aceea.
+*/
+function ButonVinde({ articol, onVinde }: { articol: Articol; onVinde: (a: Articol) => void }) {
+  return (
+    <Buton
+      varianta="primar"
+      onClick={(e) => {
+        e.stopPropagation()
+        onVinde(articol)
+      }}
+      onKeyDown={(e) => e.stopPropagation()}
+      className="h-9 px-3 sm:h-8"
+      aria-label={`Vinde ${articol.denumire}`}
+    >
+      <ShoppingBag className="size-4" />
+      Vinde
+    </Buton>
+  )
+}
+
+function coloaneArticol(tip: TipArticol, onVinde?: (a: Articol) => void): Coloana<Articol>[] {
   const durata: Coloana<Articol> = {
     cheie: 'durata',
     antet: 'Durată',
@@ -70,6 +94,19 @@ function coloaneArticol(tip: TipArticol): Coloana<Articol>[] {
       className: 'w-24',
       celula: (articol) => <InsemnStare activ={articol.activ} />,
     },
+    ...(tip === 'produs' && onVinde
+      ? [
+          {
+            cheie: 'vinde',
+            antet: '',
+            laDreapta: true,
+            className: 'w-28',
+            // Un produs scos din ofertă nu se mai vinde — serverul l-ar refuza.
+            celula: (articol: Articol) =>
+              articol.activ ? <ButonVinde articol={articol} onVinde={onVinde} /> : null,
+          },
+        ]
+      : []),
   ]
 }
 
@@ -80,17 +117,28 @@ export function ListaArticole({
   eroare,
   onReincearca,
   onDeschide,
+  onVinde,
   stareGoala,
-}: ProprietatiLista<Articol> & { tip: TipArticol }) {
+}: ProprietatiLista<Articol> & {
+  tip: TipArticol
+  /** Doar la produse: butonul „Vinde” de pe fiecare rând. */
+  onVinde?: (articol: Articol) => void
+}) {
   return (
     <Tabel
-      coloane={coloaneArticol(tip)}
+      coloane={coloaneArticol(tip, onVinde)}
       randuri={randuri}
       cheieRand={(articol) => articol.id}
       incarca={incarca}
       eroare={eroare}
       onReincearca={onReincearca}
       onRandClick={onDeschide}
+      {...(tip === 'produs' && onVinde
+        ? {
+            actiuneMobil: (articol: Articol) =>
+              articol.activ ? <ButonVinde articol={articol} onVinde={onVinde} /> : null,
+          }
+        : {})}
       stareGoala={stareGoala}
       randMobil={(articol) => (
         <div className="tinta-atingere flex items-center justify-between gap-3">

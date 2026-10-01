@@ -1400,7 +1400,8 @@ export function creeazaApiInMemorie(): ApiClient {
       /** GET /vanzari — orice rol, cu statisticile deblocate */
       async list(filtru: FiltruVanzari = {}): Promise<Paginat<VanzareDetaliu>> {
         await intarziere()
-        cereAccesStatistici()
+        // Ca pe server: lista datoriilor nu cere parola statisticilor.
+        if (filtru.achitat !== false) cereAccesStatistici()
 
         const randuri: VanzareDetaliu[] = []
         for (const v of magazin.vanzare.values()) {

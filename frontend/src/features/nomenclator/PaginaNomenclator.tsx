@@ -17,6 +17,7 @@ import {
   type Fila,
 } from '@/ui'
 import { FormularVanzare } from '../vanzari/FormularVanzare'
+import { VanzariNeachitate } from '../vanzari/VanzariNeachitate'
 import { FormularArticol } from './FormularArticol'
 import { ListaArticole } from './liste'
 
@@ -61,6 +62,8 @@ export function PaginaNomenclator() {
   // `'nou'` distinge „formular deschis pentru o înregistrare nouă” de „închis”.
   const [articolEditat, setArticolEditat] = useState<Articol | 'nou' | null>(null)
   const [vanzareNoua, setVanzareNoua] = useState(false)
+  // Produsul al cărui „Vinde” s-a apăsat: pornește vânzarea cu el pe bon.
+  const [produsDeVandut, setProdusDeVandut] = useState<Articol | null>(null)
 
   // Starea merge în filtrul cererii (are trei valori, deci cel mult trei chei în
   // memoria cache), denumirea se filtrează local: nomenclatorul unei clinici are
@@ -203,6 +206,10 @@ export function PaginaNomenclator() {
             eroare={produse.isError ? mesajEroare(produse.error) : null}
             onReincearca={() => void produse.refetch()}
             onDeschide={esteAdministrator ? setArticolEditat : undefined}
+            onVinde={(produs) => {
+              setProdusDeVandut(produs)
+              setVanzareNoua(true)
+            }}
             stareGoala={stareGoala(
               'Niciun produs în nomenclator',
               'Produsele adăugate aici pot fi trecute pe liniile unei vânzări.',
@@ -212,6 +219,8 @@ export function PaginaNomenclator() {
 
       </Card>
 
+      {fila === 'produse' && <VanzariNeachitate />}
+
       {articolEditat !== null && (
         <FormularArticol
           articol={articolEditat === 'nou' ? null : articolEditat}
@@ -220,7 +229,15 @@ export function PaginaNomenclator() {
         />
       )}
 
-      {vanzareNoua && <FormularVanzare onInchide={() => setVanzareNoua(false)} />}
+      {vanzareNoua && (
+        <FormularVanzare
+          {...(produsDeVandut ? { produsInitial: produsDeVandut } : {})}
+          onInchide={() => {
+            setVanzareNoua(false)
+            setProdusDeVandut(null)
+          }}
+        />
+      )}
     </Pagina>
   )
 }
