@@ -76,13 +76,14 @@ export function ChipProgramare({
     <button
       type="button"
       onClick={() => onClick(programare)}
-      title={`${formateazaInterval(programare.incepe_la, programare.se_termina_la)} · ${programare.client_nume} · ${denumireaServiciilor(servicii)} · ${programare.executant_nume}`}
+      title={`${formateazaInterval(programare.incepe_la, programare.se_termina_la)} · ${programare.client_nume} · ${denumireaServiciilor(servicii)} · ${programare.executant_nume}\nApasă pentru detalii`}
       style={style}
       className={cn(
-        'relative flex w-full flex-col overflow-hidden rounded-md border py-1 pr-1.5 text-left',
+        'relative flex w-full cursor-pointer flex-col overflow-hidden rounded-md border py-1 pr-1.5 text-left',
         // Banda ocupă 4px la stânga; textul începe după ea.
         culoare ? 'pl-2.5' : 'pl-1.5',
-        'transition-all hover:z-10 hover:shadow-(--umbra-card) focus-visible:z-10',
+        // Sub cursor iese în față, cu umbră și contur: se vede că se apasă.
+        'transition-all hover:z-10 hover:shadow-(--umbra-card) hover:ring-2 hover:ring-ink/20 focus-visible:z-10',
         // Cu persoana cunoscută, TOT chipul îi poartă culoarea (cerința
         // clinicii); starea trece în banda din stânga. Fără ea — un cont care
         // nu vede lista persoanelor — chipul rămâne în culoarea stării.

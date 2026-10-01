@@ -112,6 +112,7 @@ async function scrieLinii(
   vanzare_id: string,
   client_id: string,
   linii: DateLinieVanzare[],
+  autor: { id: string; adresa_ip: string | null },
 ): Promise<void> {
   // Ședințele trecute pe linii trec prin aceleași reguli ca la încasarea de pe
   // fișă: să fie ale clientului de pe bon, onorate, și neîncasate deja.
@@ -126,7 +127,43 @@ async function scrieLinii(
        VALUES ($1, $2, $3, $4, $5)`,
       [vanzare_id, l.articol_id, l.cantitate, l.pret_unitar, l.programare_id],
     )
+    if (l.programare_id) await potrivestePretulSedintei(ex, l.programare_id, autor)
   }
+}
+
+/**
+ * Prețul ședinței urmează suma încasată pe ea (cerința clinicii, 2026-10-01):
+ * un serviciu de 300 corectat în Statistici la 250 devine 250 și pe
+ * programare. Altfel tratamentul, fișa clientei și Statisticile ar fi spus
+ * trei sume diferite despre aceeași ședință. Ședințele rămase ale unui
+ * tratament își refac singure partea din ce a rămas din prețul total.
+ */
+async function potrivestePretulSedintei(
+  ex: Executor,
+  programare_id: string,
+  autor: { id: string; adresa_ip: string | null },
+): Promise<void> {
+  const { rows } = await ex.query<{ vechi: string; nou: string }>(
+    `WITH incasat AS (
+       SELECT round(sum(total_linie), 2) AS suma FROM vanzare_linie WHERE programare_id = $1
+     ), vechi AS (SELECT pret FROM programare WHERE id = $1)
+     UPDATE programare p SET pret = incasat.suma
+     FROM incasat, vechi
+     WHERE p.id = $1 AND incasat.suma IS NOT NULL AND p.pret <> incasat.suma
+     RETURNING vechi.pret AS vechi, p.pret AS nou`,
+    [programare_id],
+  )
+  const schimbat = rows[0]
+  if (!schimbat) return
+  await scrieJurnal(ex, {
+    utilizator_id: autor.id,
+    actiune: 'modificare',
+    entitate: 'programare',
+    entitate_id: programare_id,
+    date_vechi: { pret: Number(schimbat.vechi) },
+    date_noi: { pret: Number(schimbat.nou) },
+    adresa_ip: autor.adresa_ip,
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -300,7 +337,7 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
     )
     const antet = rows[0]!
 
-    await scrieLinii(ex, antet.id, corp.client_id, linii)
+    await scrieLinii(ex, antet.id, corp.client_id, linii, { id: autor.id, adresa_ip: adresaCererii(req) })
     await refuzaSedintePeDatorie(ex, antet.id)
 
     await scrieJurnal(ex, {
@@ -393,7 +430,7 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
       await ex.query(`DELETE FROM vanzare_linie WHERE vanzare_id = $1`, [id])
       // Clientul bonului DUPĂ modificare: dacă antetul tocmai a fost mutat pe
       // alt client, ședințele trebuie să fie ale aceluia, nu ale celui vechi.
-      await scrieLinii(ex, id, dupa.client_id, linii)
+      await scrieLinii(ex, id, dupa.client_id, linii, { id: autor.id, adresa_ip: adresaCererii(req) })
     }
 
     await refuzaSedintePeDatorie(ex, id)

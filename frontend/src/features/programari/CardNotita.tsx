@@ -47,12 +47,12 @@ export function ChipNotita({
     <button
       type="button"
       onClick={() => onClick(notita)}
-      title={`${formateazaInterval(notita.incepe_la, notita.se_termina_la)} · ${notita.titlu} · ${pentruCine(notita)}`}
+      title={`${formateazaInterval(notita.incepe_la, notita.se_termina_la)} · ${notita.titlu} · ${pentruCine(notita)}\nApasă pentru detalii`}
       style={style}
       className={cn(
-        'relative flex w-full flex-col overflow-hidden rounded-md border py-1 pr-1.5 text-left',
+        'relative flex w-full cursor-pointer flex-col overflow-hidden rounded-md border py-1 pr-1.5 text-left',
         culoare ? 'pl-2.5' : 'pl-1.5',
-        'transition-all hover:z-10 hover:shadow-(--umbra-card) focus-visible:z-10',
+        'transition-all hover:z-10 hover:shadow-(--umbra-card) hover:ring-2 hover:ring-ink/20 focus-visible:z-10',
         STIL_NOTITA,
         className,
       )}

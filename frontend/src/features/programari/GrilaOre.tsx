@@ -42,6 +42,9 @@ export interface ColoanaGrila {
   doarNotite?: boolean
 }
 
+/** Cât din lățimea coloanei ocupă programările; restul e fâșia pentru una nouă. */
+const LATIME_ELEMENTE = 80
+
 /** Locul apăsat pe grilă: ora (și sfârșitul, dacă s-a tras) și coloana lui. */
 export interface LocGrila {
   inceput: Date
@@ -142,6 +145,13 @@ function ColoanaElemente({
   onAlegeLoc?: (inceput: Date, sfarsit: Date | null) => void
 }) {
   const asezate = asazaFaraSuprapunere(elemente)
+  /*
+    Fâșia liberă din dreapta (cerința clinicii, 2026-10-01): programările ocupă
+    doar 80% din lățime când coloana primește programări noi. Restul rămâne
+    spațiu gol, deci apăsat — chiar lângă o programare existentă — deschide o
+    programare nouă la ora aceea, pentru aceeași persoană, ca într-o zi goală.
+  */
+  const latimeElemente = onAlegeLoc ? LATIME_ELEMENTE : 100
 
   return (
     <div className="relative" style={{ height: INALTIME_GRILA }}>
@@ -169,16 +179,26 @@ function ColoanaElemente({
         const { id, incepe_la, se_termina_la } = intervalul(element)
         const inceput = laData(incepe_la)
         const sfarsit = laData(se_termina_la)
-        const latime = 100 / total
+        const latime = latimeElemente / total
         const asezare = {
           compact: inaltimeInterval(inceput, sfarsit) < 38,
-          className: 'absolute',
+          /*
+            Programări suprapuse: fiecare primește o felie îngustă. Sub cursor,
+            felia se lățește pe toată zona programărilor și vine deasupra
+            celorlalte, ca să se citească întreagă înainte de apăsare. `!`
+            trece peste stilul inline cu poziția feliei.
+          */
+          className: cn(
+            'absolute',
+            total > 1 && 'hover:left-0.5! hover:w-(--latime-plina)! hover:z-10',
+          ),
           style: {
             top: pozitieVerticala(inceput),
             height: inaltimeInterval(inceput, sfarsit) - 2,
             left: `calc(${coloana * latime}% + 2px)`,
             width: `calc(${latime}% - 4px)`,
-          },
+            '--latime-plina': `calc(${latimeElemente}% - 4px)`,
+          } as React.CSSProperties,
         }
         return element.fel === 'programare' ? (
           <ChipProgramare

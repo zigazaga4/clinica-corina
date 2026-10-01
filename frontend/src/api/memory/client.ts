@@ -1510,6 +1510,7 @@ export function creeazaApiInMemorie(): ApiClient {
         for (const linie of pregatite) {
           const cuId: VanzareLinie = { ...linie, id: uuid(), vanzare_id: rand.id }
           magazin.vanzare_linie.set(cuId.id, cuId)
+          if (cuId.programare_id) potrivestePretulSedintei(cuId.programare_id, autor.id)
         }
 
         scrieJurnal({
@@ -1585,6 +1586,7 @@ export function creeazaApiInMemorie(): ApiClient {
           for (const linie of pregatite) {
             const cuId: VanzareLinie = { ...linie, id: uuid(), vanzare_id: id }
             magazin.vanzare_linie.set(cuId.id, cuId)
+            if (cuId.programare_id) potrivestePretulSedintei(cuId.programare_id, autor.id)
           }
         }
 
@@ -2243,6 +2245,32 @@ export function creeazaApiInMemorie(): ApiClient {
 // ---------------------------------------------------------------------------
 // Ajutătoare private
 // ---------------------------------------------------------------------------
+
+/**
+ * Prețul ședinței urmează suma încasată pe ea — ca `potrivestePretulSedintei`
+ * de pe server: 300 corectat în Statistici la 250 devine 250 și pe programare.
+ */
+function potrivestePretulSedintei(programare_id: Uuid, autor_id: Uuid): void {
+  const sedinta = magazin.programare.get(programare_id)
+  if (!sedinta) return
+  const suma = sumaTotal(
+    [...magazin.vanzare_linie.values()]
+      .filter((l) => l.programare_id === programare_id)
+      .map((l) => l.total_linie),
+  )
+  if (suma === sedinta.pret) return
+  const vechi = sedinta.pret
+  sedinta.pret = suma
+  atinge(sedinta)
+  scrieJurnal({
+    utilizator_id: autor_id,
+    actiune: 'modificare',
+    entitate: 'programare',
+    entitate_id: programare_id,
+    date_vechi: { pret: vechi },
+    date_noi: { pret: suma },
+  })
+}
 
 /**
  * Validează o linie și îi calculează totalul, fără să o scrie.

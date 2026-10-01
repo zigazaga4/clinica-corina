@@ -332,7 +332,7 @@ export function FormularVanzare({
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-[13px] font-semibold tracking-wide text-ink-faint uppercase">
-              Produse vândute
+              {stingeSedinte ? 'Servicii și produse' : 'Produse vândute'}
             </h3>
             <span className="text-[13px] text-ink-faint tabular-nums">
               {linii.length} {linii.length === 1 ? 'linie' : 'linii'}
@@ -439,16 +439,16 @@ function RandLinie({
   onSterge: () => void
 }) {
   /*
-    Linia venită dintr-o ședință se arată, dar nu se editează.
-
-    Suma ei este cea convenită la programare, iar ștergerea ei ar readuce
-    ședința pe lista celor de plată fără ca nimeni să fi cerut asta. Corecțiile
-    se fac acolo unde s-a stabilit prețul — pe programare — nu aici.
+    Linia venită dintr-o ședință: serviciul și ședința rămân fixe, dar PREȚUL
+    se corectează (cerința clinicii, 2026-10-01: 300 → 250). Serverul mută
+    același preț și pe programare, ca tratamentul, fișa și Statisticile să
+    spună aceeași sumă. Linia nu se șterge de aici: ar readuce ședința pe
+    lista celor de plată fără ca nimeni să fi cerut asta.
   */
   if (linie.descriere) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-muted p-3">
-        <div className="min-w-0">
+      <div className="flex flex-col gap-3 rounded-xl border border-line bg-muted p-3 sm:flex-row sm:items-start sm:gap-2.5">
+        <div className="min-w-0 sm:flex-1 sm:pt-1">
           <p className="truncate text-sm font-medium text-ink">{linie.descriere.denumire}</p>
           <p className="mt-0.5 text-[12px] text-ink-faint tabular-nums">
             {linie.descriere.sedintaDin
@@ -456,9 +456,16 @@ function RandLinie({
               : 'Ședință încasată'}
           </p>
         </div>
-        <span className="shrink-0 text-sm font-medium text-ink tabular-nums">
-          {formateazaBani(totalulLiniei(linie))}
-        </span>
+        <Input
+          eticheta="Preț"
+          inputMode="decimal"
+          value={linie.pret_unitar}
+          onChange={(e) => onPret(e.target.value)}
+          eroare={eroarePret}
+          sufix={<span className="text-[13px] text-ink-faint">RON</span>}
+          className="text-right tabular-nums"
+          containerClassName="sm:w-36"
+        />
       </div>
     )
   }
