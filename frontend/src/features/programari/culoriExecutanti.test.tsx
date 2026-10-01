@@ -25,6 +25,7 @@ function utilizator(nume: string, creat_la: string, id: string): Utilizator {
     ultima_autentificare: null,
     creat_la,
     actualizat_la: creat_la,
+    culoare: null,
   }
 }
 
@@ -76,6 +77,13 @@ describe('culorile persoanelor', () => {
     const inainte = claseleLui([anda, irina], 'u-anda')
     expect(claseleLui([anda, irina, nou], 'u-anda')).toBe(inainte)
     expect(claseleLui([anda, irina, nou], 'u-zoe')).not.toBe(inainte)
+  })
+
+  it('culoarea aleasă de persoană bate bejul și paleta, fără să mute culorile altora', () => {
+    const inainte = claseleLui([anda, irina], 'u-anda')
+    const irinaVerde = { ...irina, culoare: '#22aa55' }
+    expect(claseleLui([anda, irinaVerde], 'u-irina')).toBe('bg-(--persoana) text-(--persoana-text)')
+    expect(claseleLui([anda, irinaVerde], 'u-anda')).toBe(inainte)
   })
 
   it('răspunde `null` când lista conturilor lipsește — ecranul merge mai departe', () => {

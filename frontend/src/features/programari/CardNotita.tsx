@@ -13,8 +13,8 @@ import { useCuloarePersoana } from './culoriExecutanti'
  * roșu), contur întrerupt, pictogramă de bilețel. Cine se uită de la un metru
  * la agenda zilei trebuie să vadă că la 15:00 persoana nu e disponibilă.
  *
- * Culoarea persoanei rămâne în banda din stânga: o notiță a Irinei stă în
- * banda Irinei. Notița întregii clinici nu are bandă.
+ * Fără bandă colorată pe margine (cerută scoasă, 2026-10-01): a cui e notița
+ * spune coloana persoanei și rândul al doilea al chipului.
  */
 
 const STIL_NOTITA = 'bg-danger-soft text-danger border-danger/60 border-dashed'
@@ -41,8 +41,6 @@ export function ChipNotita({
   className?: string
   style?: React.CSSProperties
 }) {
-  const culoare = useCuloarePersoana(notita.executant_id)
-
   return (
     <button
       type="button"
@@ -50,17 +48,12 @@ export function ChipNotita({
       title={`${formateazaInterval(notita.incepe_la, notita.se_termina_la)} · ${notita.titlu} · ${pentruCine(notita)}\nApasă pentru detalii`}
       style={style}
       className={cn(
-        'relative flex w-full cursor-pointer flex-col overflow-hidden rounded-md border py-1 pr-1.5 text-left',
-        culoare ? 'pl-2.5' : 'pl-1.5',
+        'relative flex w-full cursor-pointer flex-col overflow-hidden rounded-md border px-1.5 py-1 text-left',
         'transition-all hover:z-10 hover:shadow-(--umbra-card) hover:ring-2 hover:ring-ink/20 focus-visible:z-10',
         STIL_NOTITA,
         className,
       )}
     >
-      {culoare && (
-        <span aria-hidden className={cn('absolute inset-y-0 left-0 w-1', culoare.fundal)} />
-      )}
-
       <span
         className={cn(
           'flex items-center gap-1 truncate text-[11px] leading-tight font-semibold',
@@ -122,6 +115,7 @@ export function RandNotita({
           <span className="mt-0.5 block truncate text-[12px] text-ink-soft">{notita.detalii}</span>
         )}
         <span
+          style={culoare?.stil}
           className={cn(
             'mt-1 inline-flex items-center gap-1 text-[11px] text-ink-faint',
             culoare && culoare.text,

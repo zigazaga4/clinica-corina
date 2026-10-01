@@ -223,6 +223,7 @@ export function populeaza(): void {
       ultima_autentificare: s.activ === false ? null : laTimestamptz(addDays(azi, -intreg(rnd, 0, 6))),
       creat_la,
       actualizat_la: creat_la,
+      culoare: null,
     }
     magazin.utilizator.set(rand.id, rand)
     return rand
@@ -586,6 +587,8 @@ export function populeaza(): void {
       creat_la: programare.se_termina_la,
       actualizat_la: programare.se_termina_la,
       achitat_la: programare.se_termina_la,
+      // După poziție, nu cu `rnd`: o tragere în plus ar muta restul datelor demo.
+      metoda_plata: magazin.vanzare.size % 3 === 0 ? 'card' : 'numerar',
     }
     magazin.vanzare.set(vanzare.id, vanzare)
 
@@ -625,6 +628,7 @@ export function populeaza(): void {
       creat_la: laTimestamptz(cand),
       actualizat_la: laTimestamptz(cand),
       achitat_la: neachitata ? null : laTimestamptz(cand),
+      metoda_plata: neachitata ? null : i % 2 === 0 ? 'card' : 'numerar',
     }
     magazin.vanzare.set(vanzare.id, vanzare)
 

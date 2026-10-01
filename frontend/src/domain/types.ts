@@ -64,6 +64,8 @@ export interface Utilizator {
   ultima_autentificare: Timestamptz | null
   creat_la: Timestamptz
   actualizat_la: Timestamptz
+  /** Culoarea aleasă pentru calendar, #rrggbb. NULL = cea automată, din paletă. */
+  culoare: string | null
 }
 
 /**
@@ -311,7 +313,15 @@ export interface Vanzare {
    * ședințe este chiar plata lor (serverul refuză altfel).
    */
   achitat_la: Timestamptz | null
+  /**
+   * Cum s-a plătit: numerar sau card. NULL pe o vânzare neachitată (încă
+   * neplătită) și pe încasările de dinainte de alegere (2026-10-01).
+   */
+  metoda_plata: MetodaPlata | null
 }
+
+/** Coloana `vanzare.metoda_plata` — ce alege recepția la fiecare încasare. */
+export type MetodaPlata = 'numerar' | 'card'
 
 /** Tabela `vanzare_linie` — ce s-a vândut, în cadrul unei vânzări. */
 export interface VanzareLinie {
@@ -544,6 +554,12 @@ export interface TotaluriStatistici {
   incasat_servicii: number
   /** …și cât produsele. */
   incasat_produse: number
+  /** Din `incasat`, după cum s-a plătit: numerar… */
+  incasat_numerar: number
+  /** …card… */
+  incasat_card: number
+  /** …sau nespecificat — încasările de dinainte de alegere. */
+  incasat_nespecificat: number
   /** Câte încasări (bonuri) s-au achitat. */
   incasari: number
   /** Cheltuielile cu `data` în perioadă. */

@@ -20,7 +20,7 @@ import pool, { alege, dynamicUpdate, unu, tranzactie, unuSauNimic, type Executor
 import { EroareApi, eroareConflict, eroareValidare, ruta } from '../lib/erori.js'
 import { boolDin, Conditii, listaDin, textDin } from '../lib/filtre.js'
 import { adresaCererii, diferenta, instantaneu, scrieJurnal } from '../lib/jurnal.js'
-import { inregistreazaIncasare } from '../lib/incasari.js'
+import { inregistreazaIncasare, metodaPlataDin } from '../lib/incasari.js'
 import { executantulCerut } from '../lib/persoane.js'
 import { programareDetaliu, programariDetaliu, punctImplicit } from '../lib/proiectii.js'
 import {
@@ -678,13 +678,22 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
  * care nu s-a mai făcut se scoate din programare, din formular. Tot așa,
  * `achitat` încasează toate serviciile neplătite, pe UN bon, iar
  * `preturi: { [id]: suma }` corectează suma fiecăruia (`pret` rămâne pentru
- * rândul cerut, ca la aplicațiile deja instalate).
+ * rândul cerut, ca la aplicațiile deja instalate). `metoda_plata` (numerar /
+ * card) merge pe bonul încasării.
  */
 router.patch('/:id/stare', ruta(async (req: AuthRequest, res: Response) => {
   const autor = cont(req)
   const id = req.params['id']!
-  const corp = req.body as { stare?: unknown; achitat?: unknown; pret?: unknown; preturi?: unknown }
+  const corp = req.body as {
+    stare?: unknown
+    achitat?: unknown
+    pret?: unknown
+    preturi?: unknown
+    metoda_plata?: unknown
+  }
   const stare = verificaStare(corp.stare)
+  // Numerar sau card, pentru încasarea făcută odată cu onorarea.
+  const metoda_plata = corp.achitat === true ? metodaPlataDin(corp.metoda_plata) : null
 
   const programare = await tranzactie(async (ex: Executor) => {
     const { ancora, randuri } = await serviciileProgramarii(ex, id)
@@ -772,6 +781,7 @@ router.patch('/:id/stare', ruta(async (req: AuthRequest, res: Response) => {
         // butonul: bifa se pune adesea la câteva ore după, iar raportul zilei
         // ar arăta atunci banii într-o zi în care nu au intrat.
         efectuat_la: ancora.se_termina_la,
+        metoda_plata,
         adresa_ip: adresaCererii(req),
       })
     }

@@ -8,6 +8,7 @@
 
 import type {
   ActiuneJurnal,
+  MetodaPlata,
   RolUtilizator,
   StareProgramare,
   TipArticol,
@@ -42,6 +43,14 @@ export const tonTipArticol: Record<TipArticol, BadgeTone> = {
   serviciu: 'info',
   produs: 'warning',
 }
+
+export const etichetaMetodaPlata: Record<MetodaPlata, string> = {
+  numerar: 'Numerar',
+  card: 'Card',
+}
+
+/** Toate metodele, în ordinea în care apar pe butoane. */
+export const METODE_PLATA: readonly MetodaPlata[] = ['numerar', 'card']
 
 export const etichetaActiuneJurnal: Record<ActiuneJurnal, string> = {
   creare: 'Creare',

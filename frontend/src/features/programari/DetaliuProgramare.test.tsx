@@ -82,7 +82,8 @@ describe('în fereastra programării', () => {
       target: { value: '100' },
     })
     // Butoanele stau dezactivate cât se verifică acordul GDPR.
-    const achitat = await inchidere.findByRole('button', { name: /Achitat acum/ }, ASTEPTARE)
+    // „Achitat acum” are două butoane: numerar și card.
+    const achitat = await inchidere.findByRole('button', { name: /Achitat acum, card/ }, ASTEPTARE)
     await waitFor(() => expect(achitat).toBeEnabled(), ASTEPTARE)
     fireEvent.click(achitat)
 
@@ -94,6 +95,7 @@ describe('în fereastra programării', () => {
     )
     expect(linii).toHaveLength(2)
     expect(new Set(linii.map((l) => l.vanzare_id)).size).toBe(1)
+    expect(magazin.vanzare.get(linii[0]!.vanzare_id)?.metoda_plata).toBe('card')
     expect(linii.map((l) => l.pret_unitar).sort((x, y) => x - y)).toEqual([80, 100])
   })
 })

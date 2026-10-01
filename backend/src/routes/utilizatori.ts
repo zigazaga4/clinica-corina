@@ -20,11 +20,23 @@ const router = Router()
 router.use(requireAuth, requireRole('administrator'))
 
 /** Coloanele publice, enumerate o dată: `parola_hash` nu are voie să scape. */
-const SELECT_CONT = `SELECT id, nume, email, rol, activ, ultima_autentificare,
-                            creat_la, actualizat_la
-                     FROM utilizator`
+const COLOANE_CONT = `id, nume, email, rol, activ, ultima_autentificare, creat_la, actualizat_la, culoare`
 
-const CAMPURI = ['nume', 'email', 'rol', 'activ'] as const
+const SELECT_CONT = `SELECT ${COLOANE_CONT} FROM utilizator`
+
+const CAMPURI = ['nume', 'email', 'rol', 'activ', 'culoare'] as const
+
+/**
+ * Culoarea din calendar: #rrggbb, sau null = înapoi la cea automată.
+ * Literele mari se aduc la mici, ca aceeași culoare să nu fie două valori.
+ */
+function verificaCuloare(valoare: unknown): string | null {
+  if (valoare === null || valoare === '') return null
+  if (typeof valoare !== 'string' || !/^#[0-9a-f]{6}$/i.test(valoare)) {
+    throw eroareValidare('Culoarea trebuie să fie de forma #a1b2c3.', 'culoare')
+  }
+  return valoare.toLowerCase()
+}
 
 function verificaRol(valoare: unknown): RolUtilizator {
   if (valoare !== 'administrator' && valoare !== 'utilizator') {
@@ -107,7 +119,7 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
     const { rows } = await ex.query<UtilizatorPublic>(
       `INSERT INTO utilizator (nume, email, parola_hash, rol, activ)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, nume, email, rol, activ, ultima_autentificare, creat_la, actualizat_la`,
+       RETURNING ${COLOANE_CONT}`,
       [nume, email, parola_hash, rol, activ],
     )
     const rand = rows[0]!
@@ -180,13 +192,15 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
       date['activ'] = activ
     }
 
+    if (date['culoare'] !== undefined) date['culoare'] = verificaCuloare(date['culoare'])
+
     const coloane = Object.keys(date)
     if (coloane.length === 0) throw eroareValidare('Nu ai trimis niciun câmp de modificat.')
 
     const { rows } = await ex.query<UtilizatorPublic>(
       `UPDATE utilizator SET ${coloane.map((c, i) => `"${c}" = $${i + 1}`).join(', ')}
        WHERE id = $${coloane.length + 1}
-       RETURNING id, nume, email, rol, activ, ultima_autentificare, creat_la, actualizat_la`,
+       RETURNING ${COLOANE_CONT}`,
       [...coloane.map((c) => date[c]), id],
     )
     const dupa = rows[0]!

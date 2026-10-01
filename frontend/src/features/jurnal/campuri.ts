@@ -1,10 +1,12 @@
 import {
+  etichetaMetodaPlata,
   etichetaRol,
   etichetaStareProgramare,
   etichetaTipArticol,
 } from '@/domain/labels'
 import type {
   JurnalOperatiuneDetaliu,
+  MetodaPlata,
   RolUtilizator,
   StareProgramare,
   TipArticol,
@@ -61,6 +63,8 @@ const ETICHETE_CAMP: Record<string, string> = {
   incepe_la: 'Începe la',
   se_termina_la: 'Se termină la',
   efectuat_la: 'Efectuat la',
+  achitat_la: 'Achitat la',
+  metoda_plata: 'Metoda de plată',
   stare: 'Stare',
   nota: 'Notă',
   tip: 'Tip',
@@ -84,6 +88,7 @@ const TRADUCERI_ENUM: Record<string, (valoare: string) => string> = {
   stare: (v) => etichetaStareProgramare[v as StareProgramare] ?? v,
   tip: (v) => etichetaTipArticol[v as TipArticol] ?? v,
   articol_tip: (v) => etichetaTipArticol[v as TipArticol] ?? v,
+  metoda_plata: (v) => etichetaMetodaPlata[v as MetodaPlata] ?? v,
 }
 
 const CHEI_BANI = new Set(['pret_lista', 'pret_unitar', 'total_linie', 'total', 'suma'])

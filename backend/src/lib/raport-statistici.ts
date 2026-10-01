@@ -7,6 +7,8 @@
  *   ÎNCASAT    — banii intrați: liniile vânzărilor ACHITATE în perioadă, după
  *                `achitat_la`. O cremă dată pe datorie în august și plătită în
  *                septembrie este un ban intrat în septembrie.
+ *                Împărțit și după cum s-a plătit: numerar, card, nespecificat
+ *                (încasările de dinainte de alegere, 2026-10-01).
  *   CHELTUIELI — rândurile din `cheltuiala` cu `data` în perioadă.
  *   PROFIT     — încasat minus cheltuieli. Poate fi negativ.
  *   NEACHITAT  — ce s-a lucrat în perioadă și nu s-a plătit încă: ședințele
@@ -145,7 +147,7 @@ const LIMITE = `lim AS (
 /** Liniile încasate în perioadă, cu tipul articolului. */
 const LINII_INCASATE = `linii AS (
   SELECT v.id AS vanzare_id, v.client_id, vl.articol_id, vl.cantitate, vl.total_linie,
-         vl.programare_id, v.achitat_la, COALESCE(a.tip, 'produs') AS tip
+         vl.programare_id, v.achitat_la, v.metoda_plata, COALESCE(a.tip, 'produs') AS tip
   FROM vanzare v
   JOIN vanzare_linie vl ON vl.vanzare_id = v.id
   LEFT JOIN articol a ON a.id = vl.articol_id
@@ -171,6 +173,10 @@ async function totaluri(
        COALESCE((SELECT sum(total_linie) FROM linii), 0)                          AS incasat,
        COALESCE((SELECT sum(total_linie) FROM linii WHERE tip = 'serviciu'), 0)   AS incasat_servicii,
        COALESCE((SELECT sum(total_linie) FROM linii WHERE tip <> 'serviciu'), 0)  AS incasat_produse,
+       COALESCE((SELECT sum(total_linie) FROM linii WHERE metoda_plata = 'numerar'), 0) AS incasat_numerar,
+       COALESCE((SELECT sum(total_linie) FROM linii WHERE metoda_plata = 'card'), 0)    AS incasat_card,
+       COALESCE((SELECT sum(total_linie) FROM linii
+                 WHERE metoda_plata IS NULL OR metoda_plata NOT IN ('numerar', 'card')), 0) AS incasat_nespecificat,
        (SELECT count(DISTINCT vanzare_id) FROM linii)                             AS incasari,
        COALESCE((SELECT sum(suma) FROM cheltuiala
                  WHERE data BETWEEN $1::date AND $2::date), 0)                    AS cheltuieli,

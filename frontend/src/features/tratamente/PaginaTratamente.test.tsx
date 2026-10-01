@@ -146,7 +146,7 @@ describe('ecranul de tratamente', () => {
     const suma = await inchidere.findByLabelText(/Suma ședinței/, {}, ASTEPTARE)
     fireEvent.change(suma, { target: { value: '77,5' } })
     // Butoanele stau dezactivate cât se verifică acordul GDPR.
-    const achitat = await inchidere.findByRole('button', { name: /Achitat acum/ }, ASTEPTARE)
+    const achitat = await inchidere.findByRole('button', { name: /Achitat acum, numerar/ }, ASTEPTARE)
     await waitFor(() => expect(achitat).toBeEnabled(), ASTEPTARE)
     fireEvent.click(achitat)
 

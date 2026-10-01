@@ -25,6 +25,7 @@ import type {
   DateSemnatar,
   IstoricIntrare,
   JurnalOperatiuneDetaliu,
+  MetodaPlata,
   NotaClientDetaliu,
   NotitaDetaliu,
   PasStatistici,
@@ -321,6 +322,8 @@ export interface OptiuniStare {
    * Aceleași reguli ca `pret`, pentru fiecare.
    */
   preturi?: Record<Uuid, number>
+  /** Numerar sau card — pe bonul încasării făcute odată cu `achitat`. */
+  metoda_plata?: MetodaPlata
 }
 
 export interface ApiProgramari {
@@ -517,6 +520,8 @@ export interface DateVanzareNoua {
    * Refuzat (400 pe „achitat”) pe o vânzare care stinge ședințe.
    */
   achitat?: boolean
+  /** Numerar sau card, pe o vânzare achitată; ignorat pe una neachitată. */
+  metoda_plata?: MetodaPlata
   /** Cel puțin o linie. Antetul și liniile se scriu într-o singură tranzacție. */
   linii: DateLinieVanzare[]
 }
@@ -533,6 +538,11 @@ export interface DateVanzareModificata {
    * plătită nu mută data. false = datoria revine.
    */
   achitat?: boolean
+  /**
+   * Numerar sau card — se schimbă și singură (Statistici → Încasări). O
+   * vânzare care rămâne neachitată nu are metodă: serverul o golește.
+   */
+  metoda_plata?: MetodaPlata
   /** Dacă e prezent, înlocuiește integral setul de linii. */
   linii?: DateLinieVanzare[]
 }
@@ -553,6 +563,8 @@ export interface DateIncasare {
   /** Implicit acum. */
   efectuat_la?: Timestamptz
   nota?: string | null
+  /** Numerar sau card. */
+  metoda_plata?: MetodaPlata
 }
 
 export interface ApiVanzari {
@@ -756,6 +768,8 @@ export interface DateUtilizatorModificat {
   email?: string
   rol?: RolUtilizator
   activ?: boolean
+  /** Culoarea din calendar, #rrggbb; null = înapoi la cea automată. */
+  culoare?: string | null
 }
 
 export interface ApiUtilizatori {

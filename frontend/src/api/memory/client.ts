@@ -69,6 +69,7 @@ import type {
   ConsimtamantDetaliu,
   IstoricIntrare,
   JurnalOperatiuneDetaliu,
+  MetodaPlata,
   NotaClient,
   NotaClientDetaliu,
   Notita,
@@ -87,6 +88,7 @@ import type {
   VanzareDetaliu,
   VanzareLinie,
 } from '@/domain/types'
+import { METODE_PLATA } from '@/domain/labels'
 import { acum, addDays, laTimestamptz } from '@/lib/dates'
 import { uuid } from '@/lib/id'
 import { rotunjeste, sumaTotal, totalLinie } from '@/lib/money'
@@ -1063,6 +1065,7 @@ export function creeazaApiInMemorie(): ApiClient {
         await intarziere()
         const autor = cereUtilizator()
         const { achitat, pret, preturi } = optiuni
+        const metoda_plata = achitat === true ? metodaPlataDin(optiuni.metoda_plata) : null
 
         return inTranzactie(() => {
           const { ancora, randuri } = serviciileProgramarii(id)
@@ -1130,7 +1133,15 @@ export function creeazaApiInMemorie(): ApiClient {
           // încasarea unui serviciu care nu a avut loc.
           const neachitate = randuri.filter((r) => incasareaProgramarii(r.id) === null)
           if (achitat === true && stare === 'onorat' && neachitate.length > 0) {
-            inregistreazaIncasare(autor.id, ancora.client_id, neachitate, [], ancora.se_termina_la, null)
+            inregistreazaIncasare(
+              autor.id,
+              ancora.client_id,
+              neachitate,
+              [],
+              ancora.se_termina_la,
+              null,
+              metoda_plata,
+            )
           }
 
           // Ultima ședință onorată încheie tratamentul de la sine — al fiecărui serviciu.
@@ -1493,6 +1504,8 @@ export function creeazaApiInMemorie(): ApiClient {
         // Lipsă = achitată pe loc, ca înainte să existe alegerea.
         const achitat = achitatDin(date.achitat) ?? true
         refuzaSedintePeDatorie(achitat, pregatite)
+        // Neachitată = încă neplătită: nu are cum să aibă o metodă.
+        const metoda_plata = achitat ? metodaPlataDin(date.metoda_plata) : null
 
         const rand: Vanzare = {
           id: uuid(),
@@ -1505,6 +1518,7 @@ export function creeazaApiInMemorie(): ApiClient {
           creat_la: acum(),
           actualizat_la: acum(),
           achitat_la: achitat ? date.efectuat_la : null,
+          metoda_plata,
         }
         magazin.vanzare.set(rand.id, rand)
         for (const linie of pregatite) {
@@ -1572,6 +1586,10 @@ export function creeazaApiInMemorie(): ApiClient {
         ) {
           rand.achitat_la = date.efectuat_la
         }
+
+        // Numerar sau card, ca pe server: o vânzare neachitată nu are metodă.
+        if (rand.achitat_la === null) rand.metoda_plata = null
+        else if (date.metoda_plata !== undefined) rand.metoda_plata = metodaPlataDin(date.metoda_plata)
 
         if (date.linii !== undefined) {
           if (date.linii.length === 0) {
@@ -1658,6 +1676,7 @@ export function creeazaApiInMemorie(): ApiClient {
           produse,
           date.efectuat_la ?? acum(),
           date.nota ?? null,
+          metodaPlataDin(date.metoda_plata),
         )
       },
 
@@ -2117,6 +2136,7 @@ export function creeazaApiInMemorie(): ApiClient {
           ultima_autentificare: null,
           creat_la: acum(),
           actualizat_la: acum(),
+          culoare: null,
         }
         magazin.utilizator.set(rand.id, rand)
 
@@ -2146,6 +2166,12 @@ export function creeazaApiInMemorie(): ApiClient {
           rand.email = email
         }
         if (date.nume !== undefined) rand.nume = ceruteText(date.nume, 'nume', 'Numele')
+        // Culoarea din calendar, ca pe server: #rrggbb cu litere mici, sau null.
+        if (date.culoare !== undefined) {
+          if (date.culoare === null || date.culoare === '') rand.culoare = null
+          else if (/^#[0-9a-f]{6}$/i.test(date.culoare)) rand.culoare = date.culoare.toLowerCase()
+          else throw eroareValidare('Culoarea trebuie să fie de forma #a1b2c3.', 'culoare')
+        }
 
         // Un administrator care își retrage singur rolul sau își dezactivează
         // contul ar rămâne blocat afară, iar clinica ar putea rămâne fără
@@ -2300,6 +2326,18 @@ function achitatDin(valoare: unknown): boolean | undefined {
     throw eroareValidare('„Achitat” trebuie să fie da sau nu.', 'achitat')
   }
   return valoare
+}
+
+/**
+ * `metoda_plata` din cerere — ca pe server: lipsă = nespecificată (NULL),
+ * altfel numerar sau card.
+ */
+function metodaPlataDin(valoare: unknown): MetodaPlata | null {
+  if (valoare === undefined || valoare === null || valoare === '') return null
+  if (!(METODE_PLATA as readonly unknown[]).includes(valoare)) {
+    throw eroareValidare('Alege cum s-a plătit: numerar sau card.', 'metoda_plata')
+  }
+  return valoare as MetodaPlata
 }
 
 /**
@@ -2696,6 +2734,7 @@ function inregistreazaIncasare(
   produse: DateLinieVanzare[],
   efectuat_la: Timestamptz,
   nota: string | null,
+  metoda_plata: MetodaPlata | null,
 ): VanzareDetaliu {
   // Totul se validează înainte de prima scriere: pe server este o tranzacție,
   // deci un produs invalid nu are voie să lase ședințele pe jumătate stinse.
@@ -2715,6 +2754,7 @@ function inregistreazaIncasare(
     actualizat_la: acum(),
     // Încasarea este chiar plata, în momentul ei.
     achitat_la: efectuat_la,
+    metoda_plata,
   }
   magazin.vanzare.set(vanzare.id, vanzare)
 

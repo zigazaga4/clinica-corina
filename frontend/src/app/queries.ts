@@ -394,8 +394,8 @@ export function useSchimbaStareProgramare(): UseMutationResult<
 > {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, stare, achitat, pret, preturi }: { id: Uuid; stare: StareProgramare } & OptiuniStare) =>
-      api.programari.schimbaStarea(id, stare, { achitat, pret, preturi }),
+    mutationFn: ({ id, stare, ...optiuni }: { id: Uuid; stare: StareProgramare } & OptiuniStare) =>
+      api.programari.schimbaStarea(id, stare, optiuni),
     onSuccess: (programare, { achitat }) => {
       invalideazaProgramari(qc, programare.client_id)
       if (achitat) invalideazaVanzari(qc, programare.client_id)

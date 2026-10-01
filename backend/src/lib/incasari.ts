@@ -20,7 +20,25 @@ import { eroareConflict, eroareValidare } from './erori.js'
 import { punctImplicit, vanzareDetaliu } from './proiectii.js'
 import { scrieJurnal } from './jurnal.js'
 import { textOptional, verificaCantitate, verificaPret } from './validare.js'
-import type { Articol, DateLinieVanzare, Programare, VanzareDetaliu } from '../types/database.js'
+import type { Articol, DateLinieVanzare, MetodaPlata, Programare, VanzareDetaliu } from '../types/database.js'
+
+/** Metodele pe care le alege recepția la o încasare (cerința clinicii, 2026-10-01). */
+export const METODE_PLATA_VANZARE = ['numerar', 'card'] as const
+
+/**
+ * `metoda_plata` din corpul cererii.
+ *
+ * Lipsă = nespecificată (NULL): aplicațiile instalate dinainte de alegere nu o
+ * trimit, iar o încasare refuzată pentru asta ar fi lăsat clienta la recepție
+ * fără bon până la actualizare. Interfața de acum o cere mereu.
+ */
+export function metodaPlataDin(valoare: unknown): MetodaPlata | null {
+  if (valoare === undefined || valoare === null || valoare === '') return null
+  if (!(METODE_PLATA_VANZARE as readonly unknown[]).includes(valoare)) {
+    throw eroareValidare('Alege cum s-a plătit: numerar sau card.', 'metoda_plata')
+  }
+  return valoare as MetodaPlata
+}
 
 /** Maximul coloanei generate `total_linie numeric(12,2)`: 10 cifre înainte de virgulă. */
 const LIMITA_TOTAL_LINIE = 9_999_999_999.99
@@ -93,6 +111,8 @@ export interface DateIncasare {
   produse: DateLinieVanzare[]
   efectuat_la: string
   nota?: string | null
+  /** Numerar sau card; NULL = nespecificată. */
+  metoda_plata?: MetodaPlata | null
   adresa_ip?: string | null
 }
 
@@ -118,8 +138,8 @@ export async function inregistreazaIncasare(
   // Achitată în momentul ei, `$5` de două ori: încasarea este chiar plata, iar
   // cea trecută seara pentru dimineață a intrat dimineața, nu la introducere.
   const { rows } = await ex.query<{ id: string }>(
-    `INSERT INTO vanzare (client_id, punct_lucru_id, operator_id, programare_id, efectuat_la, nota, achitat_la)
-     VALUES ($1, $2, $3, $4, $5, $6, $5) RETURNING id`,
+    `INSERT INTO vanzare (client_id, punct_lucru_id, operator_id, programare_id, efectuat_la, nota, achitat_la, metoda_plata)
+     VALUES ($1, $2, $3, $4, $5, $6, $5, $7) RETURNING id`,
     [
       date.client_id,
       punct_lucru_id,
@@ -129,6 +149,7 @@ export async function inregistreazaIncasare(
       date.programari.length === 1 ? date.programari[0]!.id : null,
       date.efectuat_la,
       textOptional(date.nota),
+      date.metoda_plata ?? null,
     ],
   )
   const vanzare_id = rows[0]!.id
@@ -157,6 +178,7 @@ export async function inregistreazaIncasare(
     date_noi: {
       client_id: date.client_id,
       efectuat_la: date.efectuat_la,
+      metoda_plata: date.metoda_plata ?? null,
       programari_incasate: liniiSedinte.length,
       linii_produse: liniiProduse.length,
       /*

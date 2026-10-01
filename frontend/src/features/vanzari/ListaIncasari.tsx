@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Clock3, Pencil, Receipt, ShoppingBag, Trash2, Wallet } from 'lucide-react'
+import { Banknote, Clock3, CreditCard, Pencil, Receipt, ShoppingBag, Trash2, Wallet } from 'lucide-react'
 import type { FiltruVanzari } from '@/api/contract'
 import { mesajEroare } from '@/api/errors'
 import { useStergeVanzare, useVanzari } from '@/app/queries'
 import { BaraFiltre } from '@/components/Pagina'
-import { InsemnPlata } from '@/components/insemne'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
 import type { Uuid, VanzareDetaliu } from '@/domain/types'
 import {
@@ -36,6 +35,20 @@ import {
 } from '@/ui'
 import { DetaliuVanzare } from './DetaliuVanzare'
 import { FormularVanzare } from './FormularVanzare'
+import { PlataVanzarii } from './PlataVanzarii'
+
+/**
+ * Numerar / Card / Neachitat, de schimbat direct din rând (cerința clinicii,
+ * 2026-10-01: „în Statistici să se poată trece de pe card pe numerar”).
+ * Rândul întreg deschide bonul, deci apăsările de aici nu au voie să urce.
+ */
+function PlataInRand({ vanzare }: { vanzare: VanzareDetaliu }) {
+  return (
+    <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      <PlataVanzarii vanzare={vanzare} compact />
+    </div>
+  )
+}
 
 /**
  * Jurnalul încasărilor (art. 3.1.C — „ce s-a încasat, de la cine, când, de către cine”).
@@ -165,6 +178,8 @@ export function ListaIncasari() {
   // Încasat înseamnă bani intrați: vânzările neachitate își au rândul lor,
   // altfel casa de seară ar căuta bani care n-au venit încă.
   const total = sumaTotal(randuriRezumat.filter((v) => v.achitat).map((v) => v.total))
+  const peMetoda = (metoda: 'numerar' | 'card') =>
+    sumaTotal(randuriRezumat.filter((v) => v.achitat && v.metoda_plata === metoda).map((v) => v.total))
   const deIncasat = sumaTotal(randuriRezumat.filter((v) => !v.achitat).map((v) => v.total))
   const rezumatPartial = (rezumat.data?.total ?? 0) > randuriRezumat.length
 
@@ -215,8 +230,8 @@ export function ListaIncasari() {
     {
       cheie: 'plata',
       antet: 'Plata',
-      className: 'w-28',
-      celula: (v) => <InsemnPlata achitat={v.achitat} />,
+      className: 'w-px whitespace-nowrap',
+      celula: (v) => <PlataInRand vanzare={v} />,
     },
     {
       cheie: 'total',
@@ -246,7 +261,7 @@ export function ListaIncasari() {
         </Buton>
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-3 sm:max-w-2xl sm:grid-cols-3">
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:max-w-5xl lg:grid-cols-5">
         <Statistica
           eticheta="Încasări"
           valoare={numar}
@@ -258,6 +273,18 @@ export function ListaIncasari() {
           valoare={formateazaBani(total)}
           pictograma={<Wallet className="size-4" />}
           detaliu={rezumatPartial ? `primele ${LIMITA_REZUMAT} încasări` : undefined}
+        />
+        <Statistica
+          eticheta="Numerar"
+          valoare={formateazaBani(peMetoda('numerar'))}
+          pictograma={<Banknote className="size-4" />}
+          detaliu="în casă"
+        />
+        <Statistica
+          eticheta="Card"
+          valoare={formateazaBani(peMetoda('card'))}
+          pictograma={<CreditCard className="size-4" />}
+          detaliu="prin bancă"
         />
         <Statistica
           eticheta="De încasat"
@@ -342,13 +369,13 @@ export function ListaIncasari() {
                 <p className="mt-0.5 truncate text-[12px] text-ink-faint">
                   {formateazaDataOra(v.efectuat_la)} · {v.operator_nume}
                 </p>
+                <div className="mt-2">
+                  <PlataInRand vanzare={v} />
+                </div>
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <span className="text-sm font-semibold text-ink tabular-nums">
-                  {formateazaBani(v.total)}
-                </span>
-                {!v.achitat && <InsemnPlata achitat={false} />}
-              </div>
+              <span className="shrink-0 text-sm font-semibold text-ink tabular-nums">
+                {formateazaBani(v.total)}
+              </span>
             </div>
           )}
           stareGoala={

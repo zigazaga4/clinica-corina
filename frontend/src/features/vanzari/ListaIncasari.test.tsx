@@ -88,14 +88,26 @@ it('copiază prețul de listă în linie și înregistrează încasarea', async 
   const total = screen.getByText('Total de plată').parentElement?.textContent ?? ''
   expect(sumaDinText(total)).toBeGreaterThan(0)
 
-  const inainte = (await api.vanzari.list({})).total
+  const existente = (await api.vanzari.list({ pe_pagina: 10_000 })).randuri
+  const inainte = existente.length
+  // Fără „cum s-a plătit”, vânzarea nu pleacă: nimic nu e ales din oficiu.
+  fireEvent.click(screen.getByRole('button', { name: 'Salvează vânzarea' }))
+  expect(
+    await screen.findByText('Alege cum s-a plătit: numerar, card sau neachitat.'),
+  ).toBeInTheDocument()
+
+  const formular = within(screen.getByRole('dialog'))
+  fireEvent.click(formular.getByRole('button', { name: /^Card$/ }))
   fireEvent.click(screen.getByRole('button', { name: 'Salvează vânzarea' }))
 
   await waitFor(async () => {
-    const dupa = await api.vanzari.list({})
+    const dupa = await api.vanzari.list({ pe_pagina: 10_000 })
     expect(dupa.total).toBe(inainte + 1)
-    // Fără o alegere, vânzarea e achitată pe loc — ca înainte să existe butoanele.
-    expect(dupa.randuri[0]?.achitat).toBe(true)
+    // Cea care n-a existat înainte: datele demo au vânzări și mai târziu azi,
+    // deci nici data, nici `creat_la` n-o găsesc sigur.
+    const noua = dupa.randuri.find((v) => !existente.some((e) => e.id === v.id))
+    expect(noua?.achitat).toBe(true)
+    expect(noua?.metoda_plata).toBe('card')
   })
 })
 
@@ -140,11 +152,11 @@ it('vinde produse neachitate, apoi le trece achitate de pe bon', async () => {
   })
   expect(await deIncasat('Maria Cremă')).toBe(500)
 
-  // Când plătește: rândul din listă -> detaliul -> „Achitat”.
+  // Când plătește: rândul din listă -> detaliul -> „Numerar”.
   // Rândul de tabel și cardul de telefon sunt amândouă în pagină (CSS alege).
   fireEvent.click((await screen.findAllByRole('button', { name: /Maria Cremă/ }))[0] as HTMLElement)
   const detaliu = within(screen.getAllByRole('dialog').at(-1) as HTMLElement)
-  fireEvent.click(await detaliu.findByRole('button', { name: /^Achitat$/ }))
+  fireEvent.click(await detaliu.findByRole('button', { name: /^Numerar$/ }))
 
   await waitFor(async () => {
     expect(await deIncasat('Maria Cremă')).toBe(0)
@@ -152,4 +164,5 @@ it('vinde produse neachitate, apoi le trece achitate de pe bon', async () => {
   const [vanzare] = (await api.vanzari.list({ client_id: maria.id })).randuri
   expect(vanzare?.achitat).toBe(true)
   expect(vanzare?.achitat_la).not.toBeNull()
+  expect(vanzare?.metoda_plata).toBe('numerar')
 })

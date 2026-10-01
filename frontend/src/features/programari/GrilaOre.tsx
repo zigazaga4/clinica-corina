@@ -245,6 +245,7 @@ function AntetColoana({ coloana, lipicios }: { coloana: ColoanaGrila; lipicios: 
       )}
     >
       <span
+        style={culoare?.stil}
         className={cn(
           'flex items-center gap-1.5 truncate text-[13px] font-medium',
           culoare ? culoare.text : 'text-ink',

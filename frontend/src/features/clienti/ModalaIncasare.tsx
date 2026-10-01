@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { mesajEroare } from '@/api/errors'
 import { useIncaseaza, useModificaVanzare } from '@/app/queries'
-import type { ProgramareDetaliu, Uuid, VanzareDetaliu } from '@/domain/types'
+import type { MetodaPlata, ProgramareDetaliu, Uuid, VanzareDetaliu } from '@/domain/types'
+import { AlegerePlata } from '@/features/vanzari/PlataVanzarii'
 import { formateazaData } from '@/lib/dates'
 import { formateazaBani, formateazaCantitate, sumaTotal } from '@/lib/money'
 import { plural } from '@/lib/text'
-import { Buton, Checkbox, Modala, Textarea, useNotificari } from '@/ui'
+import { Buton, Camp, Checkbox, Modala, Textarea, useNotificari } from '@/ui'
 
 /**
  * Încasarea a tot ce are clientul de plată: ședințele rămase și produsele
@@ -44,6 +45,9 @@ export function ModalaIncasare({
 
   const [bifate, setBifate] = useState<Uuid[]>([])
   const [nota, setNota] = useState('')
+  // Nimic ales dinainte: cum a plătit se spune de fiecare dată.
+  const [metoda, setMetoda] = useState<MetodaPlata | null>(null)
+  const [eroareMetoda, setEroareMetoda] = useState<string | null>(null)
   const [eroare, setEroare] = useState<string | null>(null)
   // Propriu, nu `isPending`: cererile pleacă în paralel, iar starea unei
   // mutații o urmărește doar pe ultima pornită.
@@ -56,6 +60,8 @@ export function ModalaIncasare({
     if (!deschisa) return
     setBifate([...sedinte.map((s) => s.id), ...vanzari.map((v) => v.id)])
     setNota('')
+    setMetoda(null)
+    setEroareMetoda(null)
     setEroare(null)
   }, [deschisa, clientId])
 
@@ -99,6 +105,10 @@ export function ModalaIncasare({
     // goală și am fi primit o eroare de la server pentru o cerere pe care nu
     // trebuia s-o facem.
     if (selectate.length === 0) return
+    if (metoda === null) {
+      setEroareMetoda('Alege cum a plătit: numerar sau card.')
+      return
+    }
     setEroare(null)
     setSeTrimite(true)
 
@@ -117,10 +127,13 @@ export function ModalaIncasare({
               client_id: clientId,
               programare_ids: sedinteAlese.map((d) => d.id),
               nota: nota.trim() === '' ? null : nota.trim(),
+              metoda_plata: metoda,
             }),
           ]
         : []),
-      ...vanzariAlese.map((d) => modifica.mutateAsync({ id: d.id, date: { achitat: true } })),
+      ...vanzariAlese.map((d) =>
+        modifica.mutateAsync({ id: d.id, date: { achitat: true, metoda_plata: metoda } }),
+      ),
     ])
     setSeTrimite(false)
 
@@ -139,7 +152,10 @@ export function ModalaIncasare({
       vanzariAlese.length > 0 &&
         `${vanzariAlese.length} ${plural(vanzariAlese.length, 'vânzare de produse achitată', 'vânzări de produse achitate')}`,
     ].filter(Boolean)
-    notificari.succes(`Încasare de ${formateazaBani(total)}`, `${clientNume} · ${parti.join(', ')}.`)
+    notificari.succes(
+      `Încasare de ${formateazaBani(total)} · ${metoda === 'card' ? 'card' : 'numerar'}`,
+      `${clientNume} · ${parti.join(', ')}.`,
+    )
     onInchide()
   }
 
@@ -216,6 +232,21 @@ export function ModalaIncasare({
             {formateazaBani(total)}
           </span>
         </div>
+
+        <Camp eticheta="Cum a plătit?" obligatoriu eroare={eroareMetoda}>
+          {() => (
+            <AlegerePlata
+              valoare={metoda}
+              onSchimba={(noua) => {
+                if (noua === 'neachitat') return
+                setMetoda(noua)
+                setEroareMetoda(null)
+              }}
+              cuNeachitat={false}
+              disabled={seTrimite}
+            />
+          )}
+        </Camp>
 
         {/*
           Nota merge pe încasarea ședințelor. Doar cu produse bifate nu are unde

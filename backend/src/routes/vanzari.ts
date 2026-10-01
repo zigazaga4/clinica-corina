@@ -14,6 +14,10 @@
  * O vânzare de produse poate rămâne NEACHITATĂ (`achitat_la` NULL): clienta ia
  * cremele acum și plătește săptămâna viitoare. Suma intră în `de_incasat` al
  * ei, iar `PATCH { achitat: true }` o trece plătită în momentul apăsării.
+ *
+ * Fiecare încasare spune CUM s-a plătit — `metoda_plata`, numerar sau card —
+ * ca Statisticile să despartă casa de bancă. Pe o vânzare neachitată metoda
+ * nu există încă; se alege odată cu „Achitat”.
  */
 
 import { Router, Response, type RequestHandler } from 'express'
@@ -22,6 +26,7 @@ import { eroareValidare, ruta } from '../lib/erori.js'
 import { boolDin, Conditii, impacheteaza, paginareDin, textDin } from '../lib/filtre.js'
 import {
   inregistreazaIncasare,
+  metodaPlataDin,
   pregatesteLinie,
   programariDeStins,
   verificaSedinteleLiniilor,
@@ -211,6 +216,7 @@ router.post('/incasare', ruta(async (req: AuthRequest, res: Response) => {
         ? momentCerut(corp.efectuat_la, 'efectuat_la', 'Data încasării')
         : new Date().toISOString(),
       nota: corp.nota ?? null,
+      metoda_plata: metodaPlataDin(corp.metoda_plata),
       adresa_ip: adresaCererii(req),
     })
   })
@@ -304,6 +310,8 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
   const linii = liniiCerute(corp.linii, true)
   // Lipsă = achitată: aplicațiile care nu știu încă de câmp scriu ca înainte.
   const achitat = achitatDin(corp.achitat) ?? true
+  // Neachitată = încă neplătită: nu are cum să aibă o metodă.
+  const metoda_plata = achitat ? metodaPlataDin(corp.metoda_plata) : null
 
   const vanzare = await tranzactie(async (ex: Executor) => {
     // Ca la programări: o fișă arhivată nu mai primește mișcări noi.
@@ -322,8 +330,8 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
     const efectuat_la = momentCerut(corp.efectuat_la, 'efectuat_la', 'Data încasării')
 
     const { rows } = await ex.query<Vanzare>(
-      `INSERT INTO vanzare (client_id, punct_lucru_id, operator_id, programare_id, efectuat_la, nota, achitat_la)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      `INSERT INTO vanzare (client_id, punct_lucru_id, operator_id, programare_id, efectuat_la, nota, achitat_la, metoda_plata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [
         corp.client_id,
         punct_lucru_id,
@@ -333,6 +341,7 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
         textOptional(corp.nota),
         // Plătită pe loc = plătită în momentul vânzării, nu al introducerii.
         achitat ? efectuat_la : null,
+        metoda_plata,
       ],
     )
     const antet = rows[0]!
@@ -349,6 +358,7 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
         client_id: antet.client_id,
         efectuat_la: antet.efectuat_la,
         achitat_la: antet.achitat_la,
+        metoda_plata: antet.metoda_plata,
         numar_linii: linii.length,
       },
       adresa_ip: adresaCererii(req),
@@ -403,6 +413,19 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
       new Date(inainte.achitat_la).getTime() === new Date(inainte.efectuat_la).getTime()
     ) {
       date['achitat_la'] = date['efectuat_la']
+    }
+
+    /*
+      Numerar sau card — se schimbă și singură, din Statistici, când recepția a
+      apăsat greșit. O vânzare care rămâne (sau devine) neachitată nu are
+      metodă: banii încă n-au intrat pe nicio cale.
+    */
+    const ramaneAchitata =
+      date['achitat_la'] !== undefined ? date['achitat_la'] !== null : inainte.achitat_la !== null
+    if (!ramaneAchitata) {
+      if (inainte.metoda_plata !== null) date['metoda_plata'] = null
+    } else if (corp['metoda_plata'] !== undefined) {
+      date['metoda_plata'] = metodaPlataDin(corp['metoda_plata'])
     }
 
     let dupa = inainte

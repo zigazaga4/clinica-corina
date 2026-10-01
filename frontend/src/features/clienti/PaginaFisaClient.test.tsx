@@ -117,6 +117,11 @@ it('încasează într-o singură plată toate ședințele rămase', async () => 
   // Lista încasărilor e în spatele parolei statisticilor; testul o deschide ca să numere.
   await deschideStatisticile()
   const inainte = (await api.vanzari.list({ client_id: id })).total
+
+  // Fără metodă aleasă, încasarea nu pleacă: numerar sau card se spune mereu.
+  fireEvent.click(confirma)
+  expect(await fereastra.findByText('Alege cum a plătit: numerar sau card.')).toBeInTheDocument()
+  fireEvent.click(fereastra.getByRole('button', { name: /^Card$/ }))
   fireEvent.click(confirma)
 
   await waitFor(async () => {
@@ -125,6 +130,7 @@ it('încasează într-o singură plată toate ședințele rămase', async () => 
     expect(dupa.total).toBe(inainte + 1)
     expect(dupa.randuri[0]?.total).toBe(total)
     expect(dupa.randuri[0]?.linii).toHaveLength(2)
+    expect(dupa.randuri[0]?.metoda_plata).toBe('card')
   })
 
   // Restanța dispare de pe fișă fără reîncărcare: invalidarea din
@@ -197,10 +203,14 @@ it('adună produsele neachitate la „De plată” și le încasează odată cu 
   expect(await fereastra.findAllByRole('checkbox')).toHaveLength(3)
   const confirma = fereastra.getByRole('button', { name: /^Încasează / })
   expect(sumaDinText(confirma.textContent ?? '')).toBe(total + 500)
+  fireEvent.click(fereastra.getByRole('button', { name: /^Numerar$/ }))
   fireEvent.click(confirma)
 
   await waitFor(async () => {
-    expect((await api.vanzari.get(datorie.id)).achitat).toBe(true)
+    const vanzare = await api.vanzari.get(datorie.id)
+    expect(vanzare.achitat).toBe(true)
+    // Metoda aleasă o dată merge și pe vânzările de produse trecute achitate.
+    expect(vanzare.metoda_plata).toBe('numerar')
     const lista = await api.clienti.list({ q: 'Ana Restantă', pe_pagina: 500 })
     expect(lista.randuri.find((c) => c.id === id)?.de_incasat).toBe(0)
   })
@@ -237,6 +247,7 @@ it('recepția, fără parola statisticilor, vede cât are clientul de plată și
   const fereastra = within(screen.getByRole('dialog'))
   const confirma = await fereastra.findByRole('button', { name: /^Încasează / })
   expect(sumaDinText(confirma.textContent ?? '')).toBe(total + 100)
+  fireEvent.click(fereastra.getByRole('button', { name: /^Numerar$/ }))
   fireEvent.click(confirma)
 
   await waitFor(async () => {
@@ -262,9 +273,19 @@ it('trece o vânzare de produse achitată chiar de pe rândul ei din fișă', as
 
   randeazaFisa(client.id)
 
-  fireEvent.click(await screen.findByRole('button', { name: /^Achitat$/ }))
-  await waitFor(async () => expect((await api.vanzari.get(datorie.id)).achitat).toBe(true))
+  // „Card” = achitat, cu cardul — o singură apăsare.
+  fireEvent.click(await screen.findByRole('button', { name: /^Card$/ }))
+  await waitFor(async () => {
+    const vanzare = await api.vanzari.get(datorie.id)
+    expect(vanzare.achitat).toBe(true)
+    expect(vanzare.metoda_plata).toBe('card')
+  })
   await waitFor(() => expect(screen.queryByText(/De plată:/)).toBeNull())
+
+  // Apăsat greșit: se trece pe numerar, fără să redevină datorie.
+  fireEvent.click(screen.getByRole('button', { name: /^Numerar$/ }))
+  await waitFor(async () => expect((await api.vanzari.get(datorie.id)).metoda_plata).toBe('numerar'))
+  expect(screen.queryByText(/De plată:/)).toBeNull()
 
   // Și înapoi: „Neachitat” readuce datoria.
   fireEvent.click(screen.getByRole('button', { name: /^Neachitat$/ }))

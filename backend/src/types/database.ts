@@ -18,6 +18,8 @@ export interface Utilizator {
   ultima_autentificare: string | null
   creat_la: string
   actualizat_la: string
+  /** Culoarea din calendar, #rrggbb. NULL = cea automată, din paletă. */
+  culoare: string | null
 }
 
 export interface PunctLucru {
@@ -141,6 +143,8 @@ export interface Vanzare {
   actualizat_la: string
   /** Când a plătit clientul; NULL = neachitată (produse date acum, plătite mai târziu). */
   achitat_la: string | null
+  /** Numerar sau card. NULL = neachitată, sau încasare de dinainte de alegere. */
+  metoda_plata: MetodaPlata | null
 }
 
 export interface VanzareLinie {
@@ -363,6 +367,9 @@ export interface TotaluriStatistici {
   incasat: number
   incasat_servicii: number
   incasat_produse: number
+  incasat_numerar: number
+  incasat_card: number
+  incasat_nespecificat: number
   incasari: number
   cheltuieli: number
   profit: number
@@ -556,6 +563,8 @@ export interface CreateVanzareRequest {
    * aplicație mai veche, care nu știe de câmp, înregistrează ca până acum.
    */
   achitat?: boolean
+  /** Numerar sau card, pe o vânzare achitată. */
+  metoda_plata?: MetodaPlata | null
   linii: DateLinieVanzare[]
 }
 
@@ -573,6 +582,8 @@ export interface IncasareRequest {
   linii?: DateLinieVanzare[]
   efectuat_la?: string
   nota?: string | null
+  /** Numerar sau card. */
+  metoda_plata?: MetodaPlata | null
 }
 
 export interface CreateAbonamentRequest {

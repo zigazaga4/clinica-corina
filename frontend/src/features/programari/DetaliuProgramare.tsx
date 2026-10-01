@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import {
-  BanknoteArrowUp,
+  Banknote,
   CalendarClock,
   CheckCircle2,
+  CreditCard,
   Layers,
   PencilLine,
   UserX,
@@ -12,7 +13,12 @@ import { Link } from 'react-router-dom'
 import { useIncaseaza, useSchimbaStareProgramare, useServiciileProgramarii } from '@/app/queries'
 import { InsemnPlata, InsemnStareProgramare } from '@/components/insemne'
 import { etichetaSedinta } from '@/features/tratamente/ProgresTratament'
-import { STARE_PROGRAMARE, type ProgramareDetaliu, type StareProgramare } from '@/domain/types'
+import {
+  STARE_PROGRAMARE,
+  type MetodaPlata,
+  type ProgramareDetaliu,
+  type StareProgramare,
+} from '@/domain/types'
 import { etichetaStareProgramare } from '@/domain/labels'
 import {
   formateazaData,
@@ -92,16 +98,17 @@ export function DetaliuProgramare({
     }
   }
 
-  const incaseaza = async () => {
+  const incaseaza = async (metoda_plata: MetodaPlata) => {
     try {
       // Toate serviciile încă neplătite, cu o singură plată — un bon.
       await incasare.mutateAsync({
         client_id: programare.client_id,
         programare_ids: neachitate.map((s) => s.id),
+        metoda_plata,
       })
       notificari.succes(
         'Încasare înregistrată',
-        `${formateazaBani(pretulProgramarii(neachitate))} de la ${programare.client_nume}.`,
+        `${formateazaBani(pretulProgramarii(neachitate))} de la ${programare.client_nume} · ${metoda_plata === 'card' ? 'card' : 'numerar'}.`,
       )
       // Fereastra se închide după încasare: programarea de aici este o copie
       // luată la deschidere, iar lăsată pe ecran ar continua să arate „De
@@ -208,16 +215,33 @@ export function DetaliuProgramare({
                     </>
                   )}
                 </p>
+                {/* Încasarea spune din aceeași apăsare cum s-a plătit. */}
                 {esteOnorata && neachitate.length > 0 && (
-                  <Buton
-                    dimensiune="sm"
-                    varianta="primar"
-                    onClick={() => void incaseaza()}
-                    incarca={incasare.isPending}
-                  >
-                    <BanknoteArrowUp className="size-4" />
-                    Încasează
-                  </Buton>
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-[12px] text-ink-faint">Încasează:</span>
+                    <Buton
+                      dimensiune="sm"
+                      varianta="primar"
+                      onClick={() => void incaseaza('numerar')}
+                      disabled={incasare.isPending}
+                      incarca={incasare.isPending && incasare.variables?.metoda_plata === 'numerar'}
+                      aria-label="Încasează numerar"
+                    >
+                      <Banknote className="size-4" />
+                      Numerar
+                    </Buton>
+                    <Buton
+                      dimensiune="sm"
+                      varianta="primar"
+                      onClick={() => void incaseaza('card')}
+                      disabled={incasare.isPending}
+                      incarca={incasare.isPending && incasare.variables?.metoda_plata === 'card'}
+                      aria-label="Încasează card"
+                    >
+                      <CreditCard className="size-4" />
+                      Card
+                    </Buton>
+                  </span>
                 )}
               </div>
             )}

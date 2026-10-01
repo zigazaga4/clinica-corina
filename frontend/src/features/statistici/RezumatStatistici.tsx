@@ -1,7 +1,9 @@
 import { useMemo } from 'react'
 import {
+  Banknote,
   CalendarCheck,
   Clock3,
+  CreditCard,
   Receipt,
   TrendingDown,
   TrendingUp,
@@ -182,12 +184,26 @@ function Cifre({ t, c }: { t: TotaluriStatistici; c: TotaluriStatistici | null }
   const pierdere = t.profit < 0
 
   return (
-    <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-4">
+    <>
+    <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       <Statistica
         eticheta="Încasat"
         valoare={formateazaBani(t.incasat)}
         pictograma={<Wallet className="size-4" />}
         detaliu={variatie(t.incasat, c?.incasat)}
+      />
+      {/* Din încasat, după cum s-a plătit (cerința clinicii, 2026-10-01). */}
+      <Statistica
+        eticheta="Numerar"
+        valoare={formateazaBani(t.incasat_numerar)}
+        pictograma={<Banknote className="size-4" />}
+        detaliu={variatie(t.incasat_numerar, c?.incasat_numerar) ?? 'în casă'}
+      />
+      <Statistica
+        eticheta="Card"
+        valoare={formateazaBani(t.incasat_card)}
+        pictograma={<CreditCard className="size-4" />}
+        detaliu={variatie(t.incasat_card, c?.incasat_card) ?? 'prin bancă'}
       />
       <Statistica
         eticheta="Cheltuieli"
@@ -238,6 +254,14 @@ function Cifre({ t, c }: { t: TotaluriStatistici; c: TotaluriStatistici | null }
         }
       />
     </div>
+    {/* Încasările de dinainte de alegere nu au metodă; se aleg din fila „Încasări”. */}
+    {t.incasat_nespecificat > 0 && (
+      <p className="mt-2 text-[13px] text-ink-faint">
+        {formateazaBani(t.incasat_nespecificat)} încasați fără numerar / card ales. Se pot alege din
+        fila „Încasări”.
+      </p>
+    )}
+    </>
   )
 }
 

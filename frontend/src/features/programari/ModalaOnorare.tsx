@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BanknoteArrowUp, Clock3, ShieldCheck } from 'lucide-react'
+import { Banknote, Clock3, CreditCard, ShieldCheck } from 'lucide-react'
 import { esteDesktopNativ } from '@/app/platforma'
 import {
   useClient,
@@ -9,7 +9,7 @@ import {
 } from '@/app/queries'
 import { ModalaAcordGdpr } from '@/features/consimtamant/ModalaAcordGdpr'
 import { BaniTratament, etichetaSedinta, ProgresSedinte } from '@/features/tratamente/ProgresTratament'
-import type { ProgramareDetaliu, Uuid } from '@/domain/types'
+import type { MetodaPlata, ProgramareDetaliu, Uuid } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { formateazaBani, numarInCamp, parseNumar, sumaTotal } from '@/lib/money'
 import { Buton, Input, Modala, Spinner, useNotificari } from '@/ui'
@@ -22,9 +22,11 @@ import { Buton, Input, Modala, Spinner, useNotificari } from '@/ui'
  * Întrebarea se pune AICI, în momentul în care clienta e încă la recepție —
  * singurul moment în care răspunsul se știe cu certitudine.
  *
- * Cele două căi sunt deopotrivă legitime, de aceea sunt două butoane, nu o
- * bifă lângă un „Confirmă”: „rămâne de plată” nu este anularea acțiunii, este
- * cazul obișnuit al clientei care vine de trei ori și plătește la final.
+ * Căile sunt deopotrivă legitime, de aceea sunt butoane, nu o bifă lângă un
+ * „Confirmă”: „rămâne de plată” nu este anularea acțiunii, este cazul obișnuit
+ * al clientei care vine de trei ori și plătește la final. Plata pe loc are
+ * DOUĂ butoane, „Numerar” și „Card” (cerința clinicii, 2026-10-01): cum s-a
+ * plătit se spune în aceeași apăsare, nu se poate uita.
  *
  * ÎNAINTEA banilor se cere acordul GDPR, din același motiv de moment: clientul
  * este de față, cu tableta la îndemână. Cerut mai târziu, nu s-ar mai cere
@@ -113,11 +115,15 @@ export function ModalaOnorare({
     deschisa && esteDesktopNativ() && !seVerifica && !areAcord && !acordRezolvat
 
   const inCurs = schimbaStarea.isPending
-  // Indicatorul de încărcare stă pe butonul apăsat, nu pe amândouă: variabilele
+  // Indicatorul de încărcare stă pe butonul apăsat, nu pe toate: variabilele
   // mutației în curs spun exact ce cale a ales operatoarea.
-  const seAchita = inCurs && schimbaStarea.variables?.achitat === true
+  const metodaInCurs = inCurs && schimbaStarea.variables?.achitat === true
+    ? (schimbaStarea.variables.metoda_plata ?? null)
+    : null
 
-  const confirma = async (achitat: boolean) => {
+  /** `metoda` = achitat acum, cu numerar sau card; `null` = rămâne de plată. */
+  const confirma = async (metoda: MetodaPlata | null) => {
+    const achitat = metoda !== null
     // Zero este o sumă validă — o ședință oferită gratuit — dar lipsa sau un
     // minus nu sunt.
     const erori: Record<Uuid, string> = {}
@@ -138,6 +144,7 @@ export function ModalaOnorare({
         id: programare.id,
         stare: 'onorat',
         achitat,
+        ...(metoda ? { metoda_plata: metoda } : {}),
         ...(Object.keys(preturi).length > 0 ? { preturi } : {}),
       })
       notificari.succes(
@@ -145,7 +152,7 @@ export function ModalaOnorare({
         deIncasat.length === 0
           ? undefined
           : achitat
-            ? `Încasare ${formateazaBani(totalDeIncasat)}.`
+            ? `Încasare ${formateazaBani(totalDeIncasat)} · ${metoda === 'card' ? 'card' : 'numerar'}.`
             : `${formateazaBani(totalDeIncasat)} rămân de plată.`,
       )
       onOnorata()
@@ -170,27 +177,56 @@ export function ModalaOnorare({
         titlu={maiMulte ? 'Programare efectuată' : 'Ședință efectuată'}
         subsol={
           <>
-            <Buton
-              onClick={() => void confirma(false)}
-              disabled={inCurs || seVerifica}
-              incarca={inCurs && !seAchita}
-              plin
-              className="sm:w-auto"
-            >
-              <Clock3 className="size-4" />
-              Rămâne de plată
-            </Buton>
-            <Buton
-              varianta="primar"
-              onClick={() => void confirma(true)}
-              disabled={inCurs || seVerifica}
-              incarca={seAchita}
-              plin
-              className="sm:w-auto"
-            >
-              <BanknoteArrowUp className="size-4" />
-              Achitat acum
-            </Buton>
+            {/* Fără nimic de încasat (totul plătit deja), plata nu are ce întreba. */}
+            {deIncasat.length === 0 ? (
+              <Buton
+                varianta="primar"
+                onClick={() => void confirma(null)}
+                disabled={inCurs || seVerifica}
+                incarca={inCurs}
+                plin
+                className="sm:w-auto"
+              >
+                Confirmă
+              </Buton>
+            ) : (
+              <>
+                <Buton
+                  onClick={() => void confirma(null)}
+                  disabled={inCurs || seVerifica}
+                  incarca={inCurs && metodaInCurs === null}
+                  plin
+                  className="sm:w-auto"
+                >
+                  <Clock3 className="size-4" />
+                  Rămâne de plată
+                </Buton>
+                <Buton
+                  varianta="primar"
+                  onClick={() => void confirma('numerar')}
+                  disabled={inCurs || seVerifica}
+                  incarca={metodaInCurs === 'numerar'}
+                  aria-label="Achitat acum, numerar"
+                  plin
+                  className="sm:w-auto"
+                >
+                  <Banknote className="size-4" />
+                  Numerar
+                </Buton>
+                <Buton
+                  varianta="primar"
+                  onClick={() => void confirma('card')}
+                  disabled={inCurs || seVerifica}
+                  incarca={metodaInCurs === 'card'}
+                  aria-label="Achitat acum, card"
+                  plin
+                  className="sm:w-auto"
+                >
+                  <CreditCard className="size-4" />
+                  Card
+                </Buton>
+              </>
+            )}
           </>
         }
       >
@@ -279,6 +315,12 @@ export function ModalaOnorare({
           ) : null}
 
           <p className="text-[13px] leading-relaxed text-ink-faint">
+            {deIncasat.length > 0 && (
+              <>
+                A plătit acum? Apasă <strong className="font-medium text-ink-soft">Numerar</strong> sau{' '}
+                <strong className="font-medium text-ink-soft">Card</strong>, după cum a plătit.{' '}
+              </>
+            )}
             Ce rămâne de plată apare pe fișa clientului și se poate încasa mai târziu, împreună cu
             alte ședințe.
           </p>

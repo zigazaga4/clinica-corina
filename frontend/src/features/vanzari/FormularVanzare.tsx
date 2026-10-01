@@ -11,7 +11,7 @@ import { useEroriFormular } from '@/lib/formular'
 import { uuid } from '@/lib/id'
 import { formateazaBani, numarInCamp, parseNumar, sumaTotal, totalLinie } from '@/lib/money'
 import { Buton, Camp, Input, Modala, Textarea, useNotificari } from '@/ui'
-import { AlegerePlata } from './PlataVanzarii'
+import { AlegerePlata, starePlata, type StarePlata } from './PlataVanzarii'
 
 /*
   Vânzarea de produse de la recepție — și corectarea uneia existente.
@@ -38,6 +38,7 @@ type CampVanzare =
   | 'nota'
   | 'linii'
   | 'achitat'
+  | 'metoda_plata'
   // Erorile venite de la server pentru o linie nu spun CARE linie (§7 întoarce
   // un singur `camp`), așa că le afișăm deasupra editorului de linii.
   | 'cantitate'
@@ -100,9 +101,11 @@ export function FormularVanzare({
   const [clientId, setClientId] = useState<Uuid | null>(
     vanzare?.client_id ?? clientInitial ?? null,
   )
-  // Achitat e cazul obișnuit — și cel care nu inventează o datorie din greșeală.
-  const [achitat, setAchitat] = useState(vanzare?.achitat ?? true)
-  // Un bon care stinge ședințe este chiar plata lor: nu are ce alegere să arate.
+  // Numerar, card sau neachitat. La o vânzare nouă nu e nimic ales: recepția
+  // trebuie să spună cum s-a plătit (cerința clinicii, 2026-10-01).
+  const [plata, setPlata] = useState<StarePlata | null>(vanzare ? starePlata(vanzare) : null)
+  const achitat = plata !== 'neachitat'
+  // Un bon care stinge ședințe este chiar plata lor: nu poate rămâne datorie.
   const stingeSedinte = vanzare?.linii.some((l) => l.programare_id !== null) ?? false
   const [operatorId, setOperatorId] = useState<Uuid | null>(vanzare?.operator_id ?? utilizator.id)
   // `efectuat_la` este momentul REAL al încasării, nu al introducerii ei: o
@@ -209,9 +212,23 @@ export function FormularVanzare({
       setCamp('linii', 'Adaugă cel puțin un produs.')
       valid = false
     }
-    if (!valid || !clientId) return
+    if (plata === null) {
+      setCamp(
+        'metoda_plata',
+        stingeSedinte
+          ? 'Alege cum s-a plătit: numerar sau card.'
+          : 'Alege cum s-a plătit: numerar, card sau neachitat.',
+      )
+      valid = false
+    }
+    if (!valid || !clientId || plata === null) return
 
-    const plata = stingeSedinte ? {} : { achitat }
+    const dePlata =
+      plata === 'neachitat'
+        ? { achitat: false }
+        : stingeSedinte
+          ? { metoda_plata: plata }
+          : { achitat: true, metoda_plata: plata }
 
     try {
       if (vanzare) {
@@ -222,7 +239,7 @@ export function FormularVanzare({
             ...(operatorId ? { operator_id: operatorId } : {}),
             efectuat_la: dinInputDatetime(efectuatLa),
             nota: nota.trim() === '' ? null : nota.trim(),
-            ...plata,
+            ...dePlata,
             linii: pregatite,
           },
         })
@@ -233,13 +250,13 @@ export function FormularVanzare({
           ...(operatorId ? { operator_id: operatorId } : {}),
           efectuat_la: dinInputDatetime(efectuatLa),
           nota: nota.trim() === '' ? null : nota.trim(),
-          ...plata,
+          ...dePlata,
           linii: pregatite,
         })
         notificari.succes(
           achitat ? 'Vânzare achitată' : 'Vânzare neachitată',
           achitat
-            ? `Total ${formateazaBani(total)}.`
+            ? `Total ${formateazaBani(total)} · ${plata === 'card' ? 'card' : 'numerar'}.`
             : `${formateazaBani(total)} rămân de plată, pe fișa clientului.`,
         )
       }
@@ -385,21 +402,25 @@ export function FormularVanzare({
           </span>
         </div>
 
-        {!stingeSedinte && (
-          <Camp
-            eticheta="S-a plătit?"
-            eroare={peCamp.achitat ?? null}
-            ajutor={
-              achitat
-                ? undefined
-                : 'Suma apare la „De plată” pe fișa clientului. Când plătește, apeși „Achitat”.'
-            }
-          >
-            {() => (
-              <AlegerePlata achitat={achitat} onSchimba={setAchitat} disabled={seTrimite} />
-            )}
-          </Camp>
-        )}
+        <Camp
+          eticheta="Cum s-a plătit?"
+          obligatoriu
+          eroare={peCamp.metoda_plata ?? peCamp.achitat ?? null}
+          ajutor={
+            plata === 'neachitat'
+              ? 'Suma apare la „De plată” pe fișa clientului. Când plătește, apeși „Numerar” sau „Card”.'
+              : undefined
+          }
+        >
+          {() => (
+            <AlegerePlata
+              valoare={plata}
+              onSchimba={setPlata}
+              cuNeachitat={!stingeSedinte}
+              disabled={seTrimite}
+            />
+          )}
+        </Camp>
 
         {general && (
           <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger">

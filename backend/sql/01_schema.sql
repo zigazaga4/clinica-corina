@@ -89,7 +89,10 @@ CREATE TABLE IF NOT EXISTS utilizator (
   activ                 boolean NOT NULL DEFAULT true,
   ultima_autentificare  timestamptz,
   creat_la              timestamptz NOT NULL DEFAULT now(),
-  actualizat_la         timestamptz NOT NULL DEFAULT now()
+  actualizat_la         timestamptz NOT NULL DEFAULT now(),
+  -- Culoarea aleasă de persoană pentru calendar (#rrggbb). NULL = culoarea
+  -- dată automat din paleta aplicației.
+  culoare               text CONSTRAINT utilizator_culoare_ck CHECK (culoare ~ '^#[0-9a-f]{6}$')
 );
 
 -- Pe `lower(email)`, nu pe `email`: două conturi care diferă doar prin
@@ -490,7 +493,14 @@ CREATE TABLE IF NOT EXISTS vanzare (
   -- plătită, adică ce se întâmpla înainte să existe coloana — nu o datorie
   -- inventată pe fișa cuiva. Ultima coloană dinadins, ca `v.*` din vederi să
   -- iasă la fel pe o bază nouă și pe una migrată.
-  achitat_la      timestamptz DEFAULT now()
+  achitat_la      timestamptz DEFAULT now(),
+  -- Cum s-a plătit: numerar sau card (cerința clinicii, 2026-10-01). NULL pe
+  -- o vânzare neachitată — încă nu s-a plătit deloc — și pe încasările de
+  -- dinainte de coloană, despre care nimeni nu mai știe. Se corectează din
+  -- Statistici. După `achitat_la`, tot ca `v.*` să iasă la fel peste tot.
+  metoda_plata    metoda_plata,
+
+  CONSTRAINT vanzare_metoda_ck CHECK (achitat_la IS NOT NULL OR metoda_plata IS NULL)
 );
 
 CREATE INDEX IF NOT EXISTS vanzare_client_idx ON vanzare (client_id, efectuat_la DESC);

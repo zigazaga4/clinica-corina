@@ -1,6 +1,9 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { mesajEroare } from '@/api/errors'
+import { useModificaUtilizator } from '@/app/queries'
 import type { Utilizator, Uuid } from '@/domain/types'
 import { cn } from '@/lib/cn'
+import { useNotificari } from '@/ui'
 
 /**
  * Cine are programarea, citit din culoare.
@@ -27,6 +30,14 @@ export interface CuloarePersoana {
    * Clinica a cerut culoarea persoanei pe toată programarea, nu doar pe o bandă.
    */
   chip: string
+  /**
+   * Variabilele CSS ale unei culori ALESE de persoană (`--persoana`,
+   * `--persoana-text`). Se pun pe elementul care poartă clasele de mai sus —
+   * sau pe un părinte al lui. Gol la culorile din paletă, care au jetoanele lor.
+   */
+  stil: React.CSSProperties
+  /** Culoarea ca #rrggbb, pentru selectorul de culoare. */
+  hex: string
 }
 
 /*
@@ -43,36 +54,48 @@ const PALETA: CuloarePersoana[] = [
     text: 'text-persoana-1',
     pastila: 'bg-persoana-1/12 text-persoana-1',
     chip: 'bg-persoana-1/25 border-persoana-1/60 text-ink',
+    stil: {},
+    hex: '#8455c6',
   },
   {
     fundal: 'bg-persoana-2',
     text: 'text-persoana-2',
     pastila: 'bg-persoana-2/12 text-persoana-2',
     chip: 'bg-persoana-2/25 border-persoana-2/60 text-ink',
+    stil: {},
+    hex: '#009192',
   },
   {
     fundal: 'bg-persoana-3',
     text: 'text-persoana-3',
     pastila: 'bg-persoana-3/12 text-persoana-3',
     chip: 'bg-persoana-3/25 border-persoana-3/60 text-ink',
+    stil: {},
+    hex: '#d17427',
   },
   {
     fundal: 'bg-persoana-4',
     text: 'text-persoana-4',
     pastila: 'bg-persoana-4/12 text-persoana-4',
     chip: 'bg-persoana-4/25 border-persoana-4/60 text-ink',
+    stil: {},
+    hex: '#c94b8f',
   },
   {
     fundal: 'bg-persoana-5',
     text: 'text-persoana-5',
     pastila: 'bg-persoana-5/12 text-persoana-5',
     chip: 'bg-persoana-5/25 border-persoana-5/60 text-ink',
+    stil: {},
+    hex: '#4a8c3a',
   },
   {
     fundal: 'bg-persoana-6',
     text: 'text-persoana-6',
     pastila: 'bg-persoana-6/12 text-persoana-6',
     chip: 'bg-persoana-6/25 border-persoana-6/60 text-ink',
+    stil: {},
+    hex: '#3d6ecb',
   },
 ]
 
@@ -90,6 +113,30 @@ const BEJ: CuloarePersoana = {
   pastila: 'bg-persoana-bej/45 text-persoana-bej-text dark:bg-persoana-bej/15',
   // Bejul e deja deschis: plin, cu text închis. Pe întunecat, plin ar fi alb.
   chip: 'bg-persoana-bej border-persoana-bej-text/50 text-ink dark:bg-persoana-bej/20',
+  stil: {},
+  hex: '#ddceaf',
+}
+
+/**
+ * Culoarea aleasă de persoană, oricare ar fi ea (cerința clinicii, 2026-10-01).
+ *
+ * Clasele sunt aceleași pentru toate culorile alese și citesc variabilele din
+ * `stil`. Textul nu e culoarea goală: un galben deschis ales ca text pe alb nu
+ * s-ar citi, așa că se amestecă cu cerneala temei — închis pe fundal deschis,
+ * deschis pe fundal întunecat.
+ */
+function culoareAleasa(hex: string): CuloarePersoana {
+  return {
+    fundal: 'bg-(--persoana)',
+    text: 'text-(--persoana-text)',
+    pastila: 'bg-(--persoana)/15 text-(--persoana-text)',
+    chip: 'bg-(--persoana)/30 border-(--persoana)/70 text-ink',
+    stil: {
+      '--persoana': hex,
+      '--persoana-text': `color-mix(in oklab, ${hex} 65%, var(--color-ink))`,
+    } as React.CSSProperties,
+    hex,
+  }
 }
 
 /**
@@ -148,8 +195,11 @@ export function FurnizorCulori({
       (a, b) => a.creat_la.localeCompare(b.creat_la) || a.nume.localeCompare(b.nume),
     )
     ordonati.forEach((u, i) => {
-      const ceruta = CULORI_PE_NUME[prenumeMic(u.nume)]
-      m.set(u.id, { id: u.id, nume: u.nume, culoare: ceruta ?? PALETA[i % PALETA.length]! })
+      // Culoarea aleasă de persoană bate tot; altfel cea cerută pe nume, apoi paleta.
+      const culoare = u.culoare
+        ? culoareAleasa(u.culoare)
+        : (CULORI_PE_NUME[prenumeMic(u.nume)] ?? PALETA[i % PALETA.length]!)
+      m.set(u.id, { id: u.id, nume: u.nume, culoare })
     })
     return m
   }, [utilizatori])
@@ -200,22 +250,88 @@ export function LegendaCulori({
       {persoane.map((p) => {
         const activa = valoare === p.id
         return (
-          <button
+          <span
             key={p.id}
-            type="button"
-            onClick={() => onSchimba(activa ? null : p.id)}
-            aria-pressed={activa}
+            style={p.culoare.stil}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium',
+              'inline-flex items-center rounded-full text-[12px] font-medium',
               'ring-1 ring-inset transition-colors',
-              activa ? `${p.culoare.pastila} ring-current` : 'text-ink-soft ring-line hover:bg-muted',
+              activa ? `${p.culoare.pastila} ring-current` : 'text-ink-soft ring-line',
             )}
           >
-            <span className={cn('size-2 shrink-0 rounded-full', p.culoare.fundal)} aria-hidden />
-            {p.nume}
-          </button>
+            {/* Punctul colorat deschide selectorul; numele filtrează calendarul. */}
+            <AlegereCuloare persoana={p} />
+            <button
+              type="button"
+              onClick={() => onSchimba(activa ? null : p.id)}
+              aria-pressed={activa}
+              className={cn(
+                'rounded-r-full py-1 pr-2.5 pl-1 transition-colors',
+                !activa && 'hover:bg-muted',
+              )}
+            >
+              {p.nume}
+            </button>
+          </span>
         )
       })}
     </div>
+  )
+}
+
+/**
+ * Selectorul de culoare al unei persoane — punctul colorat din legendă.
+ *
+ * Selectorul nativ al sistemului: îl știe oricine, merge cu mouse-ul și cu
+ * degetul. Se salvează la ÎNCHIDEREA lui (evenimentul nativ `change`), nu la
+ * fiecare nuanță trecută cu mouse-ul — `onChange` din React ar fi trimis zeci
+ * de cereri pe secundă cât timp se trage de cursor.
+ */
+function AlegereCuloare({ persoana }: { persoana: PersoanaColorata }) {
+  const modifica = useModificaUtilizator()
+  const notificari = useNotificari()
+  const camp = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const element = camp.current
+    if (!element) return
+    const salveaza = () => {
+      const culoare = element.value.toLowerCase()
+      if (culoare === persoana.culoare.hex) return
+      modifica.mutate(
+        { id: persoana.id, date: { culoare } },
+        {
+          onSuccess: () => notificari.succes('Culoare schimbată', `${persoana.nume} are acum culoarea nouă.`),
+          onError: (err) => notificari.eroare('Culoarea nu a putut fi salvată', mesajEroare(err)),
+        },
+      )
+    }
+    element.addEventListener('change', salveaza)
+    return () => element.removeEventListener('change', salveaza)
+  }, [modifica, notificari, persoana])
+
+  return (
+    <label
+      title={`Alege culoarea pentru ${persoana.nume}`}
+      className="relative flex cursor-pointer items-center rounded-l-full py-1 pr-1 pl-2 hover:bg-muted"
+    >
+      <span
+        aria-hidden
+        className={cn(
+          'size-3 shrink-0 rounded-full ring-1 ring-ink/15',
+          persoana.culoare.fundal,
+          modifica.isPending && 'animate-pulse',
+        )}
+      />
+      <input
+        ref={camp}
+        type="color"
+        // Necontrolat: valoarea se schimbă liber cât e deschis selectorul.
+        defaultValue={persoana.culoare.hex}
+        key={persoana.culoare.hex}
+        aria-label={`Culoarea pentru ${persoana.nume}`}
+        className="absolute inset-0 size-full cursor-pointer opacity-0"
+      />
+    </label>
   )
 }

@@ -1,4 +1,5 @@
-import { Clock, Layers, User } from 'lucide-react'
+import { Check, Clock, Layers, User, UserX } from 'lucide-react'
+import { etichetaStareProgramare } from '@/domain/labels'
 import type { ProgramareDetaliu, StareProgramare } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { formateazaInterval, formateazaOra } from '@/lib/dates'
@@ -48,6 +49,17 @@ const banda: Record<StareProgramare, string> = {
   neprezentat: 'bg-danger',
 }
 
+/**
+ * Starea, ca semn mic lângă oră, pe chipul colorat al persoanei: onorată sau
+ * neprezentată. Programată nu are semn — e cazul obișnuit — iar anulata e
+ * oricum tăiată.
+ */
+function SemnStare({ stare }: { stare: StareProgramare }) {
+  if (stare === 'onorat') return <Check className="size-3 shrink-0 text-success" aria-hidden />
+  if (stare === 'neprezentat') return <UserX className="size-3 shrink-0 text-danger" aria-hidden />
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // Forma pentru grilă
 // ---------------------------------------------------------------------------
@@ -76,17 +88,16 @@ export function ChipProgramare({
     <button
       type="button"
       onClick={() => onClick(programare)}
-      title={`${formateazaInterval(programare.incepe_la, programare.se_termina_la)} · ${programare.client_nume} · ${denumireaServiciilor(servicii)} · ${programare.executant_nume}\nApasă pentru detalii`}
-      style={style}
+      title={`${formateazaInterval(programare.incepe_la, programare.se_termina_la)} · ${programare.client_nume} · ${denumireaServiciilor(servicii)} · ${programare.executant_nume} · ${etichetaStareProgramare[programare.stare]}\nApasă pentru detalii`}
+      style={{ ...style, ...culoare?.stil }}
       className={cn(
-        'relative flex w-full cursor-pointer flex-col overflow-hidden rounded-md border py-1 pr-1.5 text-left',
-        // Banda ocupă 4px la stânga; textul începe după ea.
-        culoare ? 'pl-2.5' : 'pl-1.5',
+        'relative flex w-full cursor-pointer flex-col overflow-hidden rounded-md border px-1.5 py-1 text-left',
         // Sub cursor iese în față, cu umbră și contur: se vede că se apasă.
         'transition-all hover:z-10 hover:shadow-(--umbra-card) hover:ring-2 hover:ring-ink/20 focus-visible:z-10',
         // Cu persoana cunoscută, TOT chipul îi poartă culoarea (cerința
-        // clinicii); starea trece în banda din stânga. Fără ea — un cont care
-        // nu vede lista persoanelor — chipul rămâne în culoarea stării.
+        // clinicii), fără bandă pe margine (cerută scoasă, 2026-10-01); starea
+        // rămâne un semn mic lângă oră. Fără ea — un cont care nu vede lista
+        // persoanelor — chipul rămâne în culoarea stării.
         culoare ? culoare.chip : fundal[programare.stare],
         // Programarea anulată rămâne vizibilă, dar tăiată: locul ei este liber,
         // iar ștergerea din calendar ar ascunde faptul că a existat.
@@ -94,19 +105,16 @@ export function ChipProgramare({
         className,
       )}
     >
-      {/*
-        Banda STĂRII (programat / onorat / neprezentat / anulat), când fundalul
-        e deja al persoanei. Aceleași culori ca banda din agendă.
-      */}
-      {culoare && (
-        <span
-          aria-hidden
-          className={cn('absolute inset-y-0 left-0 w-1', banda[programare.stare])}
-        />
-      )}
-
-      <span className={cn('truncate text-[11px] leading-tight font-semibold', compact && 'text-[10px]')}>
-        {formateazaOra(programare.incepe_la)} {programare.client_nume}
+      <span
+        className={cn(
+          'flex items-center gap-0.5 truncate text-[11px] leading-tight font-semibold',
+          compact && 'text-[10px]',
+        )}
+      >
+        {culoare && <SemnStare stare={programare.stare} />}
+        <span className="truncate">
+          {formateazaOra(programare.incepe_la)} {programare.client_nume}
+        </span>
       </span>
       {!compact && (
         <span className="truncate text-[11px] leading-tight opacity-80">
@@ -193,7 +201,10 @@ export function RandProgramare({
           {cuExecutant && (
             // Punctul colorat repetă banda din calendar, ca aceeași persoană să
             // fie aceeași culoare în ambele vederi.
-            <span className={cn('inline-flex items-center gap-1', culoare && culoare.text)}>
+            <span
+              style={culoare?.stil}
+              className={cn('inline-flex items-center gap-1', culoare && culoare.text)}
+            >
               {culoare ? (
                 <span className={cn('size-2 shrink-0 rounded-full', culoare.fundal)} aria-hidden />
               ) : (
