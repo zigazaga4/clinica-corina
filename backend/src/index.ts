@@ -54,6 +54,7 @@ import vanzariRouter from './routes/vanzari.js'
 import abonamenteRouter from './routes/abonamente.js'
 import articoleRouter from './routes/articole.js'
 import puncteLucruRouter from './routes/puncte-lucru.js'
+import programLucruRouter from './routes/program-lucru.js'
 import utilizatoriRouter from './routes/utilizatori.js'
 import jurnalRouter from './routes/jurnal.js'
 import referintaRouter from './routes/referinta.js'
@@ -350,6 +351,7 @@ app.use('/clienti', clientiRouter)
 app.use('/consimtaminte', consimtaminteRouter)
 app.use('/programari', programariRouter)
 app.use('/notite', notiteRouter)
+app.use('/program-lucru', programLucruRouter)
 app.use('/tratamente', tratamenteRouter)
 app.use('/vanzari', vanzariRouter)
 // În spatele parolei statisticilor — vezi `middleware/acces-statistici.ts`.

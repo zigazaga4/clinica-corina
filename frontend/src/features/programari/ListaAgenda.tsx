@@ -1,5 +1,5 @@
 import { CalendarOff, Plus } from 'lucide-react'
-import type { NotitaDetaliu, ProgramareDetaliu } from '@/domain/types'
+import type { NotitaDetaliu, ProgramLucru, ProgramareDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { formateazaZiLunga, isToday } from '@/lib/dates'
 import { plural } from '@/lib/text'
@@ -7,6 +7,7 @@ import { StareGoala } from '@/ui'
 import { RandNotita } from './CardNotita'
 import { RandProgramare } from './CardProgramare'
 import { dinZiua, elementeCalendar } from './elemente'
+import { PersoaneZilei, persoaneleZilei } from './programLucru'
 import { numarProgramari } from './vizite'
 
 /**
@@ -25,6 +26,7 @@ export function ListaAgenda({
   zile,
   programari,
   notite = [],
+  programe = [],
   onAlegeProgramare,
   onAlegeNotita,
   onProgrameaza,
@@ -34,6 +36,8 @@ export function ListaAgenda({
   zile: Date[]
   programari: ProgramareDetaliu[]
   notite?: NotitaDetaliu[]
+  /** Programul de lucru: sub data zilei, cine lucrează și cine e liber. */
+  programe?: ProgramLucru[]
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
   onAlegeNotita?: (notita: NotitaDetaliu) => void
   /** Prezentă = fiecare zi deschide o programare nouă în ea. */
@@ -82,8 +86,11 @@ export function ListaAgenda({
               isToday(zi) ? 'bg-primary-50/90 text-primary-700' : 'bg-surface/90 text-ink',
             )}
           >
-            <span className="capitalize">{formateazaZiLunga(zi)}</span>
-            <span className="flex items-center gap-2 text-[12px] font-normal text-ink-faint">
+            <span className="flex min-w-0 flex-col">
+              <span className="capitalize">{formateazaZiLunga(zi)}</span>
+              <PersoaneZilei persoane={persoaneleZilei(programe, zi)} className="text-[12px]" />
+            </span>
+            <span className="flex shrink-0 items-center gap-2 text-[12px] font-normal text-ink-faint">
               {rezumatZilei(nrProgramari, nrNotite)}
               {onProgrameaza && (
                 <button

@@ -3,6 +3,7 @@ import {
   etichetaRol,
   etichetaStareProgramare,
   etichetaTipArticol,
+  etichetaZileLucru,
 } from '@/domain/labels'
 import type {
   JurnalOperatiuneDetaliu,
@@ -10,6 +11,7 @@ import type {
   RolUtilizator,
   StareProgramare,
   TipArticol,
+  ZileLucru,
 } from '@/domain/types'
 import { formateazaData, formateazaDataOra, formateazaDurata } from '@/lib/dates'
 import { formateazaBani } from '@/lib/money'
@@ -65,6 +67,9 @@ const ETICHETE_CAMP: Record<string, string> = {
   efectuat_la: 'Efectuat la',
   achitat_la: 'Achitat la',
   metoda_plata: 'Metoda de plată',
+  utilizator_id: 'Persoana',
+  luna: 'Luna',
+  zile: 'Zile de lucru',
   stare: 'Stare',
   nota: 'Notă',
   tip: 'Tip',
@@ -89,6 +94,7 @@ const TRADUCERI_ENUM: Record<string, (valoare: string) => string> = {
   tip: (v) => etichetaTipArticol[v as TipArticol] ?? v,
   articol_tip: (v) => etichetaTipArticol[v as TipArticol] ?? v,
   metoda_plata: (v) => etichetaMetodaPlata[v as MetodaPlata] ?? v,
+  zile: (v) => etichetaZileLucru[v as ZileLucru] ?? v,
 }
 
 const CHEI_BANI = new Set(['pret_lista', 'pret_unitar', 'total_linie', 'total', 'suma'])

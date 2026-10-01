@@ -32,6 +32,7 @@ import type {
   DateNotitaModificata,
   DateNotitaNoua,
   DateParolaStatistici,
+  DateProgramLucru,
   DateProgramareModificata,
   DateProgramareNoua,
   DateTratamentModificat,
@@ -46,6 +47,7 @@ import type {
   FiltruConsimtaminte,
   FiltruJurnal,
   FiltruNotite,
+  FiltruProgramLucru,
   FiltruProgramari,
   FiltruStatistici,
   FiltruTratamente,
@@ -66,6 +68,7 @@ import type {
   JurnalOperatiuneDetaliu,
   NotaClientDetaliu,
   NotitaDetaliu,
+  ProgramLucru,
   ProgramareDetaliu,
   RaportStatistici,
   StareProgramare,
@@ -105,6 +108,10 @@ export const chei = {
   notite: {
     tot: ['notite'] as const,
     lista: (filtru: FiltruNotite) => ['notite', 'lista', filtru] as const,
+  },
+  programLucru: {
+    tot: ['program-lucru'] as const,
+    lista: (filtru: FiltruProgramLucru) => ['program-lucru', 'lista', filtru] as const,
   },
   tratamente: {
     tot: ['tratamente'] as const,
@@ -492,6 +499,37 @@ export function useStergeNotita(): UseMutationResult<void, Error, Uuid> {
   return useMutation({
     mutationFn: (id: Uuid) => api.notite.remove(id),
     onSuccess: () => invalideazaNotite(qc),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Programul de lucru — zile pare / impare, pe persoană și lună
+// ---------------------------------------------------------------------------
+
+export function useProgramLucru(
+  filtru: FiltruProgramLucru,
+  activa = true,
+): UseQueryResult<ProgramLucru[]> {
+  return useQuery({
+    queryKey: chei.programLucru.lista(filtru),
+    queryFn: () => api.programLucru.list(filtru),
+    enabled: activa,
+    placeholderData: (anterioare) => anterioare,
+  })
+}
+
+export function useSeteazaProgramLucru(): UseMutationResult<
+  ProgramLucru | null,
+  Error,
+  DateProgramLucru
+> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (date: DateProgramLucru) => api.programLucru.seteaza(date),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: chei.programLucru.tot })
+      void qc.invalidateQueries({ queryKey: chei.jurnal.tot })
+    },
   })
 }
 

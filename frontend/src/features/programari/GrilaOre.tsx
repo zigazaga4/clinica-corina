@@ -6,6 +6,7 @@ import { ChipNotita } from './CardNotita'
 import { ChipProgramare } from './CardProgramare'
 import { useCuloarePersoana } from './culoriExecutanti'
 import { type ElementCalendar, elementeCalendar, intervalul } from './elemente'
+import { PersoaneZilei, STIL_ZI_LIBERA, type PersoanaZilei } from './programLucru'
 import { StratSelectie } from './StratSelectie'
 import {
   INALTIME_GRILA,
@@ -40,6 +41,10 @@ export interface ColoanaGrila {
   executantId?: Uuid
   /** Coloana notițelor clinicii: nu primește programări. */
   doarNotite?: boolean
+  /** Persoana coloanei nu lucrează în ziua aceasta (programul de lucru): fundal dungat. */
+  libera?: boolean
+  /** Vederea pe săptămână: cine lucrează și cine e liber în ziua coloanei. */
+  persoaneZilei?: PersoanaZilei[]
 }
 
 /** Cât din lățimea coloanei ocupă programările; restul e fâșia pentru una nouă. */
@@ -115,6 +120,7 @@ export function GrilaOre({
               <ColoanaElemente
                 elemente={elementeCalendar(coloana.programari, coloana.notite ?? [])}
                 zi={coloana.zi}
+                libera={coloana.libera}
                 onAlegeProgramare={onAlegeProgramare}
                 onAlegeNotita={onAlegeNotita}
                 onAlegeLoc={
@@ -134,12 +140,14 @@ export function GrilaOre({
 function ColoanaElemente({
   elemente,
   zi,
+  libera = false,
   onAlegeProgramare,
   onAlegeNotita,
   onAlegeLoc,
 }: {
   elemente: ElementCalendar[]
   zi?: Date
+  libera?: boolean
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
   onAlegeNotita?: (notita: NotitaDetaliu) => void
   onAlegeLoc?: (inceput: Date, sfarsit: Date | null) => void
@@ -154,7 +162,12 @@ function ColoanaElemente({
   const latimeElemente = onAlegeLoc ? LATIME_ELEMENTE : 100
 
   return (
-    <div className="relative" style={{ height: INALTIME_GRILA }}>
+    <div
+      className="relative"
+      // Zi liberă după programul de lucru: dungi discrete. Locul rămâne apăsabil
+      // — o excepție („vine totuși azi”) nu are voie să fie imposibilă.
+      style={{ height: INALTIME_GRILA, ...(libera ? STIL_ZI_LIBERA : {}) }}
+    >
       {/* Primul, deci dedesubt: programările și notițele se apasă peste el. */}
       {zi && onAlegeLoc && <StratSelectie zi={zi} onAlege={onAlegeLoc} />}
 
@@ -256,8 +269,21 @@ function AntetColoana({ coloana, lipicios }: { coloana: ColoanaGrila; lipicios: 
         )}
         <span className="truncate">{coloana.eticheta}</span>
       </span>
-      {coloana.subeticheta && (
-        <span className="truncate pl-3.5 text-[11px] text-ink-faint">{coloana.subeticheta}</span>
+      {(coloana.subeticheta || coloana.libera || coloana.persoaneZilei?.length) && (
+        <span
+          className={cn(
+            'flex min-w-0 items-center gap-1.5 truncate text-[11px] text-ink-faint',
+            culoare && 'pl-3.5',
+          )}
+        >
+          {coloana.libera && <span className="shrink-0 font-semibold text-danger">Zi liberă</span>}
+          {coloana.subeticheta && (
+            <span className="shrink-0">
+              {coloana.libera ? `· ${coloana.subeticheta}` : coloana.subeticheta}
+            </span>
+          )}
+          {coloana.persoaneZilei && <PersoaneZilei persoane={coloana.persoaneZilei} />}
+        </span>
       )}
     </div>
   )

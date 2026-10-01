@@ -23,6 +23,7 @@ import type {
   DateLinieVanzare,
   DateNotitaModificata,
   DateNotitaNoua,
+  DateProgramLucru,
   DatePunctLucruModificat,
   DatePunctLucruNou,
   DateProgramareModificata,
@@ -39,6 +40,7 @@ import type {
   FiltruConsimtaminte,
   FiltruJurnal,
   FiltruNotite,
+  FiltruProgramLucru,
   FiltruProgramari,
   FiltruTratamente,
   FiltruVanzari,
@@ -74,6 +76,7 @@ import type {
   NotaClientDetaliu,
   Notita,
   NotitaDetaliu,
+  ProgramLucru,
   Programare,
   ProgramareDetaliu,
   PunctLucru,
@@ -1324,6 +1327,78 @@ export function creeazaApiInMemorie(): ApiClient {
             bonuri_sterse: bonuriSterse,
           },
         })
+      },
+    },
+
+    // =======================================================================
+    // Programul de lucru — zile pare / impare, pe persoană și lună
+    // =======================================================================
+    programLucru: {
+      /** GET /program-lucru — orice rol */
+      async list(filtru: FiltruProgramLucru): Promise<ProgramLucru[]> {
+        await intarziere()
+        cereUtilizator()
+        const dataCerutaDe = dataCeruta(filtru.de_la, 'de_la', 'Începutul intervalului')
+        const pana = dataCeruta(filtru.pana_la, 'pana_la', 'Sfârșitul intervalului')
+        const dela = `${dataCerutaDe.slice(0, 7)}-01`
+        return [...magazin.program_lucru.values()]
+          .filter((p) => p.luna >= dela && p.luna <= pana)
+          .map((p) => ({ ...p, utilizator_nume: magazin.utilizator.get(p.utilizator_id)?.nume ?? '—' }))
+          .sort((a, b) => a.luna.localeCompare(b.luna) || a.utilizator_nume.localeCompare(b.utilizator_nume))
+      },
+
+      /** PUT /program-lucru — orice rol */
+      async seteaza(date: DateProgramLucru): Promise<ProgramLucru | null> {
+        await intarziere()
+        const autor = cereUtilizator()
+        if (!date.utilizator_id) throw eroareValidare('Alege persoana.', 'utilizator_id')
+        ceruta(magazin.utilizator, date.utilizator_id, 'Persoana')
+        const text = /^\d{4}-\d{2}$/.test(date.luna) ? `${date.luna}-01` : date.luna
+        const luna = `${dataCeruta(text, 'luna', 'Luna').slice(0, 7)}-01`
+        if (date.zile !== null && date.zile !== 'pare' && date.zile !== 'impare') {
+          throw eroareValidare('Alege zilele: pare sau impare.', 'zile')
+        }
+
+        const inainte = [...magazin.program_lucru.values()].find(
+          (p) => p.utilizator_id === date.utilizator_id && p.luna === luna,
+        )
+        if (date.zile === null) {
+          if (!inainte) return null
+          magazin.program_lucru.delete(inainte.id)
+          scrieJurnal({
+            utilizator_id: autor.id,
+            actiune: 'stergere',
+            entitate: 'program_lucru',
+            entitate_id: inainte.id,
+            date_vechi: { utilizator_id: date.utilizator_id, luna, zile: inainte.zile },
+          })
+          return null
+        }
+
+        const rand = inainte ?? {
+          id: uuid(),
+          utilizator_id: date.utilizator_id,
+          luna,
+          zile: date.zile,
+          creat_de: autor.id,
+          creat_la: acum(),
+          actualizat_la: acum(),
+        }
+        if (inainte?.zile !== date.zile) {
+          const vechi = inainte?.zile
+          rand.zile = date.zile
+          atinge(rand)
+          magazin.program_lucru.set(rand.id, rand)
+          scrieJurnal({
+            utilizator_id: autor.id,
+            actiune: inainte ? 'modificare' : 'creare',
+            entitate: 'program_lucru',
+            entitate_id: rand.id,
+            date_vechi: vechi ? { zile: vechi } : null,
+            date_noi: { utilizator_id: date.utilizator_id, luna, zile: date.zile },
+          })
+        }
+        return { ...rand, utilizator_nume: magazin.utilizator.get(rand.utilizator_id)?.nume ?? '—' }
       },
     },
 

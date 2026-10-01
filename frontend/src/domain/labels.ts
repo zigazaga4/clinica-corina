@@ -12,6 +12,7 @@ import type {
   RolUtilizator,
   StareProgramare,
   TipArticol,
+  ZileLucru,
 } from './types'
 import type { BadgeTone } from '@/ui/Badge'
 
@@ -49,6 +50,11 @@ export const etichetaMetodaPlata: Record<MetodaPlata, string> = {
   card: 'Card',
 }
 
+export const etichetaZileLucru: Record<ZileLucru, string> = {
+  pare: 'Zile pare',
+  impare: 'Zile impare',
+}
+
 /** Toate metodele, în ordinea în care apar pe butoane. */
 export const METODE_PLATA: readonly MetodaPlata[] = ['numerar', 'card']
 
@@ -78,6 +84,7 @@ export const etichetaEntitate: Record<string, string> = {
   consimtamant: 'Acord GDPR',
   programare: 'Programare',
   notita: 'Notiță în calendar',
+  program_lucru: 'Program de lucru',
   tratament: 'Tratament',
   vanzare: 'Vânzare',
   vanzare_linie: 'Linie vânzare',

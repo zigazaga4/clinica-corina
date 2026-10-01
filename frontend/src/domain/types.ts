@@ -320,6 +320,25 @@ export interface Vanzare {
   metoda_plata: MetodaPlata | null
 }
 
+/** În ce zile ale lunii lucrează o persoană: după numărul zilei (2, 4… / 1, 3…). */
+export type ZileLucru = 'pare' | 'impare'
+
+/**
+ * Tabela `program_lucru` — programul unei persoane într-o lună (cerința
+ * clinicii, 2026-10-01). Lipsa rândului = fără program ales, nimic de marcat.
+ */
+export interface ProgramLucru {
+  id: Uuid
+  utilizator_id: Uuid
+  utilizator_nume: string
+  /** Ziua 1 a lunii. */
+  luna: DateOnly
+  zile: ZileLucru
+  creat_de: Uuid | null
+  creat_la: Timestamptz
+  actualizat_la: Timestamptz
+}
+
 /** Coloana `vanzare.metoda_plata` — ce alege recepția la fiecare încasare. */
 export type MetodaPlata = 'numerar' | 'card'
 

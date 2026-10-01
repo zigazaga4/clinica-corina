@@ -19,6 +19,7 @@ import type {
   JurnalOperatiune,
   NotaClient,
   Notita,
+  ProgramLucru,
   Programare,
   PunctLucru,
   Tratament,
@@ -84,6 +85,8 @@ export interface Magazin {
   tratament: Map<Uuid, Tratament>
   programare: Map<Uuid, Programare>
   notita: Map<Uuid, Notita>
+  /** Fără `utilizator_nume`: se adaugă la citire, ca pe server. */
+  program_lucru: Map<Uuid, Omit<ProgramLucru, 'utilizator_nume'>>
   vanzare: Map<Uuid, Vanzare>
   vanzare_linie: Map<Uuid, VanzareLinie>
   cheltuiala: Map<Uuid, Cheltuiala>
@@ -105,6 +108,7 @@ function magazinGol(): Magazin {
     tratament: new Map(),
     programare: new Map(),
     notita: new Map(),
+    program_lucru: new Map(),
     vanzare: new Map(),
     vanzare_linie: new Map(),
     cheltuiala: new Map(),

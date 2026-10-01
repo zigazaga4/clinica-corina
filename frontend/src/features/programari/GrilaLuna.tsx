@@ -1,10 +1,11 @@
 import { Plus } from 'lucide-react'
-import type { NotitaDetaliu, ProgramareDetaliu } from '@/domain/types'
+import type { NotitaDetaliu, ProgramLucru, ProgramareDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { formateazaZiLunga, formateazaZiScurt, isToday } from '@/lib/dates'
 import { ChipNotita } from './CardNotita'
 import { ChipProgramare } from './CardProgramare'
 import { dinZiua, elementeCalendar, intervalul } from './elemente'
+import { PersoaneZilei, persoaneleZilei } from './programLucru'
 
 /** Câte elemente încap într-o celulă înainte de „+N”. */
 const MAXIM_PE_ZI = 3
@@ -22,6 +23,7 @@ export function GrilaLuna({
   luna,
   programari,
   notite = [],
+  programe = [],
   onAlegeZi,
   onAlegeProgramare,
   onAlegeNotita,
@@ -33,6 +35,8 @@ export function GrilaLuna({
   luna: number
   programari: ProgramareDetaliu[]
   notite?: NotitaDetaliu[]
+  /** Programul de lucru: lângă numărul zilei, cine lucrează și cine e liber. */
+  programe?: ProgramLucru[]
   onAlegeZi: (zi: Date) => void
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
   onAlegeNotita?: (notita: NotitaDetaliu) => void
@@ -94,6 +98,10 @@ export function GrilaLuna({
                 >
                   {zi.getDate()}
                 </button>
+                <PersoaneZilei
+                  persoane={persoaneleZilei(programe, zi)}
+                  className="flex-1 justify-end px-1 text-[11px]"
+                />
                 {/*
                   Același lucru ca apăsarea spațiului liber, dar vizibil și
                   atins de tastatură. Apare la trecerea mouse-ului, ca cele 42

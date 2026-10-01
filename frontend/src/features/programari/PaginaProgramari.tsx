@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { CalendarPlus, ChevronLeft, ChevronRight, StickyNote } from 'lucide-react'
-import { useNotite, useProgramari, useUtilizatori } from '@/app/queries'
+import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, StickyNote } from 'lucide-react'
+import { useNotite, useProgramLucru, useProgramari, useUtilizatori } from '@/app/queries'
 import { useAutentificare } from '@/app/auth'
 import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
 import { SelectorClient, SelectorUtilizator } from '@/components/selectoare'
@@ -8,6 +8,7 @@ import { etichetaStareProgramare } from '@/domain/labels'
 import {
   STARE_PROGRAMARE,
   type NotitaDetaliu,
+  type ProgramLucru,
   type ProgramareDetaliu,
   type StareProgramare,
   type Uuid,
@@ -20,6 +21,7 @@ import {
   formateazaZiScurta,
   intervalPentruVedere,
   isToday,
+  laInputDate,
   laTimestamptz,
   type VedereCalendar,
 } from '@/lib/dates'
@@ -43,6 +45,8 @@ import { GrilaLuna } from './GrilaLuna'
 import { GrilaOre, type ColoanaGrila, type LocGrila } from './GrilaOre'
 import { ListaAgenda } from './ListaAgenda'
 import { inceputPeZi, type LocAles } from './locAles'
+import { ModalaProgramLucru } from './ModalaProgramLucru'
+import { lucreaza, persoaneleZilei } from './programLucru'
 import { numarProgramari } from './vizite'
 
 /**
@@ -87,8 +91,15 @@ export function PaginaProgramari() {
   const [formularNotitaDeschis, setFormularNotitaDeschis] = useState(false)
   const [notitaDeModificat, setNotitaDeModificat] = useState<NotitaDetaliu | null>(null)
   const [notitaDeVazuta, setNotitaDeVazuta] = useState<NotitaDetaliu | null>(null)
+  const [programLucruDeschis, setProgramLucruDeschis] = useState(false)
 
   const interval = useMemo(() => intervalPentruVedere(ancora, vedere), [ancora, vedere])
+
+  // Programul de lucru al lunilor atinse de interval: ce zile sunt libere.
+  const { data: programe } = useProgramLucru({
+    de_la: laInputDate(interval.zile[0] ?? interval.inceput),
+    pana_la: laInputDate(interval.zile[interval.zile.length - 1] ?? interval.sfarsit),
+  })
 
   const stariVizibile = STARE_PROGRAMARE.filter((s) => !stariAscunse.has(s))
 
@@ -183,6 +194,11 @@ export function PaginaProgramari() {
               Notița stă lângă programare, dar în plan secund: se face de câteva
               ori pe săptămână, programarea de câteva ori pe oră.
             */}
+            {/* Zilele pare / impare ale fiecăreia, pe lună. */}
+            <Buton onClick={() => setProgramLucruDeschis(true)} aria-label="Program de lucru">
+              <CalendarDays className="size-4" />
+              <span className="hidden sm:inline">Program de lucru</span>
+            </Buton>
             <Buton onClick={() => deschideFormularNotita()} aria-label="Notiță nouă">
               <StickyNote className="size-4" />
               <span className="hidden sm:inline">Notiță</span>
@@ -318,6 +334,7 @@ export function PaginaProgramari() {
             ancora={ancora}
             programari={programari}
             notite={notite}
+            programe={programe ?? []}
             executantId={executantId}
             utilizatori={utilizatori ?? []}
             onAlegeProgramare={setDeVazut}
@@ -366,6 +383,13 @@ export function PaginaProgramari() {
           deschideFormularNotita(notita)
         }}
       />
+
+      <ModalaProgramLucru
+        deschisa={programLucruDeschis}
+        onInchide={() => setProgramLucruDeschis(false)}
+        lunaInitiala={ancora}
+        utilizatorInitial={executantId}
+      />
     </Pagina>
     </FurnizorCulori>
   )
@@ -382,6 +406,7 @@ function Continut({
   ancora,
   programari,
   notite,
+  programe,
   executantId,
   utilizatori,
   onAlegeProgramare,
@@ -396,6 +421,8 @@ function Continut({
   ancora: Date
   programari: ProgramareDetaliu[]
   notite: NotitaDetaliu[]
+  /** Programul de lucru al lunilor afișate. */
+  programe: ProgramLucru[]
   executantId: Uuid | null
   utilizatori: { id: Uuid; nume: string; rol: string }[]
   onAlegeProgramare: (programare: ProgramareDetaliu) => void
@@ -414,6 +441,7 @@ function Continut({
           zile={interval.zile}
           programari={programari}
           notite={notite}
+          programe={programe}
           onAlegeProgramare={onAlegeProgramare}
           onAlegeNotita={onAlegeNotita}
           onProgrameaza={onProgrameazaZi}
@@ -432,6 +460,7 @@ function Continut({
           luna={ancora.getMonth()}
           programari={programari}
           notite={notite}
+          programe={programe}
           onAlegeZi={onAlegeZi}
           onAlegeProgramare={onAlegeProgramare}
           onAlegeNotita={onAlegeNotita}
@@ -449,6 +478,11 @@ function Continut({
       zi,
       programari: dinZiua(programari, zi),
       notite: dinZiua(notite, zi),
+      // Toată clinica: sub dată, cine lucrează și cine e liber. Filtrată pe o
+      // persoană: ziua ei liberă se dungează.
+      ...(executantId
+        ? { libera: lucreaza(programe, executantId, zi) === false }
+        : { persoaneZilei: persoaneleZilei(programe, zi) }),
     }))
     return (
       <GrilaOre
@@ -482,6 +516,8 @@ function Continut({
     eticheta: persoana.nume,
     subeticheta: `${numarProgramari(aleZilei.filter((p) => p.executant_id === persoana.id))} programări`,
     zi,
+    // Programul de lucru: ziua ei liberă se dungează și scrie „Zi liberă”.
+    libera: lucreaza(programe, persoana.id, zi) === false,
     executantId: persoana.id,
     programari: aleZilei.filter((p) => p.executant_id === persoana.id),
     // Filtrată pe o persoană, coloana ei primește și notițele clinicii — nu
@@ -517,6 +553,7 @@ function Continut({
           zile={[zi]}
           programari={aleZilei}
           notite={notiteZilei}
+          programe={programe}
           onAlegeProgramare={onAlegeProgramare}
           onAlegeNotita={onAlegeNotita}
           onProgrameaza={onProgrameazaZi}

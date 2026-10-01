@@ -23,7 +23,7 @@ const TABELE = [
   'abonament', 'abonament_sedinta', 'plata',
   'sesiune', 'jurnal_operatiuni',
   'consimtamant', 'notita', 'tratament',
-  'cheltuiala', 'parola_statistici',
+  'cheltuiala', 'parola_statistici', 'program_lucru',
 ]
 
 const VEDERI = [

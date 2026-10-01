@@ -29,6 +29,7 @@ import type {
   NotaClientDetaliu,
   NotitaDetaliu,
   PasStatistici,
+  ProgramLucru,
   ProgramareDetaliu,
   PunctLucru,
   RaportStatistici,
@@ -40,6 +41,7 @@ import type {
   Utilizator,
   Uuid,
   VanzareDetaliu,
+  ZileLucru,
 } from '@/domain/types'
 
 // ---------------------------------------------------------------------------
@@ -797,6 +799,31 @@ export interface FiltruJurnal extends IntervalTimp, ParametriPaginare {
   actiune?: string[]
 }
 
+// ---------------------------------------------------------------------------
+// Programul de lucru — zile pare / impare, pe persoană și lună
+// ---------------------------------------------------------------------------
+
+export interface FiltruProgramLucru {
+  /** Prima zi a intervalului afișat; se întorc lunile care îl ating. */
+  de_la: DateOnly
+  pana_la: DateOnly
+}
+
+export interface DateProgramLucru {
+  utilizator_id: Uuid
+  /** „AAAA-LL” sau ziua 1 a lunii. */
+  luna: string
+  /** null = scoate programul lunii (fără program ales). */
+  zile: ZileLucru | null
+}
+
+export interface ApiProgramLucru {
+  /** GET /program-lucru — orice rol. */
+  list(filtru: FiltruProgramLucru): Promise<ProgramLucru[]>
+  /** PUT /program-lucru — orice rol. Pune, înlocuiește sau (cu `zile: null`) scoate. */
+  seteaza(date: DateProgramLucru): Promise<ProgramLucru | null>
+}
+
 export interface ApiJurnal {
   /** GET /jurnal — administrator. Filtrare pe entitate, utilizator, interval. */
   list(filtru?: FiltruJurnal): Promise<Paginat<JurnalOperatiuneDetaliu>>
@@ -812,6 +839,7 @@ export interface ApiClient {
   consimtaminte: ApiConsimtaminte
   programari: ApiProgramari
   notite: ApiNotite
+  programLucru: ApiProgramLucru
   tratamente: ApiTratamente
   vanzari: ApiVanzari
   statistici: ApiStatistici

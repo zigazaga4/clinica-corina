@@ -52,6 +52,7 @@ import type {
   JurnalOperatiuneDetaliu,
   NotaClientDetaliu,
   NotitaDetaliu,
+  ProgramLucru,
   ProgramareDetaliu,
   PunctLucru,
   RaportStatistici,
@@ -348,6 +349,13 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
       create: (date) => cerere<NotitaDetaliu>('POST', '/notite', { corp: date }),
       update: (id, date) => cerere<NotitaDetaliu>('PATCH', `/notite/${id}`, { corp: date }),
       remove: (id) => cerere<void>('DELETE', `/notite/${id}`),
+    },
+
+    programLucru: {
+      list: (filtru) => cerere<ProgramLucru[]>('GET', '/program-lucru', { parametri: filtru }),
+      // 204 la scoaterea programului: nu mai e niciun rând de întors.
+      seteaza: async (date) =>
+        (await cerere<ProgramLucru | undefined>('PUT', '/program-lucru', { corp: date })) ?? null,
     },
 
     vanzari: {

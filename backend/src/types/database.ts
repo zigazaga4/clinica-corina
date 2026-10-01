@@ -22,6 +22,21 @@ export interface Utilizator {
   culoare: string | null
 }
 
+/** În ce zile ale lunii lucrează persoana: după numărul zilei. */
+export type ZileLucru = 'pare' | 'impare'
+
+/** Tabela `program_lucru`, cu numele persoanei. `luna` = ziua 1 a lunii. */
+export interface ProgramLucru {
+  id: string
+  utilizator_id: string
+  utilizator_nume: string
+  luna: string
+  zile: ZileLucru
+  creat_de: string | null
+  creat_la: string
+  actualizat_la: string
+}
+
 export interface PunctLucru {
   id: string
   denumire: string
