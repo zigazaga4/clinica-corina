@@ -260,7 +260,7 @@ export function LegendaCulori({
             )}
           >
             {/* Punctul colorat deschide selectorul; numele filtrează calendarul. */}
-            <AlegereCuloare persoana={p} />
+            <AlegereCuloare persoana={p} className="rounded-l-full py-1 pr-1 pl-2" />
             <button
               type="button"
               onClick={() => onSchimba(activa ? null : p.id)}
@@ -280,6 +280,18 @@ export function LegendaCulori({
 }
 
 /**
+ * Culoarea unei persoane, de schimbat — pentru ecranul Utilizatori. Cere un
+ * `FurnizorCulori` deasupra, cu TOATE conturile active: culoarea automată
+ * depinde de locul fiecăruia în listă, nu de lista filtrată de pe ecran.
+ * Un cont dezactivat nu apare în calendar, deci nu are ce culoare alege.
+ */
+export function SelectorCuloare({ id }: { id: Uuid }) {
+  const persoana = useContext(Context).get(id)
+  if (!persoana) return <span className="text-ink-faint">—</span>
+  return <AlegereCuloare persoana={persoana} className="w-fit rounded-full p-1" clasaPunct="size-6" />
+}
+
+/**
  * Selectorul de culoare al unei persoane — punctul colorat din legendă.
  *
  * Selectorul nativ al sistemului: îl știe oricine, merge cu mouse-ul și cu
@@ -287,7 +299,16 @@ export function LegendaCulori({
  * fiecare nuanță trecută cu mouse-ul — `onChange` din React ar fi trimis zeci
  * de cereri pe secundă cât timp se trage de cursor.
  */
-function AlegereCuloare({ persoana }: { persoana: PersoanaColorata }) {
+function AlegereCuloare({
+  persoana,
+  className,
+  clasaPunct = 'size-3',
+}: {
+  persoana: PersoanaColorata
+  className?: string
+  /** Mărimea punctului colorat. */
+  clasaPunct?: string
+}) {
   const modifica = useModificaUtilizator()
   const notificari = useNotificari()
   const camp = useRef<HTMLInputElement>(null)
@@ -313,12 +334,14 @@ function AlegereCuloare({ persoana }: { persoana: PersoanaColorata }) {
   return (
     <label
       title={`Alege culoarea pentru ${persoana.nume}`}
-      className="relative flex cursor-pointer items-center rounded-l-full py-1 pr-1 pl-2 hover:bg-muted"
+      style={persoana.culoare.stil}
+      className={cn('relative flex cursor-pointer items-center hover:bg-muted', className)}
     >
       <span
         aria-hidden
         className={cn(
-          'size-3 shrink-0 rounded-full ring-1 ring-ink/15',
+          'shrink-0 rounded-full ring-1 ring-ink/15',
+          clasaPunct,
           persoana.culoare.fundal,
           modifica.isPending && 'animate-pulse',
         )}

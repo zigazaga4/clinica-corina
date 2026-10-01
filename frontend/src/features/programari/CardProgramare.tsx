@@ -41,14 +41,6 @@ const fundal: Record<StareProgramare, string> = {
   neprezentat: 'bg-danger-soft text-danger border-danger/30',
 }
 
-/** Banda verticală din lista de agendă. */
-const banda: Record<StareProgramare, string> = {
-  programat: 'bg-info',
-  onorat: 'bg-success',
-  anulat: 'bg-line-strong',
-  neprezentat: 'bg-danger',
-}
-
 /**
  * Starea, ca semn mic lângă oră, pe chipul colorat al persoanei: onorată sau
  * neprezentată. Programată nu are semn — e cazul obișnuit — iar anulata e
@@ -166,12 +158,8 @@ export function RandProgramare({
       onClick={() => onClick(programare)}
       className="flex w-full items-stretch gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted"
     >
-      {/* Bandă colorată: dă starea dintr-o privire, la derularea rapidă a zilei. */}
-      <span
-        className={cn('w-1 shrink-0 rounded-full', banda[programare.stare])}
-        aria-hidden
-      />
-
+      {/* Fără bandă colorată pe margine (cerută scoasă, 2026-10-01): starea o
+          spune însemnul din dreapta. */}
       <span className="w-13 shrink-0 pt-0.5 text-[13px] font-semibold text-ink tabular-nums">
         {formateazaOra(programare.incepe_la)}
         <span className="block text-[11px] font-normal text-ink-faint">

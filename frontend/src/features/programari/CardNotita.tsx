@@ -93,12 +93,6 @@ export function RandNotita({
       onClick={() => onClick(notita)}
       className="flex w-full items-stretch gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted"
     >
-      {/* Bandă întreruptă: aceeași poziție ca la programări, alt desen. */}
-      <span
-        className="w-1 shrink-0 rounded-full border-l-4 border-dashed border-danger"
-        aria-hidden
-      />
-
       <span className="w-13 shrink-0 pt-0.5 text-[13px] font-semibold text-ink tabular-nums">
         {formateazaOra(notita.incepe_la)}
         <span className="block text-[11px] font-normal text-ink-faint">

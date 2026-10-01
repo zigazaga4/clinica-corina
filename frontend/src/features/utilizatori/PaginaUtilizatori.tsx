@@ -6,6 +6,7 @@ import { useModificaUtilizator, useUtilizatori } from '@/app/queries'
 import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
 import { InsemnInactiv, InsemnRol } from '@/components/insemne'
 import type { Utilizator } from '@/domain/types'
+import { FurnizorCulori, SelectorCuloare } from '@/features/programari/culoriExecutanti'
 import { formateazaDataOra } from '@/lib/dates'
 import { useIntarziat } from '@/lib/hooks'
 import {
@@ -71,6 +72,9 @@ export function PaginaUtilizatori() {
   )
 
   const { data, isPending, isFetching, error, refetch } = useUtilizatori(filtru)
+  // Culorile se împart pe TOATE conturile active, ca în calendar (aceeași
+  // cerere, deci din cache) — nu pe lista filtrată de aici.
+  const { data: activi } = useUtilizatori({ activ: true })
   const modifica = useModificaUtilizator()
 
   const randuri = data ?? []
@@ -187,6 +191,13 @@ export function PaginaUtilizatori() {
       className: 'w-32',
     },
     {
+      // Culoarea din calendar: apăsată, deschide selectorul de culoare.
+      cheie: 'culoare',
+      antet: 'Culoare',
+      celula: (u) => <SelectorCuloare id={u.id} />,
+      className: 'w-24',
+    },
+    {
       cheie: 'ultima_autentificare',
       antet: 'Ultima autentificare',
       celula: (u) => (
@@ -244,6 +255,7 @@ export function PaginaUtilizatori() {
         </GrupButoane>
       </BaraFiltre>
 
+      <FurnizorCulori utilizatori={activi}>
       <Card className="overflow-hidden">
         <Tabel
           coloane={coloane}
@@ -260,6 +272,7 @@ export function PaginaUtilizatori() {
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   <InsemnRol rol={u.rol} />
                   {!u.activ && <InsemnInactiv text="Dezactivat" />}
+                  <SelectorCuloare id={u.id} />
                 </div>
                 <p className="mt-1 text-[12px] text-ink-faint">
                   Ultima autentificare: {formateazaDataOra(u.ultima_autentificare)}
@@ -290,6 +303,7 @@ export function PaginaUtilizatori() {
           }
         />
       </Card>
+      </FurnizorCulori>
 
       {/* Formularele se montează la deschidere, ca starea lor să pornească de
           la contul ales fără sincronizări între proprietăți și stare. */}
