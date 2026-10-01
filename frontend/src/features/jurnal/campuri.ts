@@ -70,6 +70,7 @@ const ETICHETE_CAMP: Record<string, string> = {
   utilizator_id: 'Persoana',
   luna: 'Luna',
   zile: 'Zile de lucru',
+  zile_alese: 'Zilele alese',
   stare: 'Stare',
   nota: 'Notă',
   tip: 'Tip',

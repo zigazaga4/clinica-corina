@@ -322,8 +322,11 @@ export interface Vanzare {
   metoda_plata: MetodaPlata | null
 }
 
-/** În ce zile ale lunii lucrează o persoană: după numărul zilei (2, 4… / 1, 3…). */
-export type ZileLucru = 'pare' | 'impare'
+/**
+ * În ce zile ale lunii lucrează o persoană: după numărul zilei (2, 4… /
+ * 1, 3…), sau alese una câte una ('personalizat', în `zile_alese`).
+ */
+export type ZileLucru = 'pare' | 'impare' | 'personalizat'
 
 /**
  * Tabela `program_lucru` — programul unei persoane într-o lună (cerința
@@ -336,6 +339,8 @@ export interface ProgramLucru {
   /** Ziua 1 a lunii. */
   luna: DateOnly
   zile: ZileLucru
+  /** Doar la 'personalizat': numerele zilelor lucrate (goală = luna liberă). */
+  zile_alese: number[] | null
   creat_de: Uuid | null
   creat_la: Timestamptz
   actualizat_la: Timestamptz

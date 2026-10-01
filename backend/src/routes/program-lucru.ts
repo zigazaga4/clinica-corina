@@ -4,8 +4,9 @@
  *   GET /program-lucru?de_la=AAAA-LL-ZZ&pana_la=AAAA-LL-ZZ — orice rol.
  *       Programele lunilor care ating intervalul (calendarul cere o săptămână
  *       care poate trece peste două luni).
- *   PUT /program-lucru — orice rol. { utilizator_id, luna, zile }.
+ *   PUT /program-lucru — orice rol. { utilizator_id, luna, zile, zile_alese? }.
  *       `zile` = 'pare' | 'impare' pune sau înlocuiește programul lunii;
+ *       `zile` = 'personalizat' cere și `zile_alese` (numerele zilelor lucrate);
  *       `zile` = null îl scoate (persoana rămâne fără program ales).
  *
  * Orice rol, nu doar administratorul: fiecare își știe zilele, iar la recepție
@@ -35,10 +36,28 @@ function lunaCeruta(valoare: unknown): string {
 
 function zileCerute(valoare: unknown): ZileLucru | null {
   if (valoare === null || valoare === undefined || valoare === '') return null
-  if (valoare !== 'pare' && valoare !== 'impare') {
-    throw eroareValidare('Alege zilele: pare sau impare.', 'zile')
+  if (valoare !== 'pare' && valoare !== 'impare' && valoare !== 'personalizat') {
+    throw eroareValidare('Alege zilele: pare, impare sau personalizat.', 'zile')
   }
   return valoare
+}
+
+/**
+ * Zilele alese la programul personalizat: numere întregi din lună, fără
+ * dubluri, în ordine. Lista goală e voie — luna întreagă liberă.
+ */
+function zileAleseCerute(valoare: unknown, luna: string): number[] {
+  if (!Array.isArray(valoare)) throw eroareValidare('Alege zilele în care lucrează.', 'zile_alese')
+  const [an, l] = luna.split('-').map(Number) as [number, number]
+  const ultima = new Date(Date.UTC(an, l, 0)).getUTCDate()
+  const zile = new Set<number>()
+  for (const zi of valoare) {
+    if (!Number.isInteger(zi) || zi < 1 || zi > ultima) {
+      throw eroareValidare(`Zilele alese trebuie să fie între 1 și ${ultima}.`, 'zile_alese')
+    }
+    zile.add(zi as number)
+  }
+  return [...zile].sort((a, b) => a - b)
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +88,7 @@ router.put('/', ruta(async (req: AuthRequest, res: Response) => {
   if (!utilizator_id) throw eroareValidare('Alege persoana.', 'utilizator_id')
   const luna = lunaCeruta(corp['luna'])
   const zile = zileCerute(corp['zile'])
+  const zile_alese = zile === 'personalizat' ? zileAleseCerute(corp['zile_alese'], luna) : null
 
   const rezultat = await tranzactie(async (ex: Executor) => {
     await unu(ex, `SELECT id FROM utilizator WHERE id = $1`, [utilizator_id], 'Persoana')
@@ -86,29 +106,32 @@ router.put('/', ruta(async (req: AuthRequest, res: Response) => {
         actiune: 'stergere',
         entitate: 'program_lucru',
         entitate_id: inainte.id,
-        date_vechi: { utilizator_id, luna, zile: inainte.zile },
+        date_vechi: { utilizator_id, luna, zile: inainte.zile, zile_alese: inainte.zile_alese },
         adresa_ip: adresaCererii(req),
       })
       return null
     }
 
     const { rows } = await ex.query<{ id: string }>(
-      `INSERT INTO program_lucru (utilizator_id, luna, zile, creat_de)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (utilizator_id, luna) DO UPDATE SET zile = EXCLUDED.zile
+      `INSERT INTO program_lucru (utilizator_id, luna, zile, zile_alese, creat_de)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (utilizator_id, luna)
+       DO UPDATE SET zile = EXCLUDED.zile, zile_alese = EXCLUDED.zile_alese
        RETURNING id`,
-      [utilizator_id, luna, zile, autor.id],
+      [utilizator_id, luna, zile, zile_alese, autor.id],
     )
     const id = rows[0]!.id
 
-    if (inainte?.zile !== zile) {
+    const schimbat =
+      inainte?.zile !== zile || JSON.stringify(inainte?.zile_alese ?? null) !== JSON.stringify(zile_alese)
+    if (schimbat) {
       await scrieJurnal(ex, {
         utilizator_id: autor.id,
         actiune: inainte ? 'modificare' : 'creare',
         entitate: 'program_lucru',
         entitate_id: id,
-        date_vechi: inainte ? { zile: inainte.zile } : null,
-        date_noi: { utilizator_id, luna, zile },
+        date_vechi: inainte ? { zile: inainte.zile, zile_alese: inainte.zile_alese } : null,
+        date_noi: { utilizator_id, luna, zile, zile_alese },
         adresa_ip: adresaCererii(req),
       })
     }

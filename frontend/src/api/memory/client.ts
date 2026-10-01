@@ -1381,8 +1381,21 @@ export function creeazaApiInMemorie(): ApiClient {
         ceruta(magazin.utilizator, date.utilizator_id, 'Persoana')
         const text = /^\d{4}-\d{2}$/.test(date.luna) ? `${date.luna}-01` : date.luna
         const luna = `${dataCeruta(text, 'luna', 'Luna').slice(0, 7)}-01`
-        if (date.zile !== null && date.zile !== 'pare' && date.zile !== 'impare') {
-          throw eroareValidare('Alege zilele: pare sau impare.', 'zile')
+        if (date.zile !== null && !['pare', 'impare', 'personalizat'].includes(date.zile)) {
+          throw eroareValidare('Alege zilele: pare, impare sau personalizat.', 'zile')
+        }
+        // Personalizat: zilele lunii, fără dubluri, în ordine — ca pe server.
+        let zile_alese: number[] | null = null
+        if (date.zile === 'personalizat') {
+          if (!Array.isArray(date.zile_alese)) {
+            throw eroareValidare('Alege zilele în care lucrează.', 'zile_alese')
+          }
+          const [an, l] = luna.split('-').map(Number) as [number, number]
+          const ultima = new Date(Date.UTC(an, l, 0)).getUTCDate()
+          if (date.zile_alese.some((z) => !Number.isInteger(z) || z < 1 || z > ultima)) {
+            throw eroareValidare(`Zilele alese trebuie să fie între 1 și ${ultima}.`, 'zile_alese')
+          }
+          zile_alese = [...new Set(date.zile_alese)].sort((a, b) => a - b)
         }
 
         const inainte = [...magazin.program_lucru.values()].find(
@@ -1406,13 +1419,18 @@ export function creeazaApiInMemorie(): ApiClient {
           utilizator_id: date.utilizator_id,
           luna,
           zile: date.zile,
+          zile_alese,
           creat_de: autor.id,
           creat_la: acum(),
           actualizat_la: acum(),
         }
-        if (inainte?.zile !== date.zile) {
-          const vechi = inainte?.zile
+        const schimbat =
+          inainte?.zile !== date.zile ||
+          JSON.stringify(inainte?.zile_alese ?? null) !== JSON.stringify(zile_alese)
+        if (schimbat) {
+          const vechi = inainte ? { zile: inainte.zile, zile_alese: inainte.zile_alese } : null
           rand.zile = date.zile
+          rand.zile_alese = zile_alese
           atinge(rand)
           magazin.program_lucru.set(rand.id, rand)
           scrieJurnal({
@@ -1420,8 +1438,8 @@ export function creeazaApiInMemorie(): ApiClient {
             actiune: inainte ? 'modificare' : 'creare',
             entitate: 'program_lucru',
             entitate_id: rand.id,
-            date_vechi: vechi ? { zile: vechi } : null,
-            date_noi: { utilizator_id: date.utilizator_id, luna, zile: date.zile },
+            date_vechi: vechi,
+            date_noi: { utilizator_id: date.utilizator_id, luna, zile: date.zile, zile_alese },
           })
         }
         return { ...rand, utilizator_nume: magazin.utilizator.get(rand.utilizator_id)?.nume ?? '—' }

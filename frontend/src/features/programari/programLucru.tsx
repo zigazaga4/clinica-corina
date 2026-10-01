@@ -5,7 +5,8 @@ import { useCuloarePersoana } from './culoriExecutanti'
 
 /*
   Programul de lucru (cerința clinicii, 2026-10-01): fiecare persoană lucrează,
-  într-o lună, fie în zilele pare, fie în cele impare — după numărul zilei.
+  într-o lună, fie în zilele pare, fie în cele impare — după numărul zilei —
+  fie în zilele alese una câte una (personalizat).
   Fără program ales pentru luna aceea, nu se marchează nimic: ziua nu e nici
   „lucrează”, nici „liber”, ci necunoscută, ca înainte să existe programul.
 */
@@ -20,6 +21,15 @@ export function felulZilei(zi: Date): ZileLucru {
   return zi.getDate() % 2 === 0 ? 'pare' : 'impare'
 }
 
+/** Ziua cade în program? Pare / impare după numărul zilei, altfel lista aleasă. */
+export function lucreazaDupaProgram(
+  program: Pick<ProgramLucru, 'zile' | 'zile_alese'>,
+  zi: Date,
+): boolean {
+  if (program.zile === 'personalizat') return (program.zile_alese ?? []).includes(zi.getDate())
+  return program.zile === felulZilei(zi)
+}
+
 /**
  * Lucrează persoana în ziua aceasta? `null` = nu are program ales pe luna
  * zilei, deci nu se știe — calendarul nu marchează nimic.
@@ -27,7 +37,7 @@ export function felulZilei(zi: Date): ZileLucru {
 export function lucreaza(programe: ProgramLucru[], utilizatorId: Uuid, zi: Date): boolean | null {
   const luna = lunaZilei(zi)
   const program = programe.find((p) => p.utilizator_id === utilizatorId && p.luna === luna)
-  return program ? program.zile === felulZilei(zi) : null
+  return program ? lucreazaDupaProgram(program, zi) : null
 }
 
 export interface PersoanaZilei {
@@ -39,10 +49,9 @@ export interface PersoanaZilei {
 /** Persoanele cu program ales pe luna zilei: cine lucrează și cine e liber. */
 export function persoaneleZilei(programe: ProgramLucru[], zi: Date): PersoanaZilei[] {
   const luna = lunaZilei(zi)
-  const fel = felulZilei(zi)
   return programe
     .filter((p) => p.luna === luna)
-    .map((p) => ({ id: p.utilizator_id, nume: p.utilizator_nume, lucreaza: p.zile === fel }))
+    .map((p) => ({ id: p.utilizator_id, nume: p.utilizator_nume, lucreaza: lucreazaDupaProgram(p, zi) }))
 }
 
 /**

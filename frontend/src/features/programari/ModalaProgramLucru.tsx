@@ -19,12 +19,13 @@ type Alegere = ZileLucru | 'fara'
 const OPTIUNI: { valoare: Alegere; eticheta: string; ajutor: string }[] = [
   { valoare: 'pare', eticheta: etichetaZileLucru.pare, ajutor: '2, 4, 6…' },
   { valoare: 'impare', eticheta: etichetaZileLucru.impare, ajutor: '1, 3, 5…' },
+  { valoare: 'personalizat', eticheta: 'Personalizat', ajutor: 'apeși zilele' },
   { valoare: 'fara', eticheta: 'Fără program', ajutor: 'nimic marcat' },
 ]
 
 /**
- * Programul de lucru al unei persoane pe o lună: zile pare sau impare
- * (cerința clinicii, 2026-10-01).
+ * Programul de lucru al unei persoane pe o lună: zile pare, impare sau
+ * personalizat — zilele apăsate una câte una (cerințele clinicii, 2026-10-01).
  *
  * Trei alegeri, de sus în jos, cum le spune recepția: luna, persoana, zilele.
  * Dedesubt, luna desenată: zilele în care lucrează în culoarea persoanei, cele
@@ -49,6 +50,8 @@ export function ModalaProgramLucru({
   const [luna, setLuna] = useState(() => primaZi(lunaInitiala))
   const [utilizatorId, setUtilizatorId] = useState<Uuid | null>(utilizatorInitial)
   const [alegere, setAlegere] = useState<Alegere>('fara')
+  // Zilele lucrate la „Personalizat”, ca numere ale zilelor din lună.
+  const [alese, setAlese] = useState<Set<number>>(() => new Set())
   const [eroare, setEroare] = useState<string | null>(null)
 
   // La fiecare deschidere, pornește de la ce se vede în calendar.
@@ -70,10 +73,34 @@ export function ModalaProgramLucru({
   // Persoana sau luna schimbată: alegerea pleacă de la ce are deja salvat.
   useEffect(() => {
     setAlegere(existent?.zile ?? 'fara')
-  }, [existent?.id, existent?.zile, utilizatorId, deLa])
+    setAlese(new Set(existent?.zile_alese ?? []))
+  }, [existent?.id, existent?.zile, existent?.zile_alese?.join(), utilizatorId, deLa])
 
   const culoare = useCuloarePersoana(utilizatorId)
-  const zileLucrate = alegere === 'fara' ? 0 : zile.filter((zi) => felulZilei(zi) === alegere).length
+
+  const lucreazaIn = (zi: Date): boolean =>
+    alegere === 'personalizat'
+      ? alese.has(zi.getDate())
+      : alegere !== 'fara' && felulZilei(zi) === alegere
+  const zileLucrate = zile.filter(lucreazaIn).length
+
+  const alege = (noua: Alegere) => {
+    // Din pare / impare spre personalizat: pornește de la zilele acelea, ca
+    // „impare, dar nu și pe 15” să fie o singură apăsare.
+    if (noua === 'personalizat' && (alegere === 'pare' || alegere === 'impare')) {
+      setAlese(new Set(zile.filter((zi) => felulZilei(zi) === alegere).map((zi) => zi.getDate())))
+    }
+    setAlegere(noua)
+  }
+
+  const comutaZiua = (numar: number) => {
+    setAlese((precedente) => {
+      const urmatoare = new Set(precedente)
+      if (urmatoare.has(numar)) urmatoare.delete(numar)
+      else urmatoare.add(numar)
+      return urmatoare
+    })
+  }
 
   const salveaza = async () => {
     if (!utilizatorId) {
@@ -86,12 +113,13 @@ export function ModalaProgramLucru({
         utilizator_id: utilizatorId,
         luna: deLa,
         zile: alegere === 'fara' ? null : alegere,
+        ...(alegere === 'personalizat' ? { zile_alese: [...alese] } : {}),
       })
       const numeLuna = formateazaLuna(luna)
       notificari.succes(
         'Program salvat',
         rezultat
-          ? `${rezultat.utilizator_nume} lucrează în ${etichetaZileLucru[rezultat.zile].toLowerCase()} din ${numeLuna}.`
+          ? `${rezultat.utilizator_nume} lucrează în ${descriereProgram(rezultat.zile, rezultat.zile_alese)} din ${numeLuna}.`
           : `Fără program în ${numeLuna}.`,
       )
       onInchide()
@@ -170,8 +198,8 @@ export function ModalaProgramLucru({
                 <ButonGrup
                   key={o.valoare}
                   activ={alegere === o.valoare}
-                  onClick={() => setAlegere(o.valoare)}
-                  className="h-auto flex-1 flex-col gap-0 py-1.5"
+                  onClick={() => alege(o.valoare)}
+                  className="h-auto flex-1 flex-col gap-0 px-1 py-1.5"
                 >
                   <span>{o.eticheta}</span>
                   <span className="text-[11px] font-normal text-ink-faint">{o.ajutor}</span>
@@ -193,19 +221,35 @@ export function ModalaProgramLucru({
               <span key={`gol-${i}`} />
             ))}
             {zile.map((zi) => {
-              const lucru = alegere !== 'fara' && felulZilei(zi) === alegere
-              return (
+              const lucru = lucreazaIn(zi)
+              const clase = cn(
+                'flex h-8 items-center justify-center rounded-md text-[13px] tabular-nums',
+                alegere === 'fara'
+                  ? 'text-ink-soft'
+                  : lucru
+                    ? cn('font-semibold text-ink', culoare ? culoare.chip : 'bg-success-soft')
+                    : 'text-ink-faint line-through',
+              )
+              // Personalizat: fiecare zi se apasă — lucrează / liber.
+              return alegere === 'personalizat' ? (
+                <button
+                  key={zi.getDate()}
+                  type="button"
+                  onClick={() => comutaZiua(zi.getDate())}
+                  aria-pressed={lucru}
+                  aria-label={`${zi.getDate()} — ${lucru ? 'lucrează' : 'liber'}`}
+                  className={cn(
+                    clase,
+                    'cursor-pointer ring-1 ring-line ring-inset transition-colors hover:ring-ink/30',
+                  )}
+                >
+                  {zi.getDate()}
+                </button>
+              ) : (
                 <span
                   key={zi.getDate()}
                   title={alegere === 'fara' ? undefined : lucru ? 'Lucrează' : 'Liber'}
-                  className={cn(
-                    'flex h-8 items-center justify-center rounded-md text-[13px] tabular-nums',
-                    alegere === 'fara'
-                      ? 'text-ink-soft'
-                      : lucru
-                        ? cn('font-semibold text-ink', culoare ? culoare.chip : 'bg-success-soft')
-                        : 'text-ink-faint line-through',
-                  )}
+                  className={clase}
                 >
                   {zi.getDate()}
                 </span>
@@ -216,6 +260,7 @@ export function ModalaProgramLucru({
             {alegere === 'fara'
               ? 'Fără program: calendarul nu marchează zilele acestei persoane.'
               : `Lucrează ${zileLucrate} zile, liber ${zile.length - zileLucrate}.`}
+            {alegere === 'personalizat' && ' Apasă pe o zi ca s-o treci lucrată sau liberă.'}
           </p>
         </div>
 
@@ -234,7 +279,7 @@ export function ModalaProgramLucru({
                     className="text-[13px] text-ink hover:text-primary-600"
                   >
                     <span className="font-medium">{p.utilizator_nume}</span> —{' '}
-                    {etichetaZileLucru[p.zile].toLowerCase()}
+                    {descriereProgram(p.zile, p.zile_alese)}
                   </button>
                 </li>
               ))}
@@ -250,6 +295,13 @@ export function ModalaProgramLucru({
       </div>
     </Modala>
   )
+}
+
+/** „zile impare”, „12 zile alese” — programul, pe scurt. */
+function descriereProgram(zile: ZileLucru, alese: number[] | null): string {
+  if (zile !== 'personalizat') return etichetaZileLucru[zile].toLowerCase()
+  const n = alese?.length ?? 0
+  return n === 1 ? 'o zi aleasă' : `${n} zile alese`
 }
 
 function primaZi(zi: Date): Date {

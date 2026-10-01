@@ -563,6 +563,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS vanzare_linie_programare_uk
   Lipsa rândului înseamnă „fără program ales”: calendarul nu marchează nimic,
   ca înainte. `luna` este mereu ziua 1 a lunii; câte un rând pe persoană și
   lună, deci alegerea nouă o înlocuiește pe cea veche.
+
+  „personalizat” (cerut tot pe 2026-10-01): zilele lucrate se aleg una câte
+  una și stau în `zile_alese` (numerele zilelor, 1–31). O listă goală = lună
+  întreagă liberă (concediu).
 */
 CREATE TABLE IF NOT EXISTS program_lucru (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -572,9 +576,14 @@ CREATE TABLE IF NOT EXISTS program_lucru (
   creat_de       uuid REFERENCES utilizator(id) ON DELETE SET NULL,
   creat_la       timestamptz NOT NULL DEFAULT now(),
   actualizat_la  timestamptz NOT NULL DEFAULT now(),
+  zile_alese     smallint[],
 
   CONSTRAINT program_lucru_luna_ck CHECK (extract(day FROM luna) = 1),
-  CONSTRAINT program_lucru_zile_ck CHECK (zile IN ('pare', 'impare')),
+  CONSTRAINT program_lucru_zile_ck CHECK (zile IN ('pare', 'impare', 'personalizat')),
+  CONSTRAINT program_lucru_alese_ck CHECK (
+    (zile = 'personalizat') = (zile_alese IS NOT NULL)
+    AND (zile_alese IS NULL OR (1 <= ALL (zile_alese) AND 31 >= ALL (zile_alese)))
+  ),
   CONSTRAINT program_lucru_uk UNIQUE (utilizator_id, luna)
 );
 

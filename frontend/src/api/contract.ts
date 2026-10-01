@@ -817,6 +817,8 @@ export interface DateProgramLucru {
   luna: string
   /** null = scoate programul lunii (fără program ales). */
   zile: ZileLucru | null
+  /** Obligatorii la 'personalizat': numerele zilelor lucrate. */
+  zile_alese?: number[]
 }
 
 export interface ApiProgramLucru {

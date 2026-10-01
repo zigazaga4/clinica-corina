@@ -22,8 +22,8 @@ export interface Utilizator {
   culoare: string | null
 }
 
-/** În ce zile ale lunii lucrează persoana: după numărul zilei. */
-export type ZileLucru = 'pare' | 'impare'
+/** În ce zile ale lunii lucrează persoana: pare, impare, sau alese una câte una. */
+export type ZileLucru = 'pare' | 'impare' | 'personalizat'
 
 /** Tabela `program_lucru`, cu numele persoanei. `luna` = ziua 1 a lunii. */
 export interface ProgramLucru {
@@ -32,6 +32,8 @@ export interface ProgramLucru {
   utilizator_nume: string
   luna: string
   zile: ZileLucru
+  /** Doar la 'personalizat': numerele zilelor lucrate. */
+  zile_alese: number[] | null
   creat_de: string | null
   creat_la: string
   actualizat_la: string

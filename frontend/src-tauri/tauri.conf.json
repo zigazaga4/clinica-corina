@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Gestiune Clinica",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "identifier": "ro.tzintelligence.clinica",
   "build": {
     "frontendDist": "../dist",

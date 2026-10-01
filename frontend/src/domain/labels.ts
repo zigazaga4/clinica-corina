@@ -53,6 +53,7 @@ export const etichetaMetodaPlata: Record<MetodaPlata, string> = {
 export const etichetaZileLucru: Record<ZileLucru, string> = {
   pare: 'Zile pare',
   impare: 'Zile impare',
+  personalizat: 'Zile alese',
 }
 
 /** Toate metodele, în ordinea în care apar pe butoane. */
