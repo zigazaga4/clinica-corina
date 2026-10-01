@@ -337,6 +337,7 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
       update: (id, date) => cerere<TratamentDetaliu>('PATCH', `/tratamente/${id}`, { corp: date }),
       incheie: (id) => cerere<TratamentDetaliu>('POST', `/tratamente/${id}/incheiere`),
       redeschide: (id) => cerere<TratamentDetaliu>('POST', `/tratamente/${id}/redeschidere`),
+      remove: (id) => cerere<void>('DELETE', `/tratamente/${id}`),
     },
 
     notite: {
@@ -359,6 +360,7 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
       create: (date) => cerere<VanzareDetaliu>('POST', '/vanzari', { corp: date }),
       update: (id, date) => cerere<VanzareDetaliu>('PATCH', `/vanzari/${id}`, { corp: date }),
       incaseaza: (date) => cerere<VanzareDetaliu>('POST', '/vanzari/incasare', { corp: date }),
+      remove: (id) => cerere<void>('DELETE', `/vanzari/${id}`, { statistici: true }),
     },
 
     statistici: {

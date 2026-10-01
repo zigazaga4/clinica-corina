@@ -83,7 +83,10 @@ export function ChipProgramare({
         // Banda ocupă 4px la stânga; textul începe după ea.
         culoare ? 'pl-2.5' : 'pl-1.5',
         'transition-all hover:z-10 hover:shadow-(--umbra-card) focus-visible:z-10',
-        fundal[programare.stare],
+        // Cu persoana cunoscută, TOT chipul îi poartă culoarea (cerința
+        // clinicii); starea trece în banda din stânga. Fără ea — un cont care
+        // nu vede lista persoanelor — chipul rămâne în culoarea stării.
+        culoare ? culoare.chip : fundal[programare.stare],
         // Programarea anulată rămâne vizibilă, dar tăiată: locul ei este liber,
         // iar ștergerea din calendar ar ascunde faptul că a existat.
         anulata && 'line-through opacity-70',
@@ -91,15 +94,13 @@ export function ChipProgramare({
       )}
     >
       {/*
-        Banda persoanei. Stă lipită de marginea din stânga, pe toată înălțimea,
-        fiindcă acolo o găsește ochiul când parcurge o coloană de ședințe — și
-        rămâne vizibilă chiar și pe chipurile de 20 de minute, unde din text nu
-        mai încape decât ora.
+        Banda STĂRII (programat / onorat / neprezentat / anulat), când fundalul
+        e deja al persoanei. Aceleași culori ca banda din agendă.
       */}
       {culoare && (
         <span
           aria-hidden
-          className={cn('absolute inset-y-0 left-0 w-1', culoare.fundal)}
+          className={cn('absolute inset-y-0 left-0 w-1', banda[programare.stare])}
         />
       )}
 

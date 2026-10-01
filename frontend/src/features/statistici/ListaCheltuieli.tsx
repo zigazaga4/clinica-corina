@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Receipt } from 'lucide-react'
+import { Pencil, Plus, Receipt, Trash2 } from 'lucide-react'
 import type { FiltruCheltuieli } from '@/api/contract'
 import { mesajEroare } from '@/api/errors'
 import { useCategoriiCheltuieli, useCheltuieli } from '@/app/queries'
@@ -8,7 +8,7 @@ import type { CheltuialaDetaliu } from '@/domain/types'
 import { formateazaData } from '@/lib/dates'
 import { formateazaBani } from '@/lib/money'
 import { plural } from '@/lib/text'
-import { Buton, Card, Paginare, Select, StareGoala, Tabel, type Coloana } from '@/ui'
+import { Buton, ButonRand, Card, Paginare, Select, StareGoala, Tabel, type Coloana } from '@/ui'
 import { AlegerePerioadei } from './AlegerePerioadei'
 import { FormularCheltuiala } from './FormularCheltuiala'
 import type { AlegerePerioada, PerioadaCalculata } from './perioade'
@@ -30,7 +30,35 @@ export function ListaCheltuieli({
 }) {
   const [categorie, setCategorie] = useState('')
   const [pagina, setPagina] = useState(1)
-  const [formular, setFormular] = useState<{ cheltuiala?: CheltuialaDetaliu } | null>(null)
+  const [formular, setFormular] = useState<{
+    cheltuiala?: CheltuialaDetaliu
+    doarStergere?: boolean
+  } | null>(null)
+
+  /** Modifică + Șterge, pe fiecare rând. */
+  const actiuni = (c: CheltuialaDetaliu) => (
+    <div className="flex items-center justify-end gap-1">
+      <ButonRand
+        varianta="discret"
+        dimensiune="icon-sm"
+        onClick={() => setFormular({ cheltuiala: c })}
+        aria-label={`Modifică cheltuiala ${c.categorie}`}
+        title="Modifică"
+      >
+        <Pencil className="size-4" />
+      </ButonRand>
+      <ButonRand
+        varianta="discret"
+        dimensiune="icon-sm"
+        onClick={() => setFormular({ cheltuiala: c, doarStergere: true })}
+        className="text-danger hover:text-danger"
+        aria-label={`Șterge cheltuiala ${c.categorie}`}
+        title="Șterge"
+      >
+        <Trash2 className="size-4" />
+      </ButonRand>
+    </div>
+  )
 
   const filtru = useMemo<FiltruCheltuieli>(
     () => ({
@@ -78,6 +106,12 @@ export function ListaCheltuieli({
       laDreapta: true,
       className: 'w-36 font-medium whitespace-nowrap tabular-nums',
       celula: (c) => formateazaBani(c.suma),
+    },
+    {
+      cheie: 'actiuni',
+      antet: <span className="sr-only">Acțiuni</span>,
+      className: 'w-24',
+      celula: actiuni,
     },
   ]
 
@@ -127,6 +161,7 @@ export function ListaCheltuieli({
           incarca={lista.isFetching}
           eroare={lista.isError ? mesajEroare(lista.error) : null}
           onReincearca={() => void lista.refetch()}
+          actiuneMobil={actiuni}
           randMobil={(c) => (
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
@@ -159,8 +194,9 @@ export function ListaCheltuieli({
       {/* Montat doar cât e deschis; cheia îl reface de la o cheltuială la alta. */}
       {formular && (
         <FormularCheltuiala
-          key={formular.cheltuiala?.id ?? 'noua'}
+          key={`${formular.cheltuiala?.id ?? 'noua'}-${formular.doarStergere ? 'sterge' : 'scrie'}`}
           cheltuiala={formular.cheltuiala}
+          doarStergere={formular.doarStergere}
           onInchide={() => setFormular(null)}
         />
       )}

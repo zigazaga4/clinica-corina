@@ -62,7 +62,6 @@ async function ruleaza(): Promise<void> {
   // Constrângerile pe care se sprijină regulile de business. Absente, serverul
   // pornește și pare să meargă — până când o ședință se încasează de două ori.
   const constrangeri = [
-    'programare_fara_suprapunere',
     'vanzare_linie_programare_uk',
     'articol_durata_ck',
     'utilizator_email_uk',
@@ -92,23 +91,19 @@ async function ruleaza(): Promise<void> {
   }
 
   /*
-    Constrângerea de suprapunere trebuie să lase în pace serviciile aceleiași
-    programări. În forma veche — fără `vizita_id` — numele ei e același și
-    verificarea de mai sus trece, dar a doua linie a oricărei programări cu
-    două servicii ar cădea cu 409 pe propria ei soră.
+    Din 2026-10-01 aceeași persoană poate avea programări suprapuse: vechea
+    constrângere trebuie să LIPSEASCĂ, altfel a doua programare cade cu 409.
   */
-  const [suprapunere] = await multe<{ definitie: string }>(
+  const [suprapunere] = await multe<{ conname: string }>(
     pool,
-    `SELECT pg_get_constraintdef(oid) AS definitie FROM pg_constraint
-     WHERE conname = 'programare_fara_suprapunere'`,
+    `SELECT conname FROM pg_constraint WHERE conname = 'programare_fara_suprapunere'`,
   )
-  const cuVizita = suprapunere?.definitie.includes('vizita_id') ?? false
   verificari.push({
-    nume: 'suprapunere între programări',
-    ok: cuVizita,
-    detaliu: cuVizita
-      ? 'serviciile aceleiași programări nu se ciocnesc'
-      : 'FORMA VECHE — rulează sql/migratii/2026-09-29-programare-cu-mai-multe-servicii.sql',
+    nume: 'programări suprapuse permise',
+    ok: !suprapunere,
+    detaliu: suprapunere
+      ? 'CONSTRÂNGEREA VECHE — rulează sql/migratii/2026-10-01-programari-suprapuse.sql'
+      : 'aceeași persoană poate avea mai multe programări la aceeași oră',
   })
 
   const lat = (s: string, n: number) => s.padEnd(n)

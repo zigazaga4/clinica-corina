@@ -11,6 +11,7 @@ export { Badge, Contor, type BadgeProps, type BadgeTone } from './Badge'
 export {
   Buton,
   ButonGrup,
+  ButonRand,
   GrupButoane,
   type ButonProps,
   type DimensiuneButon,

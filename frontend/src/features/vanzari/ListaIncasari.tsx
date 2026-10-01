@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
-import { Clock3, Receipt, ShoppingBag, Wallet } from 'lucide-react'
+import { Clock3, Pencil, Receipt, ShoppingBag, Trash2, Wallet } from 'lucide-react'
 import type { FiltruVanzari } from '@/api/contract'
 import { mesajEroare } from '@/api/errors'
-import { useVanzari } from '@/app/queries'
+import { useStergeVanzare, useVanzari } from '@/app/queries'
 import { BaraFiltre } from '@/components/Pagina'
 import { InsemnPlata } from '@/components/insemne'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
@@ -21,14 +21,17 @@ import { plural } from '@/lib/text'
 import {
   Buton,
   ButonGrup,
+  ButonRand,
   Card,
   CelulaDubla,
   GrupButoane,
   Input,
+  ModalaConfirmare,
   Paginare,
   StareGoala,
   Statistica,
   Tabel,
+  useNotificari,
   type Coloana,
 } from '@/ui'
 import { DetaliuVanzare } from './DetaliuVanzare'
@@ -87,6 +90,54 @@ export function ListaIncasari() {
   const [pagina, setPagina] = useState(1)
   const [formular, setFormular] = useState<{ vanzare?: VanzareDetaliu } | null>(null)
   const [vanzareDeschisa, setVanzareDeschisa] = useState<VanzareDetaliu | null>(null)
+  const [deSters, setDeSters] = useState<VanzareDetaliu | null>(null)
+  const sterge = useStergeVanzare()
+  const notificari = useNotificari()
+
+  const modifica = (v: VanzareDetaliu) => {
+    setVanzareDeschisa(null)
+    setFormular({ vanzare: v })
+  }
+  const cereStergerea = (v: VanzareDetaliu) => {
+    setVanzareDeschisa(null)
+    setDeSters(v)
+  }
+  const confirmaStergerea = async () => {
+    if (!deSters) return
+    try {
+      await sterge.mutateAsync(deSters)
+      notificari.succes(`Încasare ștearsă: ${formateazaBani(deSters.total)}`)
+    } catch (err) {
+      notificari.eroare(mesajEroare(err))
+    } finally {
+      setDeSters(null)
+    }
+  }
+
+  /** Modifică + Șterge, pe fiecare rând — fără a deschide întâi detaliul. */
+  const actiuni = (v: VanzareDetaliu) => (
+    <div className="flex items-center justify-end gap-1">
+      <ButonRand
+        varianta="discret"
+        dimensiune="icon-sm"
+        onClick={() => modifica(v)}
+        aria-label={`Modifică încasarea de la ${v.client_nume}`}
+        title="Modifică"
+      >
+        <Pencil className="size-4" />
+      </ButonRand>
+      <ButonRand
+        varianta="discret"
+        dimensiune="icon-sm"
+        onClick={() => cereStergerea(v)}
+        className="text-danger hover:text-danger"
+        aria-label={`Șterge încasarea de la ${v.client_nume}`}
+        title="Șterge"
+      >
+        <Trash2 className="size-4" />
+      </ButonRand>
+    </div>
+  )
 
   const filtruBaza = useMemo<FiltruVanzari>(
     () => ({
@@ -173,6 +224,12 @@ export function ListaIncasari() {
       laDreapta: true,
       className: 'w-32 font-medium whitespace-nowrap tabular-nums',
       celula: (v) => formateazaBani(v.total),
+    },
+    {
+      cheie: 'actiuni',
+      antet: <span className="sr-only">Acțiuni</span>,
+      className: 'w-24',
+      celula: actiuni,
     },
   ]
 
@@ -276,6 +333,7 @@ export function ListaIncasari() {
           incarca={lista.isFetching}
           eroare={lista.isError ? mesajEroare(lista.error) : null}
           onReincearca={() => void lista.refetch()}
+          actiuneMobil={actiuni}
           randMobil={(v) => (
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
@@ -323,12 +381,26 @@ export function ListaIncasari() {
         <DetaliuVanzare
           vanzare={vanzareDeschisa}
           onInchide={() => setVanzareDeschisa(null)}
-          onModifica={(v) => {
-            setVanzareDeschisa(null)
-            setFormular({ vanzare: v })
-          }}
+          onModifica={modifica}
+          onSterge={cereStergerea}
         />
       )}
+
+      <ModalaConfirmare
+        deschisa={deSters !== null}
+        onInchide={() => setDeSters(null)}
+        onConfirma={() => void confirmaStergerea()}
+        titlu="Ștergi încasarea?"
+        mesaj={
+          deSters
+            ? `${deSters.client_nume}, ${formateazaBani(deSters.total)} din ${formateazaData(deSters.efectuat_la)}. Suma iese din încasări; ședințele plătite cu ea redevin „de plată”. Ștergerea rămâne în jurnal.`
+            : ''
+        }
+        etichetaConfirmare="Șterge"
+        periculoasa
+        inCurs={sterge.isPending}
+      />
+
 
       {/*
         Formularul se montează doar cât este deschis, iar cheia îl reface la

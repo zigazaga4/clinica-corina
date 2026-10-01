@@ -352,11 +352,12 @@ async function ruleaza(): Promise<void> {
     token: admin,
     corp: { client_id, articol_id: serviciu.id, executant_id: executant.id, ...cand },
   })
-  verifica('suprapunere pe același executant -> 409',
-    suprapusa.status === 409, `a venit ${suprapusa.status}: ${JSON.stringify(suprapusa.corp)}`)
-  verifica('409-ul spune cine este ocupat',
-    typeof suprapusa.corp?.mesaj === 'string' && suprapusa.corp.mesaj.includes(executant.nume),
-    JSON.stringify(suprapusa.corp?.mesaj))
+  // Din 2026-10-01: aceeași persoană poate avea mai multe programări deodată.
+  verifica('suprapunere pe același executant -> 201',
+    suprapusa.status === 201, `a venit ${suprapusa.status}: ${JSON.stringify(suprapusa.corp)}`)
+  if (suprapusa.corp?.id) {
+    await cere('PATCH', `/programari/${suprapusa.corp.id}/stare`, { token: admin, corp: { stare: 'anulat' } })
+  }
 
   const inversat = await cere('POST', '/programari', {
     token: admin,

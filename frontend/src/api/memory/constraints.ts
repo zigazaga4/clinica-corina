@@ -15,8 +15,7 @@
  */
 
 import { eroareConflict, eroareNegasit, eroareValidare } from '@/api/errors'
-import { seSuprapun } from '@/lib/dates'
-import type { Articol, StareProgramare, TipArticol, Timestamptz, Uuid } from '@/domain/types'
+import type { Articol, TipArticol, Timestamptz, Uuid } from '@/domain/types'
 import { magazin } from './store'
 
 // ---------------------------------------------------------------------------
@@ -162,38 +161,10 @@ export function verificaArticolProgramabil(articol_id: Uuid): Articol {
   return articol
 }
 
-/**
- * CONSTRAINT programare_fara_suprapunere EXCLUDE USING gist (
- *   executant_id WITH =, tstzrange(incepe_la, se_termina_la) WITH &&,
- *   vizita_id WITH <>
- * ) WHERE (stare <> 'anulat')
- *
- * Programările anulate sunt în afara constrângerii — locul se eliberează.
- * Serviciile programării verificate (`vizita_id`) nu se numără: stau dinadins
- * în același interval, iar o reprogramare nu se ciocnește de ea însăși.
- */
-export function verificaSuprapunere(
-  executant_id: Uuid,
-  incepe_la: Timestamptz,
-  se_termina_la: Timestamptz,
-  stare: StareProgramare,
-  vizita_id?: Uuid,
-): void {
-  if (stare === 'anulat') return
-
-  for (const p of magazin.programare.values()) {
-    if (p.vizita_id === vizita_id) continue
-    if (p.executant_id !== executant_id) continue
-    if (p.stare === 'anulat') continue
-    if (seSuprapun(incepe_la, se_termina_la, p.incepe_la, p.se_termina_la)) {
-      const executant = magazin.utilizator.get(executant_id)
-      throw eroareConflict(
-        `${executant?.nume ?? 'Persoana selectată'} are deja o programare care se suprapune cu acest interval.`,
-        { camp: 'incepe_la', programare_id: p.id },
-      )
-    }
-  }
-}
+/*
+  `programare_fara_suprapunere` nu mai există (2026-10-01): aceeași persoană
+  poate avea mai multe programări la aceeași oră, ca pe server.
+*/
 
 // ---------------------------------------------------------------------------
 // vanzare_linie

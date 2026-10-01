@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { CalendarPlus, CheckCircle2, PencilLine, RotateCcw } from 'lucide-react'
+import { CalendarPlus, CheckCircle2, PencilLine, RotateCcw, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { mesajEroare } from '@/api/errors'
-import { useIncheieTratament, useProgramari } from '@/app/queries'
+import { useAutentificare } from '@/app/auth'
+import { useIncheieTratament, useProgramari, useStergeTratament } from '@/app/queries'
 import { InsemnPlata, InsemnStareProgramare } from '@/components/insemne'
 import type { ProgramareDetaliu, TratamentDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
@@ -36,6 +37,21 @@ export function DetaliuTratament({
   const incheie = useIncheieTratament()
   const notificari = useNotificari()
   const [confirmaIncheierea, setConfirmaIncheierea] = useState(false)
+  const { esteAdministrator } = useAutentificare()
+  const sterge = useStergeTratament()
+  const [confirmaStergerea, setConfirmaStergerea] = useState(false)
+
+  const stergeTratamentul = async () => {
+    try {
+      await sterge.mutateAsync(tratament)
+      notificari.succes('Tratament șters, cu ședințele și banii lui')
+      setConfirmaStergerea(false)
+      onInchide()
+    } catch (err) {
+      setConfirmaStergerea(false)
+      notificari.eroare('Tratamentul nu a putut fi șters', mesajEroare(err))
+    }
+  }
 
   const inCurs = tratament.incheiat_la === null
   const stare = stareaTratamentului(tratament)
@@ -64,6 +80,17 @@ export function DetaliuTratament({
         descriere={tratament.articol_denumire}
         subsol={
           <>
+            {esteAdministrator && (
+              <Buton
+                varianta="discret"
+                onClick={() => setConfirmaStergerea(true)}
+                disabled={sterge.isPending}
+                className="text-danger hover:text-danger sm:mr-auto"
+              >
+                <Trash2 className="size-4" />
+                Șterge
+              </Buton>
+            )}
             <Buton onClick={onInchide} plin className="sm:w-auto">
               Închide
             </Buton>
@@ -191,6 +218,17 @@ export function DetaliuTratament({
             ? `Mai erau ${tratament.sedinte_ramase} ședințe de programat. Cele făcute și banii încasați rămân la locul lor; o programare nouă la acest serviciu va deschide alt tratament.`
             : 'Ședințele făcute și banii încasați rămân la locul lor.'
         }
+      />
+
+      <ModalaConfirmare
+        deschisa={confirmaStergerea}
+        onInchide={() => setConfirmaStergerea(false)}
+        onConfirma={() => void stergeTratamentul()}
+        inCurs={sterge.isPending}
+        titlu="Ștergi tratamentul?"
+        etichetaConfirmare="Șterge tot"
+        periculoasa
+        mesaj={`${tratament.client_nume}, ${tratament.articol_denumire}. Se șterg și toate ședințele lui din calendar, iar banii încasați pe ele (${formateazaBani(tratament.incasat)}) ies din Statistici. Nu se poate anula; ștergerea rămâne în jurnal.`}
       />
     </>
   )

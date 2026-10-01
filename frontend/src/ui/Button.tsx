@@ -81,6 +81,29 @@ export function Buton({
   )
 }
 
+/**
+ * Buton așezat pe un rând care se deschide singur la clic.
+ *
+ * Apăsarea lui nu are voie să ajungă și la rând: altfel „Șterge” ar deschide
+ * și detaliul de dedesubt. Oprește deopotrivă clicul și tastele (Enter/Spațiu
+ * pe rândul focalizat).
+ */
+export function ButonRand({ onClick, onKeyDown, ...restul }: ButonProps) {
+  return (
+    <Buton
+      {...restul}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick?.(e)
+      }}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        onKeyDown?.(e)
+      }}
+    />
+  )
+}
+
 /** Grup de butoane lipite — folosit pentru comutarea vederii de calendar. */
 export function GrupButoane({
   children,

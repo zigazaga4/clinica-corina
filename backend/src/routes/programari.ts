@@ -101,47 +101,13 @@ async function serviciulCerut(ex: Executor, articol_id: unknown): Promise<Artico
   return articol
 }
 
-/**
- * CONSTRAINT programare_fara_suprapunere, verificată din timp.
- *
- * Baza refuză oricum suprapunerea, dar cu un `23P01` care nu spune cine este
- * ocupat și când. Aici se află numele persoanei și programarea vinovată, adică
- * exact ce trebuie scris pe ecran ca operatoarea să poată alege altă oră.
- * Constrângerea rămâne plasa de siguranță pentru cursa dintre două verificări
- * simultane.
- *
- * Serviciile programării verificate (`vizita_id`) nu se numără: stau dinadins
- * în același interval, iar o reprogramare cu cinci minute mai târziu nu are
- * voie să se ciocnească de propria ei variantă veche.
- */
-async function verificaSuprapunere(
-  ex: Executor,
-  p: { executant_id: string; incepe_la: string; se_termina_la: string; stare?: string },
-  vizita_id: string,
-): Promise<void> {
-  // Programările anulate sunt în afara constrângerii — locul se eliberează.
-  if (p.stare === 'anulat') return
-
-  const ciocnire = await unuSauNimic<{ id: string; incepe_la: string; nume: string }>(
-    ex,
-    `SELECT pr.id, pr.incepe_la, COALESCE(u.nume, 'Persoana selectată') AS nume
-     FROM programare pr
-     LEFT JOIN utilizator u ON u.id = pr.executant_id
-     WHERE pr.executant_id = $1
-       AND pr.stare <> 'anulat'
-       AND pr.vizita_id <> $4
-       AND tstzrange(pr.incepe_la, pr.se_termina_la) && tstzrange($2, $3)
-     LIMIT 1`,
-    [p.executant_id, p.incepe_la, p.se_termina_la, vizita_id],
-  )
-
-  if (ciocnire) {
-    throw eroareConflict(
-      `${ciocnire.nume} are deja o programare care se suprapune cu acest interval.`,
-      { camp: 'incepe_la', detalii: { programare_id: ciocnire.id } },
-    )
-  }
-}
+/*
+  Suprapunerea pe aceeași persoană este PERMISĂ (cerința clinicii, 2026-10-01):
+  o persoană poate avea mai multe programări la aceeași oră — o clientă cu
+  vopseaua la uscat, alta pe scaun. Constrângerea `programare_fara_suprapunere`
+  a fost scoasă (sql/migratii/2026-10-01-programari-suprapuse.sql), iar grila
+  le așază una lângă alta.
+*/
 
 /**
  * Prețul cu care se deschide formularul pentru un client și un serviciu.
@@ -459,7 +425,6 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
       stare: 'programat',
       nota: textOptional(corp['nota']),
     }
-    await verificaSuprapunere(ex, vizita, vizita.vizita_id)
 
     const randuri: Programare[] = []
     for (const [i, s] of servicii.entries()) {
@@ -626,7 +591,6 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
       nota: comune['nota'] !== undefined ? (comune['nota'] as string | null) : ancora.nota,
     }
     verificaIntervalProgramare(dupa.incepe_la, dupa.se_termina_la)
-    await verificaSuprapunere(ex, dupa, dupa.vizita_id)
 
     // 1. Serviciile păstrate: ce e comun pe toate, plus ce e al fiecăruia.
     for (const rand of ramase) {
@@ -780,17 +744,6 @@ router.patch('/:id/stare', ruta(async (req: AuthRequest, res: Response) => {
             : 'Programarea are un serviciu deja încasat; scoate-l mai întâi de pe bon, apoi anulează programarea.',
           'stare',
         )
-      }
-
-      // Reactivarea unei programări anulate o readuce sub constrângerea de
-      // suprapunere — între timp, locul putea fi ocupat de altcineva.
-      if (stare !== 'anulat' && deSchimbat.some((r) => r.stare === 'anulat')) {
-        await verificaSuprapunere(ex, {
-          executant_id: ancora.executant_id,
-          incepe_la: caText(ancora.incepe_la),
-          se_termina_la: caText(ancora.se_termina_la),
-          stare,
-        }, ancora.vizita_id)
       }
 
       for (const rand of deSchimbat) {

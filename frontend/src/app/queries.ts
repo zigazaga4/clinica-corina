@@ -564,6 +564,18 @@ export function useIncheieTratament(): UseMutationResult<
   })
 }
 
+/** Șterge tratamentul, cu ședințele și banii lui — deci și din Statistici. */
+export function useStergeTratament(): UseMutationResult<void, Error, TratamentDetaliu> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (tratament: TratamentDetaliu) => api.tratamente.remove(tratament.id),
+    onSuccess: (_gol, tratament) => {
+      invalideazaTratamente(qc)
+      invalideazaVanzari(qc, tratament.client_id)
+    },
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Vânzări
 // ---------------------------------------------------------------------------
@@ -625,6 +637,18 @@ export function useModificaVanzare(): UseMutationResult<
       api.vanzari.update(id, date),
     onSuccess: (vanzare) => {
       qc.setQueryData(chei.vanzari.una(vanzare.id), vanzare)
+      invalideazaVanzari(qc, vanzare.client_id)
+    },
+  })
+}
+
+/** Șterge o încasare — doar cu statisticile deblocate. */
+export function useStergeVanzare(): UseMutationResult<void, Error, VanzareDetaliu> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vanzare: VanzareDetaliu) => api.vanzari.remove(vanzare.id),
+    onSuccess: (_gol, vanzare) => {
+      qc.removeQueries({ queryKey: chei.vanzari.una(vanzare.id) })
       invalideazaVanzari(qc, vanzare.client_id)
     },
   })

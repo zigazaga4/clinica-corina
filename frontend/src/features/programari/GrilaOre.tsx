@@ -269,13 +269,10 @@ interface Asezare {
 /**
  * Împarte pe coloane elementele care se suprapun în timp.
  *
- * Programările nu se suprapun în mod normal: constrângerea
- * `programare_fara_suprapunere` împiedică asta pentru aceeași persoană.
- * Excepția o fac programările ANULATE, care sunt scoase din constrângere — iar
- * locul eliberat este de obicei reocupat imediat. Notițele, în schimb, se
- * suprapun DINADINS cu orice: „furnizor la 15:00” stă peste ședința de la
- * 15:00. Fără această așezare, cele două s-ar desena una peste alta și una ar
- * deveni imposibil de apăsat.
+ * Din 2026-10-01 aceeași persoană poate avea mai multe programări la aceeași
+ * oră (cerința clinicii), iar notițele se suprapun DINADINS cu orice:
+ * „furnizor la 15:00” stă peste ședința de la 15:00. Fără această așezare,
+ * ele s-ar desena una peste alta și doar ultima ar mai putea fi apăsată.
  */
 function asazaFaraSuprapunere(elemente: ElementCalendar[]): Asezare[] {
   const ordonate = [...elemente].sort((a, b) =>

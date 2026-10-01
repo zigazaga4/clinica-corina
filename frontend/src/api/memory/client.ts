@@ -108,7 +108,6 @@ import {
   verificaPret,
   verificaStergereClient,
   verificaSumaPozitiva,
-  verificaSuprapunere,
 } from './constraints'
 import {
   hidrateazaCheltuiala,
@@ -873,7 +872,6 @@ export function creeazaApiInMemorie(): ApiClient {
             stare: 'programat',
             nota: textOptional(date.nota),
           }
-          verificaSuprapunere(vizita.executant_id, vizita.incepe_la, vizita.se_termina_la, 'programat', vizita.vizita_id)
 
           const randuri = servicii.map((s, i) =>
             peServiciu(locul(i), () => adaugaServiciu(autor.id, vizita, articole[i]!, s)))
@@ -993,9 +991,6 @@ export function creeazaApiInMemorie(): ApiClient {
             nota: date.nota !== undefined ? textOptional(date.nota) : ancora.nota,
           }
           verificaIntervalProgramare(dupa.incepe_la, dupa.se_termina_la)
-          // Serviciile programării nu se numără: o reprogramare cu cinci minute
-          // mai târziu nu se ciocnește de propria ei variantă veche.
-          verificaSuprapunere(dupa.executant_id, dupa.incepe_la, dupa.se_termina_la, dupa.stare, dupa.vizita_id)
 
           // 1. Serviciile păstrate: ce e comun pe toate, plus ce e al fiecăruia.
           for (const rand of ramase) {
@@ -1114,11 +1109,6 @@ export function creeazaApiInMemorie(): ApiClient {
                   : 'Programarea are un serviciu deja încasat; scoate-l mai întâi de pe bon, apoi anulează programarea.',
                 'stare',
               )
-            }
-            // Reactivarea unei programări anulate o readuce sub constrângerea
-            // de suprapunere — între timp, locul putea fi ocupat de altcineva.
-            if (stare !== 'anulat' && deSchimbat.some((r) => r.stare === 'anulat')) {
-              verificaSuprapunere(ancora.executant_id, ancora.incepe_la, ancora.se_termina_la, stare, ancora.vizita_id)
             }
             for (const rand of deSchimbat) {
               const inainte = rand.stare
@@ -1272,6 +1262,57 @@ export function creeazaApiInMemorie(): ApiClient {
       async redeschide(id): Promise<TratamentDetaliu> {
         await intarziere()
         return comutaIncheierea(id, false, cereUtilizator().id)
+      },
+
+      /** DELETE /tratamente/:id — administrator; ca pe server, cu ședințe și bani. */
+      async remove(id): Promise<void> {
+        await intarziere()
+        const autor = cereAdministrator()
+        const rand = ceruta(magazin.tratament, id, 'Tratamentul')
+        const detaliu = hidrateazaTratament(rand)
+
+        const sedinte = new Set(
+          [...magazin.programare.values()].filter((p) => p.tratament_id === id).map((p) => p.id),
+        )
+        const bonuri = new Set<Uuid>()
+        let incasat = 0
+        for (const [linieId, linie] of magazin.vanzare_linie) {
+          if (linie.programare_id && sedinte.has(linie.programare_id)) {
+            bonuri.add(linie.vanzare_id)
+            incasat += totalLinie(linie.cantitate, linie.pret_unitar)
+            magazin.vanzare_linie.delete(linieId)
+          }
+        }
+        let bonuriSterse = 0
+        for (const bon of bonuri) {
+          const maiAre = [...magazin.vanzare_linie.values()].some((l) => l.vanzare_id === bon)
+          if (!maiAre) {
+            magazin.vanzare.delete(bon)
+            bonuriSterse++
+          }
+        }
+        // ON DELETE SET NULL, ca pe server.
+        for (const v of magazin.vanzare.values()) {
+          if (v.programare_id && sedinte.has(v.programare_id)) v.programare_id = null
+        }
+        for (const c of magazin.consimtamant.values()) {
+          if (c.programare_id && sedinte.has(c.programare_id)) c.programare_id = null
+        }
+        for (const sedinta of sedinte) magazin.programare.delete(sedinta)
+        magazin.tratament.delete(id)
+
+        scrieJurnal({
+          utilizator_id: autor.id,
+          actiune: 'stergere',
+          entitate: 'tratament',
+          entitate_id: id,
+          date_vechi: {
+            ...instantaneu(detaliu as unknown as Record<string, unknown>),
+            sedinte_sterse: sedinte.size,
+            incasat_sters: incasat,
+            bonuri_sterse: bonuriSterse,
+          },
+        })
       },
     },
 
@@ -1616,6 +1657,25 @@ export function creeazaApiInMemorie(): ApiClient {
           date.efectuat_la ?? acum(),
           date.nota ?? null,
         )
+      },
+
+      /** DELETE /vanzari/:id — cu statisticile deblocate */
+      async remove(id): Promise<void> {
+        await intarziere()
+        const autor = cereAccesStatistici()
+        const rand = ceruta(magazin.vanzare, id, 'Vânzarea')
+        scrieJurnal({
+          utilizator_id: autor.id,
+          actiune: 'stergere',
+          entitate: 'vanzare',
+          entitate_id: id,
+          date_vechi: instantaneu(hidrateazaVanzare(rand) as unknown as Record<string, unknown>),
+        })
+        // Ca ON DELETE CASCADE pe server: liniile pleacă odată cu bonul.
+        for (const [linieId, linie] of magazin.vanzare_linie) {
+          if (linie.vanzare_id === id) magazin.vanzare_linie.delete(linieId)
+        }
+        magazin.vanzare.delete(id)
       },
     },
 

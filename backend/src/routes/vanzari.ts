@@ -26,7 +26,7 @@ import {
   programariDeStins,
   verificaSedinteleLiniilor,
 } from '../lib/incasari.js'
-import { adresaCererii, diferenta, scrieJurnal } from '../lib/jurnal.js'
+import { adresaCererii, diferenta, instantaneu, scrieJurnal } from '../lib/jurnal.js'
 import { atasaLinii, DIN_VANZARI, punctImplicit, vanzareDetaliu, vanzariDetaliu } from '../lib/proiectii.js'
 import { momentCerut, textOptional } from '../lib/validare.js'
 import { cereAccesStatistici } from '../middleware/acces-statistici.js'
@@ -423,6 +423,39 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
   })
 
   res.json(vanzare)
+}))
+
+// ---------------------------------------------------------------------------
+// DELETE /vanzari/:id — cu statisticile deblocate
+//
+// Ștergerea unei încasări schimbă banii clinicii, deci cere aceeași parolă ca
+// lista lor. Liniile pleacă odată cu antetul (ON DELETE CASCADE), iar ședințele
+// pe care le stingeau redevin „de plată” — exact ca la scoaterea lor din bon.
+// Jurnalul păstrează bonul întreg, cu linii cu tot: ștergerea nu se poate
+// desface, dar se poate reconstitui.
+// ---------------------------------------------------------------------------
+
+router.delete('/:id', cereAccesStatistici, ruta(async (req: AuthRequest, res: Response) => {
+  const autor = cont(req)
+  const id = req.params['id']!
+
+  await tranzactie(async (ex: Executor) => {
+    await unu<Vanzare>(ex, `SELECT id FROM vanzare WHERE id = $1 FOR UPDATE`, [id], 'Vânzarea')
+    const bon = await vanzareDetaliu(ex, id)
+
+    await scrieJurnal(ex, {
+      utilizator_id: autor.id,
+      actiune: 'stergere',
+      entitate: 'vanzare',
+      entitate_id: id,
+      date_vechi: instantaneu(bon as unknown as Record<string, unknown>),
+      adresa_ip: adresaCererii(req),
+    })
+
+    await ex.query(`DELETE FROM vanzare WHERE id = $1`, [id])
+  })
+
+  res.status(204).end()
 }))
 
 export default router

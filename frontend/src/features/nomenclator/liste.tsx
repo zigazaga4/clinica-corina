@@ -4,7 +4,7 @@ import { InsemnInactiv } from '@/components/insemne'
 import type { Articol, TipArticol } from '@/domain/types'
 import { formateazaDurata } from '@/lib/dates'
 import { formateazaBani } from '@/lib/money'
-import { Badge, Buton, CelulaDubla, Tabel, type Coloana } from '@/ui'
+import { Badge, ButonRand, CelulaDubla, Tabel, type Coloana } from '@/ui'
 
 /*
   Listele nomenclatorului.
@@ -42,19 +42,15 @@ function InsemnStare({ activ }: { activ: boolean }) {
 */
 function ButonVinde({ articol, onVinde }: { articol: Articol; onVinde: (a: Articol) => void }) {
   return (
-    <Buton
+    <ButonRand
       varianta="primar"
-      onClick={(e) => {
-        e.stopPropagation()
-        onVinde(articol)
-      }}
-      onKeyDown={(e) => e.stopPropagation()}
+      onClick={() => onVinde(articol)}
       className="h-9 px-3 sm:h-8"
       aria-label={`Vinde ${articol.denumire}`}
     >
       <ShoppingBag className="size-4" />
       Vinde
-    </Buton>
+    </ButonRand>
   )
 }
 

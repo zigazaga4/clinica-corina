@@ -99,7 +99,7 @@ describe('drepturi pe rol (§7, coloana „Acces Rol”)', () => {
   })
 })
 
-describe('programare_fara_suprapunere (EXCLUDE USING gist)', () => {
+describe('programări suprapuse (permise din 2026-10-01)', () => {
   let context: {
     client_id: Uuid
     articol_id: Uuid
@@ -135,30 +135,24 @@ describe('programare_fara_suprapunere (EXCLUDE USING gist)', () => {
     return { incepe_la: inceput.toISOString(), se_termina_la: sfarsit.toISOString() }
   }
 
-  it('respinge două programări suprapuse pentru aceeași persoană', async () => {
+  it('acceptă două programări suprapuse pentru aceeași persoană', async () => {
+    // Cerința clinicii: o clientă cu vopseaua la uscat, alta pe scaun.
     await api.programari.create({ ...context, ...interval(10, 11) })
-    const eroare = await api.programari.create({ ...context, ...interval(10, 12) }).catch((e) => e)
-    expect(esteEroareApi(eroare) && eroare.cod).toBe('conflict')
-  })
-
-  it('acceptă intervale care doar se ating', async () => {
-    // `tstzrange` este [inclusiv, exclusiv): 14:00–15:00 și 15:00–16:00 NU se
-    // suprapun. O implementare cu `<=` ar respinge programări perfect valide.
-    await api.programari.create({ ...context, ...interval(14, 15) })
     await expect(
-      api.programari.create({ ...context, ...interval(15, 16) }),
+      api.programari.create({ ...context, ...interval(10, 12) }),
     ).resolves.toBeTruthy()
   })
 
-  it('eliberează intervalul după anulare (clauza WHERE stare <> anulat)', async () => {
+  it('reactivarea unei programări anulate nu mai e blocată de locul ocupat', async () => {
     const prima = await api.programari.create({ ...context, ...interval(9, 10) })
     await api.programari.schimbaStarea(prima.id, 'anulat')
+    await api.programari.create({ ...context, ...interval(9, 10) })
     await expect(
-      api.programari.create({ ...context, ...interval(9, 10) }),
+      api.programari.schimbaStarea(prima.id, 'programat'),
     ).resolves.toBeTruthy()
   })
 
-  it('nu se compară cu sine la reprogramare', async () => {
+  it('reprogramarea peste propria variantă veche merge', async () => {
     // Mutarea cu 15 minute ar intra în conflict cu propria variantă veche dacă
     // rândul nu s-ar exclude din verificare.
     const programare = await api.programari.create({ ...context, ...interval(12, 13) })
@@ -1163,15 +1157,14 @@ describe('mai multe servicii într-o programare (programare.vizita_id)', () => {
     expect(toate[2]!.pret).toBe(b.pret_lista)
   })
 
-  it('serviciile ei nu se ciocnesc între ele, dar cele ale altei programări da', async () => {
+  it('serviciile ei nu se ciocnesc între ele, nici cu o altă programare', async () => {
     const [a, b] = simple as [Articol, Articol]
     await api.programari.create({
       ...context, ...interval(10, 11), servicii: [{ articol_id: a.id }, { articol_id: b.id }],
     })
-    const eroare = await api.programari
-      .create({ ...context, articol_id: a.id, ...interval(10, 11) })
-      .catch((e) => e)
-    expect(esteEroareApi(eroare) && eroare.cod).toBe('conflict')
+    await expect(
+      api.programari.create({ ...context, articol_id: a.id, ...interval(10, 11) }),
+    ).resolves.toBeTruthy()
   })
 
   it('două ședințe din același tratament se numără pe rând: 1 și 2', async () => {

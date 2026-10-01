@@ -333,18 +333,13 @@ CREATE TABLE IF NOT EXISTS programare (
     FOREIGN KEY (articol_id, articol_tip) REFERENCES articol (id, tip)
     ON DELETE RESTRICT,
 
-  CONSTRAINT programare_interval_ck CHECK (se_termina_la > incepe_la),
-
-  -- Aceeași persoană nu poate fi în două locuri deodată. Programările anulate
-  -- sunt în afara constrângerii — locul se eliberează pentru altcineva.
-  -- Serviciile ACELEIAȘI programări stau, firesc, în același interval: ele nu
-  -- se ciocnesc între ele, ci doar cu ale altor programări (`vizita_id WITH <>`).
-  CONSTRAINT programare_fara_suprapunere EXCLUDE USING gist (
-    executant_id WITH =,
-    tstzrange(incepe_la, se_termina_la) WITH &&,
-    vizita_id WITH <>
-  ) WHERE (stare <> 'anulat')
+  -- Fără constrângere de suprapunere: aceeași persoană poate avea mai multe
+  -- programări la aceeași oră (cerința clinicii, 2026-10-01; v. migrația
+  -- 2026-10-01-programari-suprapuse.sql).
+  CONSTRAINT programare_interval_ck CHECK (se_termina_la > incepe_la)
 );
+-- Bazele create înainte de 2026-10-01 o au încă; aici dispare și din ele.
+ALTER TABLE programare DROP CONSTRAINT IF EXISTS programare_fara_suprapunere;
 
 CREATE INDEX IF NOT EXISTS programare_calendar_idx
   ON programare (incepe_la, executant_id);

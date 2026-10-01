@@ -1,4 +1,4 @@
-import { CalendarClock, Pencil } from 'lucide-react'
+import { CalendarClock, Pencil, Trash2 } from 'lucide-react'
 import { useVanzare } from '@/app/queries'
 import { InsemnTipArticol } from '@/components/insemne'
 import type { VanzareDetaliu, VanzareLinieDetaliu } from '@/domain/types'
@@ -21,10 +21,13 @@ export function DetaliuVanzare({
   vanzare: initiala,
   onInchide,
   onModifica,
+  onSterge,
 }: {
   vanzare: VanzareDetaliu
   onInchide: () => void
   onModifica: (vanzare: VanzareDetaliu) => void
+  /** Cere ștergerea; confirmarea o face cine a deschis detaliul. */
+  onSterge?: (vanzare: VanzareDetaliu) => void
 }) {
   const { data } = useVanzare(initiala.id)
   const vanzare = data ?? initiala
@@ -85,6 +88,16 @@ export function DetaliuVanzare({
       descriere={formateazaDataOra(vanzare.efectuat_la)}
       subsol={
         <>
+          {onSterge && (
+            <Buton
+              varianta="discret"
+              onClick={() => onSterge(vanzare)}
+              className="text-danger hover:text-danger sm:mr-auto"
+            >
+              <Trash2 className="size-4" />
+              Șterge
+            </Buton>
+          )}
           <Buton onClick={onInchide} plin className="sm:w-auto">
             Închide
           </Buton>

@@ -15,7 +15,7 @@ import { Router, Response } from 'express'
 import pool, { multe, unu, tranzactie, type Executor } from '../lib/db.js'
 import { eroareConflict, eroareValidare, ruta } from '../lib/erori.js'
 import { boolDin, Conditii, impacheteaza, paginareDin, textDin, tiparLike } from '../lib/filtre.js'
-import { adresaCererii, diferenta, scrieJurnal } from '../lib/jurnal.js'
+import { adresaCererii, diferenta, instantaneu, scrieJurnal } from '../lib/jurnal.js'
 import {
   DIN_TRATAMENTE,
   deschideTratament,
@@ -23,7 +23,7 @@ import {
   tratamentInCurs,
 } from '../lib/tratamente.js'
 import { textOptional, verificaNumarSedinte, verificaPret } from '../lib/validare.js'
-import { requireAuth, AuthRequest, cont } from '../middleware/auth.js'
+import { requireAuth, requireRole, AuthRequest, cont } from '../middleware/auth.js'
 import type { Articol, Tratament, TratamentDetaliu } from '../types/database.js'
 
 const router = Router()
@@ -239,5 +239,72 @@ function comutaIncheierea(incheie: boolean) {
 
 router.post('/:id/incheiere', comutaIncheierea(true))
 router.post('/:id/redeschidere', comutaIncheierea(false))
+
+// ---------------------------------------------------------------------------
+// DELETE /tratamente/:id — administrator
+// ---------------------------------------------------------------------------
+
+/**
+ * Șterge tratamentul cu TOT ce ține de el: ședințele lui și banii încasați pe
+ * ele. Cerința clinicii: un tratament șters nu are voie să mai apară nici în
+ * calendar, nici în Statistici.
+ *
+ * Ordinea contează, din cauza cheilor străine:
+ *   1. liniile de bon care plăteau ședințele (`vanzare_linie` → RESTRICT);
+ *   2. bonurile rămase fără nicio linie — un bon gol ar fi o încasare de 0 lei;
+ *      un bon care mai are produse sau ședințe din altă parte rămâne, cu
+ *      totalul scăzut (totalul se adună din linii);
+ *   3. ședințele (`programare.tratament_id` → RESTRICT);
+ *   4. tratamentul.
+ * Acordurile GDPR și abonamentele care indicau o ședință rămân, cu legătura
+ * golită (ON DELETE SET NULL). Totul într-o tranzacție; jurnalul păstrează
+ * tratamentul și ce s-a șters odată cu el.
+ */
+router.delete('/:id', requireRole('administrator'), ruta(async (req: AuthRequest, res: Response) => {
+  const autor = cont(req)
+  const id = req.params['id']!
+
+  await tranzactie(async (ex: Executor) => {
+    await unu<Tratament>(ex, `SELECT * FROM tratament WHERE id = $1 FOR UPDATE`, [id], 'Tratamentul')
+    const detaliu = await tratamentDetaliu(ex, id)
+
+    const { rows: sedinte } = await ex.query<{ id: string }>(
+      `SELECT id FROM programare WHERE tratament_id = $1 FOR UPDATE`, [id],
+    )
+    const ids = sedinte.map((s) => s.id)
+
+    const { rows: linii } = await ex.query<{ vanzare_id: string; total_linie: string }>(
+      `DELETE FROM vanzare_linie WHERE programare_id = ANY($1::uuid[])
+       RETURNING vanzare_id, total_linie`,
+      [ids],
+    )
+    const { rows: bonuriSterse } = await ex.query<{ id: string }>(
+      `DELETE FROM vanzare v
+       WHERE v.id = ANY($1::uuid[])
+         AND NOT EXISTS (SELECT 1 FROM vanzare_linie vl WHERE vl.vanzare_id = v.id)
+       RETURNING v.id`,
+      [[...new Set(linii.map((l) => l.vanzare_id))]],
+    )
+
+    await ex.query(`DELETE FROM programare WHERE tratament_id = $1`, [id])
+    await ex.query(`DELETE FROM tratament WHERE id = $1`, [id])
+
+    await scrieJurnal(ex, {
+      utilizator_id: autor.id,
+      actiune: 'stergere',
+      entitate: 'tratament',
+      entitate_id: id,
+      date_vechi: {
+        ...instantaneu(detaliu as unknown as Record<string, unknown>),
+        sedinte_sterse: ids.length,
+        incasat_sters: linii.reduce((s, l) => s + Number(l.total_linie), 0),
+        bonuri_sterse: bonuriSterse.length,
+      },
+      adresa_ip: adresaCererii(req),
+    })
+  })
+
+  res.status(204).end()
+}))
 
 export default router

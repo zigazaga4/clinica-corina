@@ -427,6 +427,11 @@ export interface ApiTratamente {
    * Respins (409) dacă între timp s-a deschis alt tratament în curs la aceeași pereche.
    */
   redeschide(id: Uuid): Promise<TratamentDetaliu>
+  /**
+   * DELETE /tratamente/:id — administrator. Șterge și ședințele lui, și banii
+   * încasați pe ele: nu mai apar nici în calendar, nici în Statistici.
+   */
+  remove(id: Uuid): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
@@ -568,6 +573,11 @@ export interface ApiVanzari {
    * Stinge într-o singură plată ședințele rămase de achitat ale unui client.
    */
   incaseaza(date: DateIncasare): Promise<VanzareDetaliu>
+  /**
+   * DELETE /vanzari/:id — orice rol, CU STATISTICILE DEBLOCATE.
+   * Ședințele stinse de bon redevin „de plată”; bonul rămâne în jurnal.
+   */
+  remove(id: Uuid): Promise<void>
 }
 
 // ---------------------------------------------------------------------------

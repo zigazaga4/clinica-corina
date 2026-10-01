@@ -9,15 +9,15 @@ import { useCuloarePersoana } from './culoriExecutanti'
  *
  * Aceleași două forme ca la programare — chip pentru grilă, rând pentru
  * listă — dar cu o singură grijă în plus: să NU semene cu o ședință. Fundal
- * gălbui, contur întrerupt, pictogramă de bilețel. Cine se uită de la un metru
- * la agenda zilei trebuie să vadă că la 15:00 nu vine o clientă, ci
- * furnizorul.
+ * ROȘU (cerința clinicii, 2026-10-01: timpul liber / concediul se vede în
+ * roșu), contur întrerupt, pictogramă de bilețel. Cine se uită de la un metru
+ * la agenda zilei trebuie să vadă că la 15:00 persoana nu e disponibilă.
  *
- * Culoarea persoanei rămâne, ca la programări: o notiță a Irinei stă în banda
- * Irinei. Notița întregii clinici nu are bandă.
+ * Culoarea persoanei rămâne în banda din stânga: o notiță a Irinei stă în
+ * banda Irinei. Notița întregii clinici nu are bandă.
  */
 
-const STIL_NOTITA = 'bg-warning-soft text-warning border-warning/40 border-dashed'
+const STIL_NOTITA = 'bg-danger-soft text-danger border-danger/60 border-dashed'
 
 /** Cui i se adresează, pentru rândul de listă și pentru `title`. */
 export function pentruCine(notita: NotitaDetaliu): string {
@@ -102,7 +102,7 @@ export function RandNotita({
     >
       {/* Bandă întreruptă: aceeași poziție ca la programări, alt desen. */}
       <span
-        className="w-1 shrink-0 rounded-full border-l-4 border-dashed border-warning"
+        className="w-1 shrink-0 rounded-full border-l-4 border-dashed border-danger"
         aria-hidden
       />
 
@@ -115,7 +115,7 @@ export function RandNotita({
 
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5 text-sm font-medium text-ink">
-          <StickyNote className="size-3.5 shrink-0 text-warning" aria-hidden />
+          <StickyNote className="size-3.5 shrink-0 text-danger" aria-hidden />
           <span className="truncate">{notita.titlu}</span>
         </span>
         {notita.detalii && (

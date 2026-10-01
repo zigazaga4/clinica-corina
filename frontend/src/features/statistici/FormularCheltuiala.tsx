@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Trash2 } from 'lucide-react'
+import { mesajEroare } from '@/api/errors'
 import {
   useCategoriiCheltuieli,
   useCreeazaCheltuiala,
@@ -48,9 +49,12 @@ const CATEGORII_OBISNUITE = [
 export function FormularCheltuiala({
   cheltuiala,
   onInchide,
+  doarStergere = false,
 }: {
   cheltuiala?: CheltuialaDetaliu
   onInchide: () => void
+  /** Coșul de pe rând: doar confirmarea ștergerii, fără formular în spate. */
+  doarStergere?: boolean
 }) {
   const notificari = useNotificari()
   const erori = useEroriFormular<Camp>()
@@ -64,7 +68,11 @@ export function FormularCheltuiala({
   const [categorie, setCategorie] = useState<string | null>(cheltuiala?.categorie ?? null)
   const [suma, setSuma] = useState(cheltuiala ? numarInCamp(cheltuiala.suma) : '')
   const [descriere, setDescriere] = useState(cheltuiala?.descriere ?? '')
-  const [confirmaStergerea, setConfirmaStergerea] = useState(false)
+  const [confirmaStergerea, setConfirmaStergerea] = useState(doarStergere)
+  const renuntaLaStergere = () => {
+    setConfirmaStergerea(false)
+    if (doarStergere) onInchide()
+  }
 
   const optiuni = useMemo<OptiuneCombobox<string>[]>(() => {
     const folosite = categoriiFolosite.data ?? []
@@ -114,15 +122,16 @@ export function FormularCheltuiala({
       setConfirmaStergerea(false)
       onInchide()
     } catch (err) {
-      setConfirmaStergerea(false)
+      renuntaLaStergere()
       erori.preia(err)
+      if (doarStergere) notificari.eroare(mesajEroare(err))
     }
   }
 
   return (
     <>
       <Modala
-        deschisa
+        deschisa={!doarStergere}
         onInchide={onInchide}
         blocata={seTrimite || sterge.isPending}
         titlu={cheltuiala ? 'Modifică cheltuiala' : 'Cheltuială nouă'}
@@ -211,7 +220,7 @@ export function FormularCheltuiala({
 
       <ModalaConfirmare
         deschisa={confirmaStergerea}
-        onInchide={() => setConfirmaStergerea(false)}
+        onInchide={renuntaLaStergere}
         onConfirma={() => void stergeCheltuiala()}
         titlu="Ștergi cheltuiala?"
         mesaj={

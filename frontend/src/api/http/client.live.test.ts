@@ -220,7 +220,7 @@ describe.skipIf(!ADRESA)('clientul HTTP împotriva serverului real', () => {
     expect(gresita.message).not.toMatch(/Cererea a eșuat/)
   })
 
-  it('suprapunerea peste programarea altcuiva este un conflict', async () => {
+  it('aceeași persoană poate avea două programări suprapuse', async () => {
     const date = {
       client_id,
       articol_id: serviciu.id,
@@ -229,10 +229,7 @@ describe.skipIf(!ADRESA)('clientul HTTP împotriva serverului real', () => {
     }
 
     await api.programari.create(date)
-    const a_doua = await api.programari.create(date).catch((e: unknown) => e)
-
-    expect(esteEroareApi(a_doua)).toBe(true)
-    if (esteEroareApi(a_doua)) expect(a_doua.cod).toBe('conflict')
+    await expect(api.programari.create(date)).resolves.toBeTruthy()
   })
 
   /*

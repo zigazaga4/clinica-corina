@@ -22,6 +22,11 @@ export interface CuloarePersoana {
   text: string
   /** Fundal foarte palid + text colorat, pentru pastila din legendă. */
   pastila: string
+  /**
+   * Chipul ÎNTREG al programării din calendar: fundal, contur și text lizibil.
+   * Clinica a cerut culoarea persoanei pe toată programarea, nu doar pe o bandă.
+   */
+  chip: string
 }
 
 /*
@@ -33,12 +38,42 @@ export interface CuloarePersoana {
   se mai uită cu inspectorul deschis.
 */
 const PALETA: CuloarePersoana[] = [
-  { fundal: 'bg-persoana-1', text: 'text-persoana-1', pastila: 'bg-persoana-1/12 text-persoana-1' },
-  { fundal: 'bg-persoana-2', text: 'text-persoana-2', pastila: 'bg-persoana-2/12 text-persoana-2' },
-  { fundal: 'bg-persoana-3', text: 'text-persoana-3', pastila: 'bg-persoana-3/12 text-persoana-3' },
-  { fundal: 'bg-persoana-4', text: 'text-persoana-4', pastila: 'bg-persoana-4/12 text-persoana-4' },
-  { fundal: 'bg-persoana-5', text: 'text-persoana-5', pastila: 'bg-persoana-5/12 text-persoana-5' },
-  { fundal: 'bg-persoana-6', text: 'text-persoana-6', pastila: 'bg-persoana-6/12 text-persoana-6' },
+  {
+    fundal: 'bg-persoana-1',
+    text: 'text-persoana-1',
+    pastila: 'bg-persoana-1/12 text-persoana-1',
+    chip: 'bg-persoana-1/25 border-persoana-1/60 text-ink',
+  },
+  {
+    fundal: 'bg-persoana-2',
+    text: 'text-persoana-2',
+    pastila: 'bg-persoana-2/12 text-persoana-2',
+    chip: 'bg-persoana-2/25 border-persoana-2/60 text-ink',
+  },
+  {
+    fundal: 'bg-persoana-3',
+    text: 'text-persoana-3',
+    pastila: 'bg-persoana-3/12 text-persoana-3',
+    chip: 'bg-persoana-3/25 border-persoana-3/60 text-ink',
+  },
+  {
+    fundal: 'bg-persoana-4',
+    text: 'text-persoana-4',
+    pastila: 'bg-persoana-4/12 text-persoana-4',
+    chip: 'bg-persoana-4/25 border-persoana-4/60 text-ink',
+  },
+  {
+    fundal: 'bg-persoana-5',
+    text: 'text-persoana-5',
+    pastila: 'bg-persoana-5/12 text-persoana-5',
+    chip: 'bg-persoana-5/25 border-persoana-5/60 text-ink',
+  },
+  {
+    fundal: 'bg-persoana-6',
+    text: 'text-persoana-6',
+    pastila: 'bg-persoana-6/12 text-persoana-6',
+    chip: 'bg-persoana-6/25 border-persoana-6/60 text-ink',
+  },
 ]
 
 /**
@@ -53,6 +88,8 @@ const BEJ: CuloarePersoana = {
   fundal: 'bg-persoana-bej',
   text: 'text-persoana-bej-text',
   pastila: 'bg-persoana-bej/45 text-persoana-bej-text dark:bg-persoana-bej/15',
+  // Bejul e deja deschis: plin, cu text închis. Pe întunecat, plin ar fi alb.
+  chip: 'bg-persoana-bej border-persoana-bej-text/50 text-ink dark:bg-persoana-bej/20',
 }
 
 /**
