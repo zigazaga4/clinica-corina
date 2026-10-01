@@ -18,6 +18,7 @@ import {
   useClient,
   useConsimtaminte,
   useIstoricClient,
+  useModificaNota,
   useNoteClient,
   useStergeClient,
   useUtilizatori,
@@ -26,6 +27,7 @@ import { AntetPagina, Pagina } from '@/components/Pagina'
 import { InsemnInactiv, InsemnPlata, InsemnStareProgramare } from '@/components/insemne'
 import type {
   IstoricIntrare,
+  NotaClientDetaliu,
   ProgramareDetaliu,
   Uuid,
   VanzareDetaliu,
@@ -665,9 +667,10 @@ function IntrareProduse({
 /*
   Notele.
 
-  Sunt imuabile prin proiect: tabela `nota_client` nu primește UPDATE, iar o
-  corectură se scrie ca notă nouă. De aceea nu există aici nici modificare,
-  nici ștergere — firul rămâne verificabil, cu autor și dată pe fiecare rând.
+  Se pot modifica (cerința clinicii, 2026-10-01): creionul de pe fiecare notă
+  o deschide pe loc. Autorul și data scrierii rămân, „modificată pe …” spune
+  că s-a schimbat, iar textul vechi rămâne în jurnal. Ștergere nu există —
+  firul rămâne verificabil.
 
   Conținutul poate cuprinde date privind sănătatea (GDPR art. 9). Ecranul le
   arată doar aici, pe fișă, și nu oferă nicio cale de copiere sau de export în
@@ -702,7 +705,6 @@ function PanouNote({ clientId }: { clientId: Uuid }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Observații despre client, preferințe, recomandări…"
-          ajutor="Notele nu se pot modifica ulterior; o corectură se adaugă ca notă nouă."
           disabled={adauga.isPending}
         />
         <div className="flex justify-end">
@@ -731,24 +733,90 @@ function PanouNote({ clientId }: { clientId: Uuid }) {
       ) : (
         <ol className="flex flex-col gap-3 border-t border-line pt-4">
           {data.map((nota) => (
-            <li key={nota.id} className="rounded-lg bg-muted px-3 py-2.5">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-[12px]">
-                <span className="font-medium text-ink-soft">
-                  {/* Autorul poate fi șters (ON DELETE SET NULL) — nota rămâne. */}
-                  {nota.autor_nume ?? 'Cont șters'}
-                </span>
-                <span className="text-ink-faint tabular-nums">
-                  {formateazaDataOra(nota.creat_la)}
-                </span>
-              </div>
-              <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap text-ink">
-                {nota.text}
-              </p>
-            </li>
+            <RandNota key={nota.id} nota={nota} />
           ))}
         </ol>
       )}
     </CorpCard>
+  )
+}
+
+/** O notă din listă: de citit, sau — după creion — de modificat pe loc. */
+function RandNota({ nota }: { nota: NotaClientDetaliu }) {
+  const notificari = useNotificari()
+  const modifica = useModificaNota()
+  const [text, setText] = useState<string | null>(null)
+  const seModifica = text !== null
+
+  const salveaza = async () => {
+    const curat = (text ?? '').trim()
+    if (curat === '') return
+    try {
+      await modifica.mutateAsync({ client_id: nota.client_id, nota_id: nota.id, text: curat })
+      setText(null)
+      notificari.succes('Nota a fost modificată.')
+    } catch (err) {
+      notificari.eroare(mesajEroare(err))
+    }
+  }
+
+  return (
+    <li className="rounded-lg bg-muted px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 text-[12px]">
+        <span className="font-medium text-ink-soft">
+          {/* Autorul poate fi șters (ON DELETE SET NULL) — nota rămâne. */}
+          {nota.autor_nume ?? 'Cont șters'}
+        </span>
+        <span className="flex items-center gap-1 text-ink-faint tabular-nums">
+          {formateazaDataOra(nota.creat_la)}
+          {nota.modificat_la && (
+            <span title={formateazaDataOra(nota.modificat_la)}>
+              · modificată {formateazaData(nota.modificat_la)}
+            </span>
+          )}
+          {!seModifica && (
+            <Buton
+              varianta="discret"
+              dimensiune="icon-sm"
+              onClick={() => setText(nota.text)}
+              aria-label="Modifică nota"
+              title="Modifică nota"
+              className="-my-1 text-ink-faint hover:text-ink"
+            >
+              <Pencil className="size-3.5" />
+            </Buton>
+          )}
+        </span>
+      </div>
+      {seModifica ? (
+        <div className="mt-2 flex flex-col gap-2">
+          <Textarea
+            aria-label="Textul notei"
+            rows={Math.min(10, Math.max(3, text.split('\n').length + 1))}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            disabled={modifica.isPending}
+            autoFocus
+          />
+          <div className="flex justify-end gap-2">
+            <Buton dimensiune="sm" onClick={() => setText(null)} disabled={modifica.isPending}>
+              Renunță
+            </Buton>
+            <Buton
+              dimensiune="sm"
+              varianta="primar"
+              onClick={() => void salveaza()}
+              incarca={modifica.isPending}
+              disabled={text.trim() === ''}
+            >
+              Salvează
+            </Buton>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap text-ink">{nota.text}</p>
+      )}
+    </li>
   )
 }
 

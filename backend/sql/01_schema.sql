@@ -209,15 +209,18 @@ CREATE TRIGGER client_actualizat_la BEFORE UPDATE ON client
 
 
 -- ---------------------------------------------------------------------------
--- nota_client — note libere pe fișă. Nu se modifică: corecția e o notă nouă.
+-- nota_client — note libere pe fișă. Se pot modifica (cerința clinicii,
+-- 2026-10-01); textul vechi rămâne în jurnal, la fiecare modificare.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS nota_client (
-  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id  uuid NOT NULL REFERENCES client(id) ON DELETE CASCADE,
-  autor_id   uuid REFERENCES utilizator(id) ON DELETE SET NULL,
-  text       text NOT NULL CHECK (btrim(text) <> ''),
-  creat_la   timestamptz NOT NULL DEFAULT now()
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id     uuid NOT NULL REFERENCES client(id) ON DELETE CASCADE,
+  autor_id      uuid REFERENCES utilizator(id) ON DELETE SET NULL,
+  text          text NOT NULL CHECK (btrim(text) <> ''),
+  creat_la      timestamptz NOT NULL DEFAULT now(),
+  -- Ultima modificare a textului; NULL = nemodificată de la scriere.
+  modificat_la  timestamptz
 );
 
 CREATE INDEX IF NOT EXISTS nota_client_fisa_idx ON nota_client (client_id, creat_la DESC);

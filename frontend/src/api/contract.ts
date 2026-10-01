@@ -145,6 +145,8 @@ export interface ApiClienti {
   note(id: Uuid): Promise<NotaClientDetaliu[]>
   /** POST /clienti/:id/note — orice rol. Autorul = utilizatorul autentificat. */
   adaugaNota(id: Uuid, text: string): Promise<NotaClientDetaliu>
+  /** PATCH /clienti/:id/note/:notaId — orice rol. Textul vechi rămâne în jurnal. */
+  modificaNota(id: Uuid, notaId: Uuid, text: string): Promise<NotaClientDetaliu>
 }
 
 // ---------------------------------------------------------------------------

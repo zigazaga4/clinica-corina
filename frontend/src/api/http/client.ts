@@ -294,6 +294,8 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
       note: (id) => cerere<NotaClientDetaliu[]>('GET', `/clienti/${id}/note`),
       adaugaNota: (id, text) =>
         cerere<NotaClientDetaliu>('POST', `/clienti/${id}/note`, { corp: { text } }),
+      modificaNota: (id, notaId, text) =>
+        cerere<NotaClientDetaliu>('PATCH', `/clienti/${id}/note/${notaId}`, { corp: { text } }),
     },
 
     consimtaminte: {

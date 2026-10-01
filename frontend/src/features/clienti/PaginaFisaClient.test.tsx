@@ -309,3 +309,30 @@ it('debifarea unei ședințe scade totalul de încasat', async () => {
   expect(ramas).toBeLessThan(240)
   expect(ramas).toBeGreaterThan(0)
 })
+
+it('modifică o notă pe loc, iar textul vechi rămâne în jurnal', async () => {
+  // Cerința clinicii, 2026-10-01: notele de pe fișă se pot modifica.
+  await autentifica()
+  const client = await api.clienti.create({ nume: 'Nota De Corectat' })
+  const nota = await api.clienti.adaugaNota(client.id, 'Alergie la latex.')
+  randeazaFisa(client.id)
+
+  fireEvent.click(await screen.findByRole('tab', { name: /Note/ }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Modifică nota' }))
+  const camp = screen.getByRole('textbox', { name: 'Textul notei' })
+  expect(camp).toHaveValue('Alergie la latex.')
+  fireEvent.change(camp, { target: { value: 'Alergie la latex și la nichel.' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Salvează' }))
+
+  // Salvată: câmpul se închide, iar nota arată textul nou și „modificată”.
+  await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Textul notei' })).toBeNull())
+  expect(screen.getByText('Alergie la latex și la nichel.')).toBeInTheDocument()
+  expect(await screen.findByText(/^· modificată/)).toBeInTheDocument()
+
+  const [dupa] = await api.clienti.note(client.id)
+  expect(dupa?.text).toBe('Alergie la latex și la nichel.')
+  expect(dupa?.modificat_la).not.toBeNull()
+  const jurnal = await api.jurnal.list({ entitate: 'nota_client' })
+  const modificare = jurnal.randuri.find((r) => r.entitate_id === nota.id && r.actiune === 'modificare')
+  expect(modificare?.date_vechi).toEqual({ text: 'Alergie la latex.' })
+})

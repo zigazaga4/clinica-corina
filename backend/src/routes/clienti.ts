@@ -386,7 +386,8 @@ router.get('/:id/istoric', ruta(async (req: AuthRequest, res: Response) => {
 }))
 
 // ---------------------------------------------------------------------------
-// Note — orice rol. Nu se modifică: o corecție este o notă nouă.
+// Note — orice rol. Se pot modifica (cerința clinicii, 2026-10-01); textul
+// vechi rămâne în jurnal la fiecare modificare.
 // ---------------------------------------------------------------------------
 
 const SELECT_NOTE = `
@@ -429,6 +430,46 @@ router.post('/:id/note', ruta(async (req: AuthRequest, res: Response) => {
   })
 
   res.status(201).json(nota)
+}))
+
+/**
+ * PATCH /clienti/:id/note/:notaId — orice rol. Schimbă textul notei.
+ *
+ * Autorul și data scrierii rămân ale notei; `modificat_la` spune că s-a
+ * schimbat. Textul de dinainte merge în jurnal, ca o notă medicală corectată
+ * să nu-și piardă urma.
+ */
+router.patch('/:id/note/:notaId', ruta(async (req: AuthRequest, res: Response) => {
+  const autor = cont(req)
+  const id = req.params['id']
+  const notaId = req.params['notaId']
+  const text = ceruteText((req.body as { text?: unknown }).text, 'text', 'Textul notei')
+
+  const nota = await tranzactie(async (ex: Executor) => {
+    const inainte = await unu<{ text: string }>(
+      ex,
+      `SELECT text FROM nota_client WHERE id = $1 AND client_id = $2 FOR UPDATE`,
+      [notaId, id],
+      'Nota',
+    )
+
+    if (inainte.text !== text) {
+      await ex.query(`UPDATE nota_client SET text = $1, modificat_la = now() WHERE id = $2`, [text, notaId])
+      await scrieJurnal(ex, {
+        utilizator_id: autor.id,
+        actiune: 'modificare',
+        entitate: 'nota_client',
+        entitate_id: notaId,
+        date_vechi: { text: inainte.text },
+        date_noi: { client_id: id, text },
+        adresa_ip: adresaCererii(req),
+      })
+    }
+
+    return unu<NotaClientDetaliu>(ex, `${SELECT_NOTE} WHERE n.id = $1`, [notaId], 'Nota')
+  })
+
+  res.json(nota)
 }))
 
 export default router

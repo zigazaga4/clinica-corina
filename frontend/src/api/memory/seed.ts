@@ -325,6 +325,7 @@ export function populeaza(): void {
         autor_id: alege(rnd, utilizatori).id,
         text: alege(rnd, NOTE_CLIENT),
         creat_la: laTimestamptz(addDays(azi, -intreg(rnd, 1, 300))),
+        modificat_la: null,
       }
       magazin.nota_client.set(nota.id, nota)
     }

@@ -58,6 +58,7 @@ import {
   EroareApi,
   eroareConflict,
   eroareInterzis,
+  eroareNegasit,
   eroareNeautentificat,
   eroareValidare,
 } from '@/api/errors'
@@ -683,6 +684,7 @@ export function creeazaApiInMemorie(): ApiClient {
           autor_id: autor.id,
           text: ceruteText(text, 'text', 'Textul notei'),
           creat_la: acum(),
+          modificat_la: null,
         }
         magazin.nota_client.set(rand.id, rand)
 
@@ -695,6 +697,30 @@ export function creeazaApiInMemorie(): ApiClient {
         })
 
         return hidrateazaNota(rand)
+      },
+
+      /** PATCH /clienti/:id/note/:notaId — orice rol */
+      async modificaNota(id, notaId, text): Promise<NotaClientDetaliu> {
+        await intarziere()
+        const autor = cereUtilizator()
+        const nota = magazin.nota_client.get(notaId)
+        if (!nota || nota.client_id !== id) throw eroareNegasit('Nota')
+        const nou = ceruteText(text, 'text', 'Textul notei')
+
+        if (nota.text !== nou) {
+          const vechi = nota.text
+          nota.text = nou
+          nota.modificat_la = acum()
+          scrieJurnal({
+            utilizator_id: autor.id,
+            actiune: 'modificare',
+            entitate: 'nota_client',
+            entitate_id: notaId,
+            date_vechi: { text: vechi },
+            date_noi: { client_id: id, text: nou },
+          })
+        }
+        return hidrateazaNota(nota)
       },
     },
 

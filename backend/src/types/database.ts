@@ -91,6 +91,8 @@ export interface NotaClient {
   autor_id: string | null
   text: string
   creat_la: string
+  /** Ultima modificare a textului; NULL = nemodificată. */
+  modificat_la: string | null
 }
 
 export interface Programare {

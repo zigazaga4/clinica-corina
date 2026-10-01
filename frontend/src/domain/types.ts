@@ -131,7 +131,7 @@ export interface Client {
 
 /**
  * Tabela `nota_client` — note libere pe fișa clientului.
- * Notele nu se modifică; corecțiile se adaugă ca notă nouă.
+ * Se pot modifica (2026-10-01); textul vechi rămâne în jurnal.
  */
 export interface NotaClient {
   id: Uuid
@@ -139,6 +139,8 @@ export interface NotaClient {
   autor_id: Uuid | null
   text: string
   creat_la: Timestamptz
+  /** Ultima modificare a textului; NULL = nemodificată. */
+  modificat_la: Timestamptz | null
 }
 
 /**

@@ -265,6 +265,22 @@ export function useAdaugaNota(): UseMutationResult<
   })
 }
 
+export function useModificaNota(): UseMutationResult<
+  NotaClientDetaliu,
+  Error,
+  { client_id: Uuid; nota_id: Uuid; text: string }
+> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ client_id, nota_id, text }: { client_id: Uuid; nota_id: Uuid; text: string }) =>
+      api.clienti.modificaNota(client_id, nota_id, text),
+    onSuccess: (_nota, { client_id }) => {
+      void qc.invalidateQueries({ queryKey: chei.clienti.note(client_id) })
+      void qc.invalidateQueries({ queryKey: chei.jurnal.tot })
+    },
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Consimțăminte
 // ---------------------------------------------------------------------------
