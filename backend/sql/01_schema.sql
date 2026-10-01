@@ -819,10 +819,17 @@ SELECT
       2), 0)
   END                                                     AS pret_urmatoarea,
   s.urmatoarea_la,
-  s.ultima_la
+  s.ultima_la,
+  -- Cine face tratamentul: persoanele de pe ședințele neanulate (2026-10-01).
+  e.executanti
 FROM tratament t
 LEFT JOIN client  c ON c.id = t.client_id
 LEFT JOIN articol a ON a.id = t.articol_id
+LEFT JOIN LATERAL (
+  SELECT string_agg(DISTINCT u.nume, ', ' ORDER BY u.nume) AS executanti
+  FROM programare p JOIN utilizator u ON u.id = p.executant_id
+  WHERE p.tratament_id = t.id AND p.stare <> 'anulat'
+) e ON true
 LEFT JOIN LATERAL (
   SELECT
     count(*) FILTER (WHERE p.stare = 'programat')                       AS programate,

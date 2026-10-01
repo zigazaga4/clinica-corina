@@ -129,6 +129,7 @@ export function DetaliuTratament({
           </div>
 
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Pereche eticheta="Cine face tratamentul">{tratament.executanti}</Pereche>
             <Pereche eticheta="Preț total">{formateazaBani(tratament.pret_total)}</Pereche>
             <Pereche eticheta="Următoarea ședință">
               {tratament.urmatoarea_la ? (

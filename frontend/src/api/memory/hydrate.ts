@@ -132,8 +132,13 @@ export function hidrateazaTratament(t: Tratament): TratamentDetaliu {
   const restante: number[] = []
   let urmatoarea_la: string | null = null
   let ultima_la: string | null = null
+  const executanti = new Set<string>()
 
   for (const p of sedinteleTratamentului(t.id)) {
+    if (p.stare !== 'anulat') {
+      const nume = magazin.utilizator.get(p.executant_id)?.nume
+      if (nume) executanti.add(nume)
+    }
     if (p.stare === 'programat') {
       sedinte_programate++
       alocate.push(p.pret)
@@ -167,6 +172,8 @@ export function hidrateazaTratament(t: Tratament): TratamentDetaliu {
     pret_urmatoarea,
     urmatoarea_la,
     ultima_la,
+    // Ca `string_agg(DISTINCT … ORDER BY nume)` din vedere.
+    executanti: executanti.size ? [...executanti].sort((a, b) => a.localeCompare(b)).join(', ') : null,
   }
 }
 

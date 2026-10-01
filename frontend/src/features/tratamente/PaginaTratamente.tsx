@@ -27,7 +27,7 @@ import {
 } from '@/ui'
 import { DetaliuTratament } from './DetaliuTratament'
 import { FormularTratament } from './FormularTratament'
-import { BaniTratament, InsemnTratament, ProgresSedinte } from './ProgresTratament'
+import { BaniTratament, ExecutantiTratament, InsemnTratament, ProgresSedinte } from './ProgresTratament'
 
 /**
  * Tratamentele — serviciile care se fac în mai multe ședințe.
@@ -138,6 +138,7 @@ export function PaginaTratamente() {
         <span className="block">
           <span className="block font-medium text-ink">{t.client_nume}</span>
           <span className="block truncate text-[12px] text-ink-soft">{t.articol_denumire}</span>
+          <ExecutantiTratament tratament={t} className="mt-0.5 flex" />
         </span>
       ),
     },
@@ -284,6 +285,7 @@ export function PaginaTratamente() {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-ink">{t.client_nume}</p>
                   <p className="truncate text-[12px] text-ink-soft">{t.articol_denumire}</p>
+                  <ExecutantiTratament tratament={t} className="mt-0.5 flex" />
                 </div>
                 <InsemnTratament tratament={t} />
               </div>

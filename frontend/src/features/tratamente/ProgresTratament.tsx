@@ -1,3 +1,4 @@
+import { UserRound } from 'lucide-react'
 import type { ProgramareDetaliu, TratamentDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { formateazaBani } from '@/lib/money'
@@ -105,6 +106,26 @@ export function ProgresSedinte({
  * Banii tratamentului, pe scurt: încasat din total, cu restanța dacă există.
  * `de_incasat` e ce trebuie să sară în ochi — clienta a plecat fără să achite.
  */
+/**
+ * Cine face tratamentul — persoanele de pe ședințele lui (cerința clinicii).
+ * Fără nicio ședință încă, nu se știe: nu afișează nimic.
+ */
+export function ExecutantiTratament({
+  tratament,
+  className,
+}: {
+  tratament: TratamentDetaliu
+  className?: string
+}) {
+  if (!tratament.executanti) return null
+  return (
+    <span className={cn('inline-flex min-w-0 items-center gap-1 text-[12px] text-ink-soft', className)}>
+      <UserRound className="size-3.5 shrink-0 text-primary-600" aria-hidden />
+      <span className="truncate font-medium">{tratament.executanti}</span>
+    </span>
+  )
+}
+
 export function BaniTratament({ tratament, className }: { tratament: TratamentDetaliu; className?: string }) {
   return (
     <div className={cn('text-[13px] tabular-nums', className)}>

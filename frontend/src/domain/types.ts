@@ -463,6 +463,8 @@ export interface TratamentDetaliu extends Tratament {
   urmatoarea_la: Timestamptz | null
   /** Ultima ședință onorată. */
   ultima_la: Timestamptz | null
+  /** Cine face tratamentul: numele de pe ședințele neanulate, „Anda, Irina”. */
+  executanti: string | null
 }
 
 /**

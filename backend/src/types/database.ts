@@ -284,6 +284,8 @@ export interface TratamentDetaliu extends Tratament {
   urmatoarea_la: string | null
   /** Ultima ședință onorată. */
   ultima_la: string | null
+  /** Cine face tratamentul: numele de pe ședințele neanulate, „Anda, Irina”. */
+  executanti: string | null
 }
 
 /** Linie hidratată: `v_vanzare_linie_detaliu`. */

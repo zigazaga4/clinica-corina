@@ -4,7 +4,7 @@ import { useTratamente } from '@/app/queries'
 import type { TratamentDetaliu, Uuid } from '@/domain/types'
 import { formateazaDataOra } from '@/lib/dates'
 import { AntetCard, Buton, Card } from '@/ui'
-import { BaniTratament, ProgresSedinte } from './ProgresTratament'
+import { BaniTratament, ExecutantiTratament, ProgresSedinte } from './ProgresTratament'
 
 /**
  * Tratamentele în curs ale unui client, pe fișa lui.
@@ -45,6 +45,7 @@ export function TratamenteleClientului({
               <Layers className="mt-0.5 size-4 shrink-0 text-primary-600" aria-hidden />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium text-ink">{t.articol_denumire}</span>
+                <ExecutantiTratament tratament={t} className="flex" />
                 <ProgresSedinte tratament={t} className="mt-1" />
               </span>
             </span>
