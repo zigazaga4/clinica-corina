@@ -39,6 +39,11 @@ vrei:
 for f in sql/migratii/*.sql; do psql -d clinica -v ON_ERROR_STOP=1 -f "$f"; done
 ```
 
+`sql/date/` ține date ale clinicii aduse o singură dată, nu schemă — de exemplu
+listele ei de prețuri (`2026-10-04-produse-colaboratori-si-clienti.sql`, după
+migrația categoriilor). Și ele se pot rula de câte ori vrei: ce există deja nu
+se adaugă a doua oară și nu se atinge.
+
 `JWT_SECRET` trebuie să aibă cel puțin 32 de caractere, altfel serverul refuză
 să pornească — verificat la pornire, nu la primul login, ca să nu descoperi
 lipsa lui prin `500` la ora de vârf:

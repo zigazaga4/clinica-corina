@@ -203,15 +203,23 @@ function ScheletTabel({ coloane, randuri }: { coloane: number; randuri: number }
 export function CelulaDubla({
   principal,
   secundar,
+  intreg = false,
   className,
 }: {
   principal: ReactNode
   secundar?: ReactNode
+  /**
+   * Textul principal se rupe pe câte rânduri îi trebuie, în loc să fie tăiat —
+   * pentru denumirile lungi al căror capăt contează („… 250 ml” / „… 50 ml”).
+   */
+  intreg?: boolean
   className?: string
 }) {
   return (
     <div className={cn('min-w-0', className)}>
-      <div className="truncate font-medium text-ink">{principal}</div>
+      <div className={cn('font-medium text-ink', intreg ? 'break-words' : 'truncate')}>
+        {principal}
+      </div>
       {secundar !== undefined && secundar !== null && secundar !== '' && (
         <div className="truncate text-[12px] text-ink-faint">{secundar}</div>
       )}

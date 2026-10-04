@@ -717,6 +717,12 @@ export interface DateArticolNou {
   activ?: boolean
   /** >= 1 la servicii; lipsă = 1. Refuzat pe produse (articol_sedinte_ck). */
   numar_sedinte?: number
+  /**
+   * Doar la produse; refuzată pe servicii (articol_categorie_ck). Goală sau
+   * null = fără categorie. Scrisă altfel doar prin majuscule decât una
+   * existentă, serverul o lipește de aceea.
+   */
+  categorie?: string | null
 }
 
 export type DateArticolModificat = Partial<DateArticolNou>

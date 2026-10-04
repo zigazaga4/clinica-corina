@@ -91,19 +91,25 @@ const SERVICII: SabonServiciu[] = [
   { denumire: 'Împachetare corporală cu alge', durata: 70, pret: 260, activ: false },
 ]
 
-const PRODUSE: { denumire: string; pret: number; activ?: boolean }[] = [
-  { denumire: 'Ser cu acid hialuronic 30 ml', pret: 200 },
-  { denumire: 'Ser cu vitamina C 30 ml', pret: 180 },
-  { denumire: 'Cremă hidratantă SPF 50', pret: 120 },
-  { denumire: 'Cremă de noapte regeneratoare', pret: 160 },
-  { denumire: 'Gel de curățare facială', pret: 95 },
-  { denumire: 'Loțiune tonică', pret: 85 },
-  { denumire: 'Mască facială cu argilă', pret: 75 },
-  { denumire: 'Cremă anticelulitică', pret: 140 },
-  { denumire: 'Ulei pentru masaj', pret: 70 },
+// Categoriile sunt listele de prețuri ale clinicii. Două produse rămân fără
+// categorie, cum ar arăta unul adăugat din grabă, de la vânzare. Aceeași
+// listă ca în datele de pornire ale serverului (backend/src/seed.ts); numărul
+// și ordinea rândurilor nu se schimbă — de ele depinde restul datelor demo.
+const CLIENTI = 'Produse clienți'
+const COLABORATORI = 'Produse colaboratori'
+const PRODUSE: { denumire: string; pret: number; activ?: boolean; categorie?: string }[] = [
+  { denumire: 'Ser cu acid hialuronic 30 ml', pret: 200, categorie: CLIENTI },
+  { denumire: 'Ser cu vitamina C 30 ml', pret: 180, categorie: CLIENTI },
+  { denumire: 'Cremă hidratantă SPF 50', pret: 120, categorie: CLIENTI },
+  { denumire: 'Cremă de noapte regeneratoare', pret: 160, categorie: CLIENTI },
+  { denumire: 'Gel de curățare facială', pret: 95, categorie: CLIENTI },
+  { denumire: 'Loțiune tonică', pret: 85, categorie: CLIENTI },
+  { denumire: 'Mască facială cu argilă', pret: 75, categorie: COLABORATORI },
+  { denumire: 'Cremă anticelulitică', pret: 140, categorie: CLIENTI },
+  { denumire: 'Ulei pentru masaj', pret: 70, categorie: COLABORATORI },
   { denumire: 'Ulei pentru cuticule', pret: 45 },
   { denumire: 'Balsam pentru gene', pret: 90 },
-  { denumire: 'Protecție solară corp SPF 30', pret: 110, activ: false },
+  { denumire: 'Protecție solară corp SPF 30', pret: 110, activ: false, categorie: CLIENTI },
 ]
 
 /**
@@ -252,6 +258,7 @@ export function populeaza(): void {
       creat_la,
       actualizat_la: creat_la,
       numar_sedinte: s.sedinte ?? 1,
+      categorie: null,
     }
     magazin.articol.set(rand.id, rand)
     return rand
@@ -268,6 +275,7 @@ export function populeaza(): void {
       creat_la,
       actualizat_la: creat_la,
       numar_sedinte: 1,
+      categorie: p.categorie ?? null,
     }
     magazin.articol.set(rand.id, rand)
     return rand

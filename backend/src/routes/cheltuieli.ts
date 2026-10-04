@@ -11,7 +11,8 @@
  */
 
 import { Router, Response } from 'express'
-import pool, { alege, dynamicInsert, dynamicUpdate, multe, tranzactie, unu, unuSauNimic, type Executor } from '../lib/db.js'
+import pool, { alege, dynamicInsert, dynamicUpdate, multe, tranzactie, unu, type Executor } from '../lib/db.js'
+import { categoriaFolosita } from '../lib/categorii.js'
 import { eroareValidare, ruta } from '../lib/erori.js'
 import { Conditii, impacheteaza, paginareDin, textDin, tiparLike } from '../lib/filtre.js'
 import { adresaCererii, diferenta, instantaneu, scrieJurnal } from '../lib/jurnal.js'
@@ -31,22 +32,9 @@ function cheltuialaDetaliu(ex: Executor, id: string): Promise<CheltuialaDetaliu>
   return unu<CheltuialaDetaliu>(ex, `${DIN_CHELTUIELI} WHERE id = $1`, [id], 'Cheltuiala')
 }
 
-/**
- * Categoria, scrisă ca data trecută.
- *
- * „chirie” și „Chirie” ar fi fost două felii în graficul cheltuielilor, iar
- * suma chiriei s-ar fi citit pe jumătate. Dacă există deja o categorie care
- * diferă doar prin majuscule, se folosește aceea.
- */
-async function categoriaCeruta(ex: Executor, valoare: unknown): Promise<string> {
-  const categorie = ceruteText(valoare, 'categorie', 'Categoria')
-  const existenta = await unuSauNimic<{ categorie: string }>(
-    ex,
-    `SELECT categorie FROM cheltuiala WHERE lower(categorie) = lower($1)
-     ORDER BY creat_la LIMIT 1`,
-    [categorie],
-  )
-  return existenta?.categorie ?? categorie
+/** Categoria, obligatorie, lipită de una existentă — vezi `categoriaFolosita`. */
+function categoriaCeruta(ex: Executor, valoare: unknown): Promise<string> {
+  return categoriaFolosita(ex, 'cheltuiala', ceruteText(valoare, 'categorie', 'Categoria'))
 }
 
 // ---------------------------------------------------------------------------

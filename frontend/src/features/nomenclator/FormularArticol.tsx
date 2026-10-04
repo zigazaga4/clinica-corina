@@ -1,7 +1,8 @@
-import { useId, useState, type FormEvent } from 'react'
+import { useId, useMemo, useState, type FormEvent } from 'react'
 import type { DateArticolNou } from '@/api/contract'
-import { useCreeazaArticol, useModificaArticol } from '@/app/queries'
+import { useArticole, useCreeazaArticol, useModificaArticol } from '@/app/queries'
 import { GrilaFormular, PeToataLatimea } from '@/components/Pagina'
+import { categoriileProduselor, FARA_CATEGORIE } from '@/domain/categorii'
 import { etichetaTipArticol } from '@/domain/labels'
 import { TIP_ARTICOL, type Articol, type TipArticol } from '@/domain/types'
 import { useEroriFormular } from '@/lib/formular'
@@ -10,14 +11,22 @@ import {
   Buton,
   ButonGrup,
   Camp,
+  Combobox,
   Comutator,
   GrupButoane,
   Input,
   Modala,
   useNotificari,
+  type OptiuneCombobox,
 } from '@/ui'
 
-type CampArticol = 'denumire' | 'durata_minute' | 'pret_lista' | 'numar_sedinte'
+type CampArticol = 'denumire' | 'durata_minute' | 'pret_lista' | 'numar_sedinte' | 'categorie'
+
+/**
+ * Listele de prețuri cerute de clinică, propuse și înainte de primul produs
+ * pus pe ele. După aceea, lista e făcută din categoriile folosite.
+ */
+const CATEGORII_OBISNUITE = ['Produse clienți', 'Produse colaboratori']
 
 /**
  * Adăugarea și modificarea unui articol (serviciu sau produs).
@@ -29,12 +38,15 @@ type CampArticol = 'denumire' | 'durata_minute' | 'pret_lista' | 'numar_sedinte'
 export function FormularArticol({
   articol,
   tipInitial = 'serviciu',
+  categorieInitiala = null,
   onInchide,
 }: {
   /** null = articol nou. */
   articol: Articol | null
   /** Tipul propus pentru un articol nou — fila din care s-a pornit. */
   tipInitial?: TipArticol
+  /** Categoria propusă unui produs nou — filtrul din care s-a pornit. */
+  categorieInitiala?: string | null
   onInchide: () => void
 }) {
   const idFormular = useId()
@@ -42,6 +54,8 @@ export function FormularArticol({
   const erori = useEroriFormular<CampArticol>()
   const creeaza = useCreeazaArticol()
   const modifica = useModificaArticol()
+  // Aceeași listă pe care o are deja deschisă Nomenclatorul — fără cerere nouă.
+  const produse = useArticole({ tip: 'produs' })
 
   const [tip, setTip] = useState<TipArticol>(articol?.tip ?? tipInitial)
   const [denumire, setDenumire] = useState(articol?.denumire ?? '')
@@ -51,8 +65,22 @@ export function FormularArticol({
   const [pret, setPret] = useState(articol ? String(articol.pret_lista) : '')
   const [numarSedinte, setNumarSedinte] = useState(articol ? String(articol.numar_sedinte) : '1')
   const [activ, setActiv] = useState(articol?.activ ?? true)
+  const [categorie, setCategorie] = useState<string | null>(
+    articol ? articol.categorie : categorieInitiala,
+  )
 
   const seTrimite = creeaza.isPending || modifica.isPending
+
+  const optiuniCategorie = useMemo<OptiuneCombobox<string>[]>(() => {
+    const folosite = categoriileProduselor(produse.data ?? [])
+    const toate = [
+      ...folosite,
+      ...CATEGORII_OBISNUITE.filter((c) => !folosite.some((f) => f.toLowerCase() === c.toLowerCase())),
+    ]
+    // Categoria scrisă acum, care nu există încă pe niciun produs.
+    if (categorie && !toate.includes(categorie)) toate.push(categorie)
+    return toate.map((c) => ({ valoare: c, eticheta: c }))
+  }, [produse.data, categorie])
 
   const schimbaTip = (nou: TipArticol) => {
     setTip(nou)
@@ -65,6 +93,10 @@ export function FormularArticol({
       setNumarSedinte('1')
       erori.setCamp('durata_minute', null)
       erori.setCamp('numar_sedinte', null)
+    } else {
+      // Și invers: categoria este doar a produselor (articol_categorie_ck).
+      setCategorie(null)
+      erori.setCamp('categorie', null)
     }
   }
 
@@ -119,6 +151,7 @@ export function FormularArticol({
       pret_lista: pretNumar,
       activ,
       numar_sedinte: tip === 'serviciu' ? (sedinteNumar ?? 1) : 1,
+      categorie: tip === 'produs' ? categorie : null,
     }
 
     try {
@@ -262,6 +295,28 @@ export function FormularArticol({
               eroare={erori.peCamp.numar_sedinte}
               ajutor="1 = o singură venire. Peste 1, serviciul se face ca tratament, în mai multe programări."
             />
+          )}
+
+          {/*
+            Lista de prețuri a produsului. Aceeași cremă, la alt preț pentru
+            colaboratori, este un al doilea produs, în cealaltă categorie.
+          */}
+          {tip === 'produs' && (
+            <PeToataLatimea>
+              <Combobox
+                eticheta="Categorie"
+                optiuni={optiuniCategorie}
+                valoare={categorie}
+                onSchimba={setCategorie}
+                cuGolire
+                placeholder={FARA_CATEGORIE}
+                onCreare={(text) => setCategorie(text.trim())}
+                etichetaCreare={(text) => `Categorie nouă: „${text.trim()}”`}
+                disabled={seTrimite}
+                eroare={erori.peCamp.categorie ?? null}
+                ajutor="Lista de prețuri: la vânzare, produsele apar grupate pe categorii."
+              />
+            </PeToataLatimea>
           )}
 
           <PeToataLatimea>

@@ -241,7 +241,7 @@ async function ruleaza(): Promise<void> {
   // împărțit pe tratament și se verifică separat, mai jos.
   const serviciu = articole.corp.find((a: any) => a.numar_sedinte === 1) ?? articole.corp[0]
   verifica('articolul are toate coloanele',
-    ['id', 'tip', 'denumire', 'durata_minute', 'pret_lista', 'activ', 'creat_la', 'actualizat_la', 'numar_sedinte']
+    ['id', 'tip', 'denumire', 'durata_minute', 'pret_lista', 'activ', 'creat_la', 'actualizat_la', 'numar_sedinte', 'categorie']
       .every((c) => c in (serviciu ?? {})),
     JSON.stringify(serviciu))
   verifica('pret_lista este NUMĂR, nu text', typeof serviciu?.pret_lista === 'number',
@@ -265,6 +265,69 @@ async function ruleaza(): Promise<void> {
   verifica('produs cu durată -> 400 pe „durata_minute”',
     durataGresita.status === 400 && durataGresita.corp?.camp === 'durata_minute',
     JSON.stringify(durataGresita.corp))
+
+  // -------------------------------------------------------------------------
+  console.log('\nCategorii de produse — listele de prețuri')
+
+  // Inactive, ca să nu umple selectoarele bazei de test la fiecare rulare.
+  const listaPreturi = `Lista test ${Date.now()}`
+  const pentruClienti = await cere('POST', '/articole', {
+    token: admin,
+    corp: { tip: 'produs', denumire: 'Cremă Botox 250 ml', pret_lista: 290, activ: false, categorie: `  ${listaPreturi} ` },
+  })
+  verifica('produs cu categorie -> 201, categoria fără spațiile de la capete',
+    pentruClienti.status === 201 && pentruClienti.corp?.categorie === listaPreturi,
+    JSON.stringify(pentruClienti.corp))
+
+  const pentruColaboratori = await cere('POST', '/articole', {
+    token: admin,
+    corp: { tip: 'produs', denumire: 'Cremă Botox 250 ml', pret_lista: 185, activ: false, categorie: `${listaPreturi} colaboratori` },
+  })
+  verifica('aceeași cremă, pe altă listă, cu alt preț -> al doilea produs',
+    pentruColaboratori.status === 201 && pentruColaboratori.corp?.id !== pentruClienti.corp?.id &&
+      pentruColaboratori.corp?.pret_lista === 185,
+    JSON.stringify(pentruColaboratori.corp))
+
+  const altfelScrisa = await cere('POST', '/articole', {
+    token: admin,
+    corp: { tip: 'produs', denumire: 'Ser Botox 30 ml', pret_lista: 210, activ: false, categorie: listaPreturi.toUpperCase() },
+  })
+  verifica('categoria scrisă altfel doar prin majuscule se lipește de cea existentă',
+    altfelScrisa.status === 201 && altfelScrisa.corp?.categorie === listaPreturi,
+    JSON.stringify(altfelScrisa.corp?.categorie))
+
+  const serviciuCuCategorie = await cere('POST', '/articole', {
+    token: admin,
+    corp: { tip: 'serviciu', denumire: 'Serviciu cu categorie', pret_lista: 100, durata_minute: 30, categorie: listaPreturi },
+  })
+  verifica('serviciu cu categorie -> 400 pe „categorie”',
+    serviciuCuCategorie.status === 400 && serviciuCuCategorie.corp?.camp === 'categorie',
+    JSON.stringify(serviciuCuCategorie.corp))
+
+  const vazutDeOperator = await cere('GET', '/articole?tip=produs&activ=false', { token: operator })
+  verifica('recepția vede categoria fiecărui produs',
+    vazutDeOperator.corp?.find((a: any) => a.id === pentruColaboratori.corp?.id)?.categorie === `${listaPreturi} colaboratori`)
+
+  const faraCategorie = await cere('PATCH', `/articole/${altfelScrisa.corp?.id}`, {
+    token: admin, corp: { categorie: '' },
+  })
+  verifica('categoria golită -> produs fără categorie (null)',
+    faraCategorie.status === 200 && faraCategorie.corp?.categorie === null,
+    JSON.stringify(faraCategorie.corp))
+
+  const devenitServiciu = await cere('PATCH', `/articole/${pentruClienti.corp?.id}`, {
+    token: admin, corp: { tip: 'serviciu', durata_minute: 30 },
+  })
+  verifica('produsul devenit serviciu își pierde categoria',
+    devenitServiciu.status === 200 && devenitServiciu.corp?.categorie === null,
+    JSON.stringify(devenitServiciu.corp))
+
+  const categoriePeServiciu = await cere('PATCH', `/articole/${pentruClienti.corp?.id}`, {
+    token: admin, corp: { categorie: listaPreturi },
+  })
+  verifica('categorie pusă pe un serviciu -> 400 pe „categorie”',
+    categoriePeServiciu.status === 400 && categoriePeServiciu.corp?.camp === 'categorie',
+    JSON.stringify(categoriePeServiciu.corp))
 
   // -------------------------------------------------------------------------
   console.log('\nClienți')

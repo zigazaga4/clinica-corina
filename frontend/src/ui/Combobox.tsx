@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Plus, Search } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useInchidereExterna } from '@/lib/hooks'
@@ -27,6 +27,29 @@ export interface OptiuneCombobox<V extends string> {
   /** Marcaj în dreapta: „inactiv”, tipul articolului. */
   insemn?: ReactNode
   dezactivata?: boolean
+  /**
+   * Titlul sub care stă opțiunea în listă — categoria produsului.
+   *
+   * Opțiunile cu același grup se strâng sub un singur titlu, grupurile în
+   * ordinea în care apar prima dată. Căutarea găsește și după grup: „colab”
+   * aduce toată lista colaboratorilor.
+   */
+  grup?: string
+}
+
+/**
+ * Opțiunile, cu grupurile strânse laolaltă: fiecare grup unde apare prima
+ * dată, iar în el ordinea primită. Fără grupuri, lista rămâne neatinsă.
+ */
+function strangeGrupurile<V extends string>(optiuni: OptiuneCombobox<V>[]): OptiuneCombobox<V>[] {
+  if (!optiuni.some((o) => o.grup !== undefined)) return optiuni
+  const grupuri = new Map<string | undefined, OptiuneCombobox<V>[]>()
+  for (const o of optiuni) {
+    const grup = grupuri.get(o.grup)
+    if (grup) grup.push(o)
+    else grupuri.set(o.grup, [o])
+  }
+  return [...grupuri.values()].flat()
 }
 
 export interface ComboboxProps<V extends string> {
@@ -66,6 +89,11 @@ export interface ComboboxProps<V extends string> {
   onCreare?: (text: string) => void
   /** Textul rândului de creare; implicit „Adaugă „<text>””. */
   etichetaCreare?: (text: string) => string
+  /**
+   * Numele câmpului pentru cititorul de ecran, când n-are etichetă vizibilă —
+   * în barele de filtre, ca și căutarea de lângă el.
+   */
+  'aria-label'?: string
   className?: string
 }
 
@@ -85,6 +113,7 @@ export function Combobox<V extends string>({
   incarca = false,
   onCreare,
   etichetaCreare = (text) => `Adaugă „${text}”`,
+  'aria-label': etichetaAccesibila,
   className,
 }: ComboboxProps<V>) {
   const [deschis, setDeschis] = useState(false)
@@ -108,9 +137,14 @@ export function Combobox<V extends string>({
 
   const filtrate = useMemo(() => {
     // Filtrarea pe server exclude filtrarea locală — vezi `onCautare`.
-    if (onCautare || cautare.trim() === '') return optiuni
-    return optiuni.filter(
-      (o) => contine(o.eticheta, cautare) || contine(o.descriere ?? '', cautare),
+    if (onCautare || cautare.trim() === '') return strangeGrupurile(optiuni)
+    return strangeGrupurile(
+      optiuni.filter(
+        (o) =>
+          contine(o.eticheta, cautare) ||
+          contine(o.descriere ?? '', cautare) ||
+          contine(o.grup ?? '', cautare),
+      ),
     )
   }, [optiuni, cautare, onCautare])
 
@@ -141,14 +175,17 @@ export function Combobox<V extends string>({
   // listă, și se reașază când lista se schimbă sub ea.
   useEffect(() => {
     if (!deschis) return
-    const pozitie = optiuni.findIndex((o) => o.valoare === valoare)
+    // Poziția din lista AFIȘATĂ, cu grupurile strânse — nu din cea primită.
+    const pozitie = strangeGrupurile(optiuni).findIndex((o) => o.valoare === valoare)
     setIndexActiv(pozitie >= 0 ? pozitie : 0)
   }, [deschis, optiuni, valoare])
 
-  // Ține opțiunea evidențiată în câmpul vizibil la navigarea cu săgeți.
+  // Ține opțiunea evidențiată în câmpul vizibil la navigarea cu săgeți. După
+  // `data-index`, nu după poziția în listă: titlurile de grup și rândul de
+  // golire sunt și ele copii ai listei.
   useEffect(() => {
     if (!deschis) return
-    const element = refLista.current?.children[indexActiv]
+    const element = refLista.current?.querySelector(`[data-index="${indexActiv}"]`)
     element?.scrollIntoView({ block: 'nearest' })
   }, [indexActiv, deschis])
 
@@ -192,6 +229,7 @@ export function Combobox<V extends string>({
             id={id}
             type="button"
             role="combobox"
+            aria-label={etichetaAccesibila}
             aria-expanded={deschis}
             aria-haspopup="listbox"
             aria-describedby={descrisDe}
@@ -270,37 +308,56 @@ export function Combobox<V extends string>({
 
                 {filtrate.map((optiune, index) => {
                   const aleasa = optiune.valoare === valoare
+                  const grupNou =
+                    optiune.grup !== undefined && optiune.grup !== filtrate[index - 1]?.grup
                   return (
-                    <li key={optiune.valoare}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={aleasa}
-                        disabled={optiune.dezactivata}
-                        onClick={() => alege(optiune)}
-                        onMouseEnter={() => setIndexActiv(index)}
-                        className={cn(
-                          'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left',
-                          'transition-colors disabled:pointer-events-none disabled:opacity-40',
-                          index === indexActiv && 'bg-muted',
-                        )}
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm text-ink">
-                            {optiune.eticheta}
-                          </span>
-                          {optiune.descriere && (
-                            <span className="block truncate text-[12px] text-ink-faint">
-                              {optiune.descriere}
-                            </span>
+                    <Fragment key={optiune.valoare}>
+                      {grupNou && (
+                        <li
+                          role="presentation"
+                          className={cn(
+                            'px-2.5 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-faint uppercase',
+                            index > 0 && 'mt-1 border-t border-line pt-2.5',
                           )}
-                        </span>
-                        {optiune.insemn}
-                        {aleasa && (
-                          <Check className="size-4 shrink-0 text-primary-600" aria-hidden />
-                        )}
-                      </button>
-                    </li>
+                        >
+                          {optiune.grup}
+                        </li>
+                      )}
+                      <li data-index={index}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={aleasa}
+                          disabled={optiune.dezactivata}
+                          onClick={() => alege(optiune)}
+                          onMouseEnter={() => setIndexActiv(index)}
+                          className={cn(
+                            'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left',
+                            'transition-colors disabled:pointer-events-none disabled:opacity-40',
+                            index === indexActiv && 'bg-muted',
+                          )}
+                        >
+                          <span className="min-w-0 flex-1">
+                            {/*
+                              Pe două rânduri, nu tăiată: „Antiage Cremă … 250 ml”
+                              și „… 50 ml” ar fi arătat la fel, cu capătul ascuns.
+                            */}
+                            <span className="line-clamp-2 text-sm text-ink">
+                              {optiune.eticheta}
+                            </span>
+                            {optiune.descriere && (
+                              <span className="block truncate text-[12px] text-ink-faint">
+                                {optiune.descriere}
+                              </span>
+                            )}
+                          </span>
+                          {optiune.insemn}
+                          {aleasa && (
+                            <Check className="size-4 shrink-0 text-primary-600" aria-hidden />
+                          )}
+                        </button>
+                      </li>
+                    </Fragment>
                   )
                 })}
 

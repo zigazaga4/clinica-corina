@@ -112,6 +112,12 @@ export interface Articol {
    * o parte din `pret_lista`.
    */
   numar_sedinte: number
+  /**
+   * Lista de prețuri a produsului — „Produse clienți”, „Produse colaboratori”.
+   * Aceeași cremă poate sta pe amândouă, ca două rânduri cu prețuri diferite.
+   * Text liber; NULL = fără categorie. Serviciile n-au (articol_categorie_ck).
+   */
+  categorie: string | null
 }
 
 /** Tabela `client` — fișa de client. */
@@ -621,6 +627,8 @@ export interface PerioadaStatistici {
 export interface StatisticaArticol {
   articol_id: Uuid
   denumire: string
+  /** A produsului: aceeași cremă poate fi vândută din două liste de prețuri. */
+  categorie: string | null
   /** Ședințe încasate (servicii) sau bucăți vândute (produse). */
   cantitate: number
   suma: number

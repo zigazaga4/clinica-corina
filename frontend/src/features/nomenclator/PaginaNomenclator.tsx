@@ -4,6 +4,7 @@ import { mesajEroare } from '@/api/errors'
 import { useAutentificare } from '@/app/auth'
 import { useArticole } from '@/app/queries'
 import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
+import { categoriileProduselor, FARA_CATEGORIE } from '@/domain/categorii'
 import type { Articol } from '@/domain/types'
 import { contine } from '@/lib/text'
 import {
@@ -11,10 +12,12 @@ import {
   ButonGrup,
   Card,
   CampCautare,
+  Combobox,
   File,
   GrupButoane,
   StareGoala,
   type Fila,
+  type OptiuneCombobox,
 } from '@/ui'
 import { FormularVanzare } from '../vanzari/FormularVanzare'
 import { VanzariNeachitate } from '../vanzari/VanzariNeachitate'
@@ -41,7 +44,13 @@ import { ListaArticole } from './liste'
   recepția când îi dă unei cliente niște creme (așa a desenat-o clinica:
   „Nomenclator → Produse → Maria → Cremă 50 ml / 150 RON”). Formularul este
   cel din „Încasări”, nu o copie.
+
+  Produsele au categorii — listele de prețuri ale clinicii, „Produse clienți”
+  și „Produse colaboratori” — cu filtru și coloană proprie pe aceeași filă.
 */
+
+/** Valoarea filtrului pentru produsele fără categorie: nicio categorie nu e goală. */
+const FILTRU_FARA_CATEGORIE = ''
 
 type FilaNomenclator = 'servicii' | 'produse'
 type FiltruStare = 'toate' | 'active' | 'inactive'
@@ -58,6 +67,8 @@ export function PaginaNomenclator() {
   const [fila, setFila] = useState<FilaNomenclator>('servicii')
   const [cautare, setCautare] = useState('')
   const [stare, setStare] = useState<FiltruStare>('toate')
+  // null = toate categoriile; FILTRU_FARA_CATEGORIE = doar cele fără.
+  const [categorie, setCategorie] = useState<string | null>(null)
 
   // `'nou'` distinge „formular deschis pentru o înregistrare nouă” de „închis”.
   const [articolEditat, setArticolEditat] = useState<Articol | 'nou' | null>(null)
@@ -79,9 +90,30 @@ export function PaginaNomenclator() {
     () => (servicii.data ?? []).filter((articol) => contine(articol.denumire, cautare)),
     [servicii.data, cautare],
   )
+  // Categoriile se citesc din produse — vezi @/domain/categorii.
+  const optiuniCategorie = useMemo<OptiuneCombobox<string>[]>(() => {
+    const toate = produse.data ?? []
+    return [
+      ...categoriileProduselor(toate).map((c) => ({ valoare: c, eticheta: c })),
+      ...(toate.some((a) => a.categorie === null)
+        ? [{ valoare: FILTRU_FARA_CATEGORIE, eticheta: FARA_CATEGORIE }]
+        : []),
+    ]
+  }, [produse.data])
+  const areCategorii = optiuniCategorie.some((o) => o.valoare !== FILTRU_FARA_CATEGORIE)
+  // O categorie aleasă care nu mai are produse (s-a schimbat filtrul de stare)
+  // nu mai filtrează: câmpul ar arăta „Toate categoriile” peste o listă tăiată.
+  const categorieActiva =
+    categorie !== null && optiuniCategorie.some((o) => o.valoare === categorie) ? categorie : null
+
   const produseFiltrate = useMemo(
-    () => (produse.data ?? []).filter((articol) => contine(articol.denumire, cautare)),
-    [produse.data, cautare],
+    () =>
+      (produse.data ?? []).filter(
+        (articol) =>
+          contine(articol.denumire, cautare) &&
+          (categorieActiva === null || (articol.categorie ?? FILTRU_FARA_CATEGORIE) === categorieActiva),
+      ),
+    [produse.data, cautare, categorieActiva],
   )
 
   const file: Fila<FilaNomenclator>[] = [
@@ -94,10 +126,12 @@ export function PaginaNomenclator() {
     porneste: () => setArticolEditat('nou'),
   }
 
-  const areFiltre = cautare.trim() !== '' || stare !== 'toate'
+  const filtruCategorie = fila === 'produse' ? categorieActiva : null
+  const areFiltre = cautare.trim() !== '' || stare !== 'toate' || filtruCategorie !== null
   const golesteFiltrele = () => {
     setCautare('')
     setStare('toate')
+    setCategorie(null)
   }
 
   // Lista goală din cauza filtrelor și lista goală pentru că nu s-a creat încă
@@ -108,7 +142,7 @@ export function PaginaNomenclator() {
       titlu={areFiltre ? 'Niciun rezultat' : titluGol}
       descriere={
         areFiltre
-          ? 'Niciun rând nu corespunde căutării sau filtrului de stare.'
+          ? 'Niciun rând nu corespunde căutării sau filtrelor.'
           : descriereGoala
       }
       {...(areFiltre
@@ -172,6 +206,17 @@ export function PaginaNomenclator() {
             </ButonGrup>
           ))}
         </GrupButoane>
+        {fila === 'produse' && areCategorii && (
+          <Combobox
+            optiuni={optiuniCategorie}
+            valoare={categorieActiva}
+            onSchimba={setCategorie}
+            cuGolire
+            placeholder="Toate categoriile"
+            aria-label="Filtrare după categorie"
+            className="w-56"
+          />
+        )}
       </BaraFiltre>
 
       {!esteAdministrator && (
@@ -225,6 +270,8 @@ export function PaginaNomenclator() {
         <FormularArticol
           articol={articolEditat === 'nou' ? null : articolEditat}
           tipInitial={fila === 'produse' ? 'produs' : 'serviciu'}
+          // Produsul nou pornit din lista colaboratorilor intră în ea.
+          categorieInitiala={filtruCategorie || null}
           onInchide={() => setArticolEditat(null)}
         />
       )}

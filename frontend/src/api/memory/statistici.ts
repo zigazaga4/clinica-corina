@@ -217,6 +217,7 @@ function articole(linii: LinieIncasata[], tip: 'serviciu' | 'produs'): Statistic
     (l): StatisticaArticol => ({
       articol_id: l.linie.articol_id,
       denumire: magazin.articol.get(l.linie.articol_id)?.denumire ?? '—',
+      categorie: magazin.articol.get(l.linie.articol_id)?.categorie ?? null,
       cantitate: 0,
       suma: 0,
     }),

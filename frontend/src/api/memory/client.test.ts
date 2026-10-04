@@ -370,6 +370,52 @@ describe('articol_durata_ck', () => {
   })
 })
 
+describe('articol_categorie_ck — listele de prețuri ale produselor', () => {
+  beforeEach(async () => {
+    await autentificaCa(ADMIN)
+  })
+
+  it('aceeași cremă stă pe amândouă listele, cu prețuri diferite', async () => {
+    const clienti = await api.articole.create({
+      tip: 'produs', denumire: 'Cremă Botox 250 ml', pret_lista: 290, categorie: 'Produse clienți',
+    })
+    const colaboratori = await api.articole.create({
+      tip: 'produs', denumire: 'Cremă Botox 250 ml', pret_lista: 185, categorie: 'Produse colaboratori',
+    })
+    expect(clienti.id).not.toBe(colaboratori.id)
+    expect([clienti.categorie, colaboratori.categorie]).toEqual(['Produse clienți', 'Produse colaboratori'])
+  })
+
+  it('scrisă altfel doar prin majuscule, se lipește de categoria existentă; goală = fără', async () => {
+    const produs = await api.articole.create({
+      tip: 'produs', denumire: 'Ser de probă', pret_lista: 100, categorie: '  produse CLIENȚI ',
+    })
+    expect(produs.categorie).toBe('Produse clienți')
+    expect((await api.articole.update(produs.id, { categorie: '   ' })).categorie).toBeNull()
+  })
+
+  it('refuză categoria pe un serviciu, și la creare, și la modificare', async () => {
+    const laCreare = await api.articole
+      .create({ tip: 'serviciu', denumire: 'Masaj', pret_lista: 100, durata_minute: 30, categorie: 'X' })
+      .catch((e) => e)
+    expect(esteEroareApi(laCreare) && laCreare.camp).toBe('categorie')
+
+    const serviciu = await api.articole.create({
+      tip: 'serviciu', denumire: 'Masaj', pret_lista: 100, durata_minute: 30,
+    })
+    const laModificare = await api.articole.update(serviciu.id, { categorie: 'X' }).catch((e) => e)
+    expect(esteEroareApi(laModificare) && laModificare.camp).toBe('categorie')
+  })
+
+  it('produsul devenit serviciu își pierde categoria', async () => {
+    const produs = await api.articole.create({
+      tip: 'produs', denumire: 'Temporar', pret_lista: 50, categorie: 'Produse clienți',
+    })
+    const dupa = await api.articole.update(produs.id, { tip: 'serviciu', durata_minute: 30 })
+    expect(dupa.categorie).toBeNull()
+  })
+})
+
 describe('clienți: arhivare și ON DELETE RESTRICT', () => {
   beforeEach(async () => {
     await autentificaCa(ADMIN)

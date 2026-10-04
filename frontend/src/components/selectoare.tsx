@@ -7,6 +7,7 @@ import {
   useUtilizatori,
 } from '@/app/queries'
 import { useAutentificare } from '@/app/auth'
+import { comparaCategorii, FARA_CATEGORIE } from '@/domain/categorii'
 import { etichetaTipArticol, tonTipArticol } from '@/domain/labels'
 import type { TipArticol, Uuid } from '@/domain/types'
 import { useIntarziat } from '@/lib/hooks'
@@ -250,23 +251,35 @@ export function SelectorArticol({
     }
   }
 
-  const optiuni = useMemo<OptiuneCombobox<Uuid>[]>(
-    () =>
-      cuRandulNou(
-        (data ?? []).map((a) => ({
-          valoare: a.id,
-          eticheta: a.denumire,
-          descriere: descriereArticol(a.tip, a.durata_minute, a.pret_lista),
-          // Insemnul de tip apare doar în listele mixte; într-una filtrată pe tip
-          // ar repeta aceeași informație pe fiecare rând.
-          insemn: tip ? undefined : (
-            <Badge ton={tonTipArticol[a.tip]}>{etichetaTipArticol[a.tip]}</Badge>
-          ),
-        })),
-        creatRecent,
-      ),
-    [data, tip, creatRecent],
-  )
+  const optiuni = useMemo<OptiuneCombobox<Uuid>[]>(() => {
+    const articole = data ?? []
+    /*
+      Produsele, pe listele lor de prețuri. Aceeași cremă stă și la „Produse
+      clienți”, și la „Produse colaboratori”, cu alt preț: fără titlul grupului,
+      recepția ar vedea două rânduri identice și ar alege la noroc. Fără nicio
+      categorie folosită, lista rămâne simplă, fără titluri. Doar în listele
+      de produse: în cele mixte (filtrul din „Încasări”) serviciile își țin
+      locul, iar prețul de pe al doilea rând deosebește cele două variante.
+    */
+    const peCategorii = tip === 'produs' && articole.some((a) => a.categorie !== null)
+    const ordonate = peCategorii
+      ? [...articole].sort((a, b) => comparaCategorii(a.categorie, b.categorie))
+      : articole
+    return cuRandulNou(
+      ordonate.map((a) => ({
+        valoare: a.id,
+        eticheta: a.denumire,
+        descriere: descriereArticol(a.tip, a.durata_minute, a.pret_lista),
+        // Insemnul de tip apare doar în listele mixte; într-una filtrată pe tip
+        // ar repeta aceeași informație pe fiecare rând.
+        insemn: tip ? undefined : (
+          <Badge ton={tonTipArticol[a.tip]}>{etichetaTipArticol[a.tip]}</Badge>
+        ),
+        ...(peCategorii ? { grup: a.categorie ?? FARA_CATEGORIE } : {}),
+      })),
+      creatRecent,
+    )
+  }, [data, tip, creatRecent])
 
   return (
     <Combobox

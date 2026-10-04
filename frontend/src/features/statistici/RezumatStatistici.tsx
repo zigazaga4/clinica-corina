@@ -108,7 +108,9 @@ function Raport({ raport, incarca }: { raport: RaportStatistici; incarca: boolea
             descriere="Produsele vândute și încasate."
             randuri={raport.produse.map((p) => ({
               cheie: p.articol_id,
-              eticheta: p.denumire,
+              // Aceeași cremă se vinde din două liste de prețuri — două rânduri
+              // cu același nume, deosebite doar de categorie.
+              eticheta: p.categorie ? `${p.denumire} · ${p.categorie}` : p.denumire,
               valoare: p.suma,
               detaliu: `${numar(p.cantitate)} buc.`,
             }))}

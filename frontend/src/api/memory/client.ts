@@ -84,6 +84,7 @@ import type {
   RaportStatistici,
   StareProgramare,
   Timestamptz,
+  TipArticol,
   Tratament,
   TratamentDetaliu,
   Utilizator,
@@ -296,15 +297,34 @@ function areAccesStatistici(): boolean {
 const ENTITATI_CU_BANI = new Set(['cheltuiala'])
 
 /**
- * Categoria cheltuielii, scrisă ca data trecută: „chirie” se lipește de
- * „Chirie”, altfel graficul ar fi arătat chiria în două felii.
+ * Categoria, scrisă ca data trecută: „chirie” se lipește de „Chirie”, altfel
+ * graficul ar fi arătat chiria în două felii — și „produse clienti” de
+ * „Produse clienți”, altfel nomenclatorul ar fi avut două liste de prețuri.
+ * Cea mai veche câștigă, ca pe server (`categoriaFolosita`).
  */
-function categoriaCheltuielii(valoare: string | undefined): string {
-  const categorie = ceruteText(valoare, 'categorie', 'Categoria')
-  const existenta = [...magazin.cheltuiala.values()]
-    .filter((c) => c.categorie.toLowerCase() === categorie.toLowerCase())
+function categoriaFolosita(
+  randuri: Iterable<{ categorie: string | null; creat_la: string }>,
+  categorie: string,
+): string {
+  const existenta = [...randuri]
+    .filter((r) => r.categorie?.toLowerCase() === categorie.toLowerCase())
     .sort((a, b) => a.creat_la.localeCompare(b.creat_la))[0]
   return existenta?.categorie ?? categorie
+}
+
+function categoriaCheltuielii(valoare: string | undefined): string {
+  return categoriaFolosita(magazin.cheltuiala.values(), ceruteText(valoare, 'categorie', 'Categoria'))
+}
+
+/**
+ * CONSTRAINT articol_categorie_ck: doar produsele au categorie. Lipsă sau
+ * goală = fără; pusă pe un serviciu se refuză, ca durata pe un produs.
+ */
+function categoriaArticolului(tip: TipArticol, trimisa: string | null | undefined): string | null {
+  const categorie = trimisa?.trim() ?? ''
+  if (categorie === '') return null
+  if (tip !== 'produs') throw eroareValidare('Doar produsele au categorie.', 'categorie')
+  return categoriaFolosita(magazin.articol.values(), categorie)
 }
 
 // ---------------------------------------------------------------------------
@@ -2063,6 +2083,7 @@ export function creeazaApiInMemorie(): ApiClient {
           creat_la: acum(),
           actualizat_la: acum(),
           numar_sedinte,
+          categorie: categoriaArticolului(date.tip, date.categorie),
         }
         magazin.articol.set(rand.id, rand)
 
@@ -2104,8 +2125,15 @@ export function creeazaApiInMemorie(): ApiClient {
           date.numar_sedinte !== undefined
             ? verificaNumarSedinte(date.numar_sedinte, tip)
             : tip === 'produs' ? 1 : rand.numar_sedinte
+        // Și categoria: un produs devenit serviciu o pierde; trimisă explicit
+        // pe un serviciu, se refuză.
+        const categorie =
+          date.categorie !== undefined
+            ? categoriaArticolului(tip, date.categorie)
+            : tip === 'produs' ? rand.categorie : null
 
         rand.tip = tip
+        rand.categorie = categorie
         rand.durata_minute = durata ?? null
         rand.numar_sedinte = numar_sedinte
         if (date.denumire !== undefined) {

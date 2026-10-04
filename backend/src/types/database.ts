@@ -64,6 +64,8 @@ export interface Articol {
   actualizat_la: string
   /** În câte ședințe se face serviciul; 1 = o singură venire. Produsele: 1. */
   numar_sedinte: number
+  /** Lista de prețuri a produsului („Produse clienți”); NULL = fără. Serviciile: NULL. */
+  categorie: string | null
 }
 
 export interface Client {
@@ -411,6 +413,8 @@ export interface PerioadaStatistici {
 export interface StatisticaArticol {
   articol_id: string
   denumire: string
+  /** A produsului — aceeași cremă poate fi vândută din două liste de prețuri. */
+  categorie: string | null
   cantitate: number
   suma: number
 }

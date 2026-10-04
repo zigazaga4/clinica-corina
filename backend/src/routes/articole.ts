@@ -8,12 +8,14 @@
 
 import { Router, Response } from 'express'
 import pool, { alege, dynamicInsert, dynamicUpdate, multe, tranzactie, unu, type Executor } from '../lib/db.js'
+import { categoriaFolosita } from '../lib/categorii.js'
 import { eroareConflict, eroareValidare, ruta } from '../lib/erori.js'
 import { boolDin, Conditii, textDin } from '../lib/filtre.js'
 import { adresaCererii, diferenta, instantaneu, scrieJurnal } from '../lib/jurnal.js'
 import {
   ceruteText,
   numarCerut,
+  textOptional,
   verificaDurataArticol,
   verificaNumarSedinte,
   verificaPret,
@@ -25,7 +27,22 @@ import type { Articol, TipArticol } from '../types/database.js'
 const router = Router()
 router.use(requireAuth)
 
-const CAMPURI = ['tip', 'denumire', 'durata_minute', 'pret_lista', 'activ', 'numar_sedinte'] as const
+const CAMPURI = ['tip', 'denumire', 'durata_minute', 'pret_lista', 'activ', 'numar_sedinte', 'categorie'] as const
+
+/**
+ * CONSTRAINT articol_categorie_ck: doar produsele au categorie — lista de
+ * prețuri din care fac parte („Produse clienți”, „Produse colaboratori”).
+ *
+ * Lipsă sau goală = fără categorie. Ca durata pe un produs, o categorie pusă
+ * pe un serviciu se refuză, nu se curăță în tăcere. Scrisă altfel decât una
+ * existentă doar prin majuscule, se lipește de aceea.
+ */
+async function categoriaPentru(ex: Executor, tip: TipArticol, trimisa: unknown): Promise<string | null> {
+  const categorie = textOptional(trimisa, 'categorie', 'Categoria')
+  if (categorie === null) return null
+  if (tip !== 'produs') throw eroareValidare('Doar produsele au categorie.', 'categorie')
+  return categoriaFolosita(ex, 'articol', categorie)
+}
 
 /**
  * CONSTRAINT articol_sedinte_ck: un serviciu se face în cel puțin o ședință,
@@ -90,6 +107,7 @@ router.post('/', requireRole('administrator'), ruta(async (req: AuthRequest, res
       pret_lista,
       activ: corp['activ'] === undefined ? true : Boolean(corp['activ']),
       numar_sedinte,
+      categorie: await categoriaPentru(ex, tip, corp['categorie']),
     })
     const { rows } = await ex.query<Articol>(q.text, q.values)
     const rand = rows[0]!
@@ -143,6 +161,13 @@ router.patch('/:id', requireRole('administrator'), ruta(async (req: AuthRequest,
     date['durata_minute'] = durata
     // Ca durata: un serviciu devenit produs coboară la o singură ședință.
     date['numar_sedinte'] = numarSedintePentru(tip, date['numar_sedinte'], inainte.numar_sedinte)
+    // Și categoria: un produs devenit serviciu o pierde; trimisă explicit pe un
+    // serviciu, se refuză.
+    if (date['categorie'] !== undefined) {
+      date['categorie'] = await categoriaPentru(ex, tip, date['categorie'])
+    } else if (tip !== 'produs') {
+      date['categorie'] = null
+    }
     if (date['denumire'] !== undefined) {
       date['denumire'] = ceruteText(date['denumire'], 'denumire', 'Denumirea')
     }

@@ -74,6 +74,8 @@ async function ruleaza(): Promise<void> {
     // Semnul migrației statisticilor: fără ele, profitul ar primi cheltuieli de zero lei.
     'cheltuiala_suma_ck',
     'cheltuiala_data_idx',
+    // Semnul migrației 2026-10-04: fără ea, produsele n-au liste de prețuri.
+    'articol_categorie_ck',
   ]
   const gasite = await multe<{ conname: string }>(
     pool,

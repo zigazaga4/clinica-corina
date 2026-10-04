@@ -152,6 +152,12 @@ CREATE TABLE IF NOT EXISTS articol (
   -- ÎNTREGULUI tratament, iar fiecare programare primește o parte din el
   -- (v. `tratament`). Un produs se vinde dintr-o bucată: rămâne 1.
   numar_sedinte  integer NOT NULL DEFAULT 1,
+  -- Lista de prețuri din care face parte un produs: „Produse clienți”,
+  -- „Produse colaboratori”. Același produs poate sta în amândouă, ca rânduri
+  -- separate, fiecare cu prețul listei lui. Text liber, nu o listă fixă —
+  -- serverul o lipește de una existentă care diferă doar prin majuscule.
+  -- NULL = fără categorie. Serviciile nu au (articol_categorie_ck).
+  categorie      text,
 
   CONSTRAINT articol_durata_ck CHECK (
     (tip = 'serviciu' AND durata_minute IS NOT NULL AND durata_minute > 0)
@@ -161,6 +167,10 @@ CREATE TABLE IF NOT EXISTS articol (
 
   CONSTRAINT articol_sedinte_ck CHECK (
     numar_sedinte >= 1 AND (tip = 'serviciu' OR numar_sedinte = 1)
+  ),
+
+  CONSTRAINT articol_categorie_ck CHECK (
+    categorie IS NULL OR (tip = 'produs' AND btrim(categorie) <> '')
   ),
 
   -- Ținta cheii străine compuse din `programare`. Redundantă ca unicitate

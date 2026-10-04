@@ -63,19 +63,24 @@ const SERVICII: { denumire: string; durata: number; pret: number; sedinte?: numb
   { denumire: 'Împachetare corporală cu alge', durata: 70, pret: 260, activ: false },
 ]
 
-const PRODUSE: { denumire: string; pret: number; activ?: boolean }[] = [
-  { denumire: 'Ser cu acid hialuronic 30 ml', pret: 200 },
-  { denumire: 'Ser cu vitamina C 30 ml', pret: 180 },
-  { denumire: 'Cremă hidratantă SPF 50', pret: 120 },
-  { denumire: 'Cremă de noapte regeneratoare', pret: 160 },
-  { denumire: 'Gel de curățare facială', pret: 95 },
-  { denumire: 'Loțiune tonică', pret: 85 },
-  { denumire: 'Mască facială cu argilă', pret: 75 },
-  { denumire: 'Cremă anticelulitică', pret: 140 },
-  { denumire: 'Ulei pentru masaj', pret: 70 },
+// Categoriile sunt listele de prețuri ale clinicii. Două produse rămân fără
+// categorie, cum ar arăta unul adăugat din grabă, de la vânzare. Aceeași
+// listă ca în datele demo din interfață (src/api/memory/seed.ts).
+const CLIENTI = 'Produse clienți'
+const COLABORATORI = 'Produse colaboratori'
+const PRODUSE: { denumire: string; pret: number; activ?: boolean; categorie?: string }[] = [
+  { denumire: 'Ser cu acid hialuronic 30 ml', pret: 200, categorie: CLIENTI },
+  { denumire: 'Ser cu vitamina C 30 ml', pret: 180, categorie: CLIENTI },
+  { denumire: 'Cremă hidratantă SPF 50', pret: 120, categorie: CLIENTI },
+  { denumire: 'Cremă de noapte regeneratoare', pret: 160, categorie: CLIENTI },
+  { denumire: 'Gel de curățare facială', pret: 95, categorie: CLIENTI },
+  { denumire: 'Loțiune tonică', pret: 85, categorie: CLIENTI },
+  { denumire: 'Mască facială cu argilă', pret: 75, categorie: COLABORATORI },
+  { denumire: 'Cremă anticelulitică', pret: 140, categorie: CLIENTI },
+  { denumire: 'Ulei pentru masaj', pret: 70, categorie: COLABORATORI },
   { denumire: 'Ulei pentru cuticule', pret: 45 },
   { denumire: 'Balsam pentru gene', pret: 90 },
-  { denumire: 'Protecție solară corp SPF 30', pret: 110, activ: false },
+  { denumire: 'Protecție solară corp SPF 30', pret: 110, activ: false, categorie: CLIENTI },
 ]
 
 const CLIENTE: { nume: string; telefon: string; email: string | null }[] = [
@@ -147,9 +152,9 @@ async function ruleaza(): Promise<void> {
     }
     for (const p of PRODUSE) {
       const { rows } = await ex.query<{ id: string }>(
-        `INSERT INTO articol (tip, denumire, durata_minute, pret_lista, activ)
-         VALUES ('produs', $1, NULL, $2, $3) RETURNING id`,
-        [p.denumire, p.pret, p.activ ?? true],
+        `INSERT INTO articol (tip, denumire, durata_minute, pret_lista, activ, categorie)
+         VALUES ('produs', $1, NULL, $2, $3, $4) RETURNING id`,
+        [p.denumire, p.pret, p.activ ?? true, p.categorie ?? null],
       )
       articole.set(p.denumire, { id: rows[0]!.id, pret: p.pret, sedinte: 1 })
     }

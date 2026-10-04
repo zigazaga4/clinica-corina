@@ -248,11 +248,11 @@ function articole(ex: Executor, f: FiltruRaport, tip: 'serviciu' | 'produs'): Pr
   return multe<StatisticaArticol>(
     ex,
     `WITH ${LIMITE}, ${LINII_INCASATE}
-     SELECT l.articol_id, COALESCE(a.denumire, '—') AS denumire,
+     SELECT l.articol_id, COALESCE(a.denumire, '—') AS denumire, a.categorie,
             sum(l.cantitate) AS cantitate, sum(l.total_linie) AS suma
      FROM linii l LEFT JOIN articol a ON a.id = l.articol_id
      WHERE (l.tip = 'serviciu') = ($4 = 'serviciu')
-     GROUP BY l.articol_id, a.denumire
+     GROUP BY l.articol_id, a.denumire, a.categorie
      ORDER BY suma DESC, denumire`,
     [f.de_la, f.pana_la, f.fus, tip],
   )
