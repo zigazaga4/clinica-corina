@@ -3,24 +3,6 @@
  */
 
 import { unuSauNimic, type Executor } from './db.js'
-import type { Articol } from '../types/database.js'
-
-/**
- * Lista de prețuri din care se vinde (cerința clinicii, 5 oct. 2026): pe o
- * vânzare intră DOAR produsele clienților. „Produse colaboratori” rămâne în
- * nomenclator, dar crema nu pleacă la o clientă cu prețul colaboratorilor.
- * Aceeași regulă stă în interfață (frontend/src/domain/categorii.ts).
- */
-export const CATEGORIE_CLIENTI = 'Produse clienți'
-
-/** Produsul se poate trece pe o vânzare: este pe lista clienților (fără să conteze majusculele). */
-export function seVindeClientilor(articol: Pick<Articol, 'tip' | 'categorie'>): boolean {
-  return (
-    articol.tip === 'produs' &&
-    articol.categorie !== null &&
-    articol.categorie.toLocaleLowerCase('ro') === CATEGORIE_CLIENTI.toLocaleLowerCase('ro')
-  )
-}
 
 /** Tabelele cu o coloană `categorie` text liber (și `creat_la`). */
 export type TabelCuCategorie = 'cheltuiala' | 'articol'

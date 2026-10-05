@@ -12,7 +12,6 @@
 
 import 'dotenv/config'
 import pool from './lib/db.js'
-import { seVindeClientilor } from './lib/categorii.js'
 
 const BAZA = process.env.API_URL ?? `http://localhost:${process.env.PORT ?? 3000}`
 const EMAIL_ADMIN = 'admin@clinica.ro'
@@ -249,8 +248,7 @@ async function ruleaza(): Promise<void> {
     `a venit ${typeof serviciu?.pret_lista}: ${JSON.stringify(serviciu?.pret_lista)}`)
 
   const produse = await cere('GET', '/articole?tip=produs&activ=true', { token: admin })
-  // Unul care se poate vinde: de pe lista clienților (`seVindeClientilor`).
-  const produs = produse.corp.find(seVindeClientilor)
+  const produs = produse.corp[0]
   verifica('produsele nu au durată', produs?.durata_minute === null)
 
   const scrieCaOperator = await cere('POST', '/articole', {
@@ -330,6 +328,30 @@ async function ruleaza(): Promise<void> {
   verifica('categorie pusă pe un serviciu -> 400 pe „categorie”',
     categoriePeServiciu.status === 400 && categoriePeServiciu.corp?.camp === 'categorie',
     JSON.stringify(categoriePeServiciu.corp))
+
+  // Cerința clinicii (5 oct. 2026): de pe fila „Produse colaboratori” se vinde
+  // din lista colaboratorilor. Lista o alege interfața; serverul primește
+  // produsul de pe oricare, la prețul listei lui.
+  const dinAltaLista = produse.corp.find(
+    (p: any) => p.categorie !== null && p.categorie.toLocaleLowerCase('ro') !== 'produse clienți',
+  )
+  verifica('există un produs activ pe altă listă decât a clienților', dinAltaLista !== undefined)
+  const colaborator = await cere('POST', '/clienti', {
+    token: operator, corp: { nume: `Colaborator test ${Date.now()}` },
+  })
+  const vandutColaboratorului = await cere('POST', '/vanzari', {
+    token: operator,
+    corp: {
+      client_id: colaborator.corp?.id,
+      efectuat_la: new Date().toISOString(),
+      metoda_plata: 'numerar',
+      linii: [{ articol_id: dinAltaLista?.id, cantitate: 1 }],
+    },
+  })
+  verifica(`produs de pe „${dinAltaLista?.categorie}” vândut de recepție -> 201, la prețul listei lui`,
+    vandutColaboratorului.status === 201 &&
+      vandutColaboratorului.corp?.linii?.[0]?.pret_unitar === dinAltaLista?.pret_lista,
+    JSON.stringify(vandutColaboratorului.corp))
 
   // Curățenie: fiecare categorie e o filă în Nomenclator, iar una de test
   // rămasă după fiecare rulare ar umple bara de file a bazei de lucru.

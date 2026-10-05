@@ -3,7 +3,7 @@ import { expect, it } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
 import { api } from '@/api'
 import { esteStatisticiIncuiate } from '@/api/errors'
-import { seVindeClientilor } from '@/domain/categorii'
+import { aceeasiCategorie, CATEGORIE_CLIENTI } from '@/domain/categorii'
 import type { Uuid } from '@/domain/types'
 import { autentifica, deschideStatisticile, randeaza } from '@/test/render'
 import { PaginaFisaClient } from './PaginaFisaClient'
@@ -36,9 +36,11 @@ function sumaDinText(text: string): number {
   return Number(potrivire[1].replace(/\./g, '').replace(',', '.'))
 }
 
-/** Un produs activ care se poate vinde: de pe lista clienților. */
+/** Un produs activ de pe lista clienților — din care vinde fișa clientei. */
 async function produsDeVanzare() {
-  const produs = (await api.articole.list({ tip: 'produs', activ: true })).find(seVindeClientilor)
+  const produs = (await api.articole.list({ tip: 'produs', activ: true })).find((p) =>
+    aceeasiCategorie(p.categorie, CATEGORIE_CLIENTI),
+  )
   if (!produs) throw new Error('Datele demo nu conțin niciun produs activ pentru clienți.')
   return produs
 }

@@ -12,12 +12,14 @@ import type { Articol } from './types'
 /** Eticheta produselor fără categorie — grup în liste, opțiune în filtre. */
 export const FARA_CATEGORIE = 'Fără categorie'
 
+/** Fila produselor fără categorie, lângă listele cu nume („Alte produse”). */
+export const ALTE_PRODUSE = 'Alte produse'
+
 /**
- * Lista de prețuri din care se vinde (cerința clinicii, 5 oct. 2026): la
- * vânzare se aleg DOAR produsele clienților. „Produse colaboratori” rămâne în
- * Nomenclator ca listă de prețuri, dar nu ajunge pe bonul unei cliente — altfel
- * crema ar pleca la prețul colaboratorilor. Aceeași regulă stă pe server
- * (backend/src/lib/categorii.ts).
+ * Lista din care pornește o vânzare deschisă de pe fișa clientei sau din
+ * „Încasări”. Din Nomenclator, vânzarea pornește din lista filei (cerința
+ * clinicii, 5 oct. 2026: de pe „Produse colaboratori” se vinde din lista
+ * colaboratorilor), iar în formular lista se poate schimba.
  */
 export const CATEGORIE_CLIENTI = 'Produse clienți'
 
@@ -27,9 +29,13 @@ export function aceeasiCategorie(a: string | null, b: string | null): boolean {
   return a.toLocaleLowerCase('ro') === b.toLocaleLowerCase('ro')
 }
 
-/** Produsul se poate trece pe o vânzare nouă: este pe lista clienților. */
-export function seVindeClientilor(articol: Pick<Articol, 'tip' | 'categorie'>): boolean {
-  return articol.tip === 'produs' && aceeasiCategorie(articol.categorie, CATEGORIE_CLIENTI)
+/**
+ * Listele de prețuri ale produselor date: categoriile, alfabetic, și la urmă
+ * `null` — produsele fără categorie — doar dacă există.
+ */
+export function listeleDePreturi(articole: readonly Pick<Articol, 'categorie'>[]): (string | null)[] {
+  const categorii = categoriileProduselor(articole)
+  return articole.some((a) => a.categorie === null) ? [...categorii, null] : categorii
 }
 
 /** Categoriile folosite de produsele date, fiecare o dată, în ordine alfabetică. */

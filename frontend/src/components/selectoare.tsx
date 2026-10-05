@@ -200,13 +200,14 @@ export function SelectorArticol({
   /** Articolele scoase din ofertă rămân alese pe vânzările vechi, dar nu se pot adăuga. */
   doarActive?: boolean
   /**
-   * Restrânge la o singură listă de prețuri — vânzarea cere „Produse clienți”.
+   * Restrânge la o singură listă de prețuri — vânzarea, la lista din care
+   * vinde. `null` = produsele fără categorie; lipsă = toate, grupate.
    *
    * Articolul deja ales rămâne în listă chiar dacă e din alta: o vânzare veche
    * se corectează fără ca linia ei să apară goală. Produsul creat de aici intră
    * direct în această listă, altfel n-ar mai putea fi ales.
    */
-  categorie?: string
+  categorie?: string | null
   /**
    * Permite crearea unui articol nou din textul căutat.
    *

@@ -20,7 +20,7 @@ import { creeazaApiHttp } from './client'
 import { esteEroareApi, esteStatisticiIncuiate } from '@/api/errors'
 import { scrieTokenuri, stergeTokenuri, type TokenuriSesiune } from '@/api/session'
 import type { ApiClient } from '@/api/contract'
-import { seVindeClientilor } from '@/domain/categorii'
+import { aceeasiCategorie, CATEGORIE_CLIENTI } from '@/domain/categorii'
 import type { Articol, Uuid } from '@/domain/types'
 
 /*
@@ -102,8 +102,8 @@ describe.skipIf(!ADRESA)('clientul HTTP împotriva serverului real', () => {
       trei ședințe, iar „preț din nomenclator” să pice cu a treia parte din el.
     */
     const serviciuSimplu = servicii.find((s) => s.numar_sedinte === 1)
-    // Unul care se poate vinde: de pe lista clienților.
-    const produsClienti = produse.find(seVindeClientilor)
+    // De pe lista clienților, ca vânzarea de pe fișa clientei.
+    const produsClienti = produse.find((p) => aceeasiCategorie(p.categorie, CATEGORIE_CLIENTI))
     if (!serviciuSimplu || !produsClienti || !utilizatori[0]) {
       throw new Error('Baza nu are date de pornire. Rulează `npm run seed` în backend.')
     }

@@ -111,8 +111,6 @@ async function refuzaSedintePeDatorie(ex: Executor, vanzare_id: string): Promise
  * Toate se validează înainte ca vreuna să fie scrisă: pe server este o
  * tranzacție, deci un articol inexistent pe ultima linie nu are voie să lase
  * bonul cu primele trei.
- *
- * `dejaPeBon` — articolele de pe bon dinaintea corecției; v. `pregatesteLinie`.
  */
 async function scrieLinii(
   ex: Executor,
@@ -120,14 +118,13 @@ async function scrieLinii(
   client_id: string,
   linii: DateLinieVanzare[],
   autor: { id: string; adresa_ip: string | null },
-  dejaPeBon?: ReadonlySet<string>,
 ): Promise<void> {
   // Ședințele trecute pe linii trec prin aceleași reguli ca la încasarea de pe
   // fișă: să fie ale clientului de pe bon, onorate, și neîncasate deja.
   await verificaSedinteleLiniilor(ex, client_id, linii, vanzare_id)
 
   const pregatite = []
-  for (const linie of linii) pregatite.push(await pregatesteLinie(ex, linie, dejaPeBon))
+  for (const linie of linii) pregatite.push(await pregatesteLinie(ex, linie))
 
   for (const l of pregatite) {
     await ex.query(
@@ -466,17 +463,10 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
     */
     if (corp['linii'] !== undefined) {
       const linii = liniiCerute(corp['linii'], true)
-      // Ce era pe bon înainte rămâne permis la corecție, chiar dacă produsul
-      // nu (mai) e pe lista clienților; v. `pregatesteLinie`.
-      const { rows: vechi } = await ex.query<{ articol_id: string }>(
-        `DELETE FROM vanzare_linie WHERE vanzare_id = $1 RETURNING articol_id`, [id],
-      )
+      await ex.query(`DELETE FROM vanzare_linie WHERE vanzare_id = $1`, [id])
       // Clientul bonului DUPĂ modificare: dacă antetul tocmai a fost mutat pe
       // alt client, ședințele trebuie să fie ale aceluia, nu ale celui vechi.
-      await scrieLinii(
-        ex, id, dupa.client_id, linii, { id: autor.id, adresa_ip: adresaCererii(req) },
-        new Set(vechi.map((l) => l.articol_id)),
-      )
+      await scrieLinii(ex, id, dupa.client_id, linii, { id: autor.id, adresa_ip: adresaCererii(req) })
     }
 
     await refuzaSedintePeDatorie(ex, id)
@@ -516,9 +506,6 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
 // cu aceeași clientă, același operator și aceeași dată a vânzării; restul
 // rămâne datorie, cu totalul scăzut. Așa fiecare bon rămâne întreg plătit sau
 // întreg datorie, iar fișa, „De plată” și Statisticile nu au nimic de învățat.
-//
-// Nu trece prin regula „doar produsele clienților”: nu se vinde nimic nou,
-// se plătește ce a plecat deja.
 // ---------------------------------------------------------------------------
 
 /** `linie_ids` din cerere: o listă nevidă de identificatori, fără repetări. */

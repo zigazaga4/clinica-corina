@@ -5,13 +5,27 @@ import { useAutentificare, useUtilizator } from '@/app/auth'
 import { useArticole, useCreeazaVanzare, useModificaVanzare } from '@/app/queries'
 import { GrilaFormular, PeToataLatimea } from '@/components/Pagina'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
-import { CATEGORIE_CLIENTI, seVindeClientilor } from '@/domain/categorii'
+import {
+  ALTE_PRODUSE,
+  aceeasiCategorie,
+  CATEGORIE_CLIENTI,
+  listeleDePreturi,
+} from '@/domain/categorii'
 import type { Articol, Uuid, VanzareDetaliu } from '@/domain/types'
 import { dinInputDatetime, formateazaData, laInputDatetime } from '@/lib/dates'
 import { useEroriFormular } from '@/lib/formular'
 import { uuid } from '@/lib/id'
 import { formateazaBani, numarInCamp, parseNumar, sumaTotal, totalLinie } from '@/lib/money'
-import { Buton, Camp, Input, Modala, Textarea, useNotificari } from '@/ui'
+import {
+  Buton,
+  ButonGrup,
+  Camp,
+  GrupButoane,
+  Input,
+  Modala,
+  Textarea,
+  useNotificari,
+} from '@/ui'
 import { AlegerePlata, starePlata, type StarePlata } from './PlataVanzarii'
 
 /*
@@ -22,9 +36,13 @@ import { AlegerePlata, starePlata, type StarePlata } from './PlataVanzarii'
   iar o a doua cale de a vinde același serviciu ar produce ședințe plătite de
   două ori și programări rămase veșnic „de plată”.
 
-  Și doar produsele din „Produse clienți” (cerința clinicii, 5 oct. 2026):
-  aceeași cremă stă și pe lista colaboratorilor, mai ieftină, iar pe bonul unei
-  cliente nu are ce căuta prețul acela. Serverul refuză oricum restul.
+  Produsele se aleg dintr-o singură listă de prețuri: aceeași cremă stă și la
+  „Produse clienți”, și la „Produse colaboratori”, cu alt preț. Lista este cea
+  a filei din Nomenclator de pe care s-a apăsat „Vinde” (cerința clinicii,
+  5 oct. 2026: „dacă intru la colaboratori și dau Vinde produse, … aici ar
+  trebui să-mi apară lista de colaboratori”); de pe fișa clientei sau din
+  „Încasări”, lista clienților. Se vede și se schimbă sus, la „Lista de
+  prețuri”.
 
   Drumul este cel desenat de clinică: clientul („Maria”), produsele cu prețul
   lor, câte vrei, totalul la final — și „Achitat” sau „Neachitat”. Neachitată,
@@ -82,6 +100,7 @@ export function FormularVanzare({
   vanzare,
   clientInitial,
   produsInitial,
+  lista,
   onInchide,
 }: {
   /** Prezentă = se corectează o vânzare existentă; absentă = una nouă. */
@@ -90,6 +109,12 @@ export function FormularVanzare({
   clientInitial?: Uuid
   /** Produsul de pe primul rând — vânzarea pornită din butonul „Vinde” al lui. */
   produsInitial?: Articol
+  /**
+   * Lista de prețuri din care pornește vânzarea — fila din Nomenclator;
+   * `null` = produsele fără categorie. Lipsă: lista produsului de pe primul
+   * rând sau a bonului corectat, altfel „Produse clienți”.
+   */
+  lista?: string | null
   onInchide: () => void
 }) {
   const utilizator = useUtilizator()
@@ -136,16 +161,31 @@ export function FormularVanzare({
               }
             : {}),
         }))
-      : [produsInitial && seVindeClientilor(produsInitial) ? linieCuProdus(produsInitial) : linieGoala()],
+      : [produsInitial ? linieCuProdus(produsInitial) : linieGoala()],
   )
 
   // Aceleași opțiuni pe care le încarcă și `SelectorArticol`, deci fără cerere
-  // suplimentară; aici sunt necesare doar pentru prețul de listă.
+  // suplimentară; aici sunt necesare pentru prețul de listă și listele de prețuri.
   const { data: articole } = useArticole({ tip: 'produs', activ: true })
   const preturi = useMemo(
     () => new Map((articole ?? []).map((a) => [a.id, a.pret_lista])),
     [articole],
   )
+
+  // Lista apăsată în formular; până atunci, cea venită de unde s-a deschis.
+  const [listaAleasa, setListaAleasa] = useState<string | null | undefined>(
+    lista !== undefined ? lista : produsInitial?.categorie,
+  )
+  const liste = useMemo(() => listeleDePreturi(articole ?? []), [articole])
+  const listaVanzarii = useMemo(() => {
+    if (listaAleasa !== undefined) return listaAleasa
+    // Bonul corectat continuă din lista primului lui produs.
+    const primul = vanzare?.linii.find((l) => l.programare_id === null)
+    const produs = primul && articole?.find((a) => a.id === primul.articol_id)
+    if (produs) return produs.categorie
+    // Altfel lista clienților — dacă există; fără ea, prima (sau toate fără categorie).
+    return liste.find((l) => aceeasiCategorie(l, CATEGORIE_CLIENTI)) ?? liste[0] ?? null
+  }, [listaAleasa, vanzare, articole, liste])
 
   const total = sumaTotal(linii.map(totalulLiniei))
 
@@ -361,6 +401,32 @@ export function FormularVanzare({
             </span>
           </div>
 
+          {/*
+            Din ce listă se aleg produsele. Doar când sunt mai multe: o clinică
+            fără categorii n-are ce alege. Schimbarea nu atinge rândurile deja
+            completate — fiecare își păstrează produsul și prețul. Grupul își
+            poartă singur numele (`aria-label`), ca la „Tip” în FormularArticol.
+          */}
+          {liste.length > 1 && (
+            <Camp eticheta="Lista de prețuri">
+              {() => (
+                <GrupButoane eticheta="Lista de prețuri" className="flex w-full">
+                  {liste.map((l) => (
+                    <ButonGrup
+                      key={l ?? ''}
+                      activ={aceeasiCategorie(l, listaVanzarii)}
+                      disabled={seTrimite}
+                      onClick={() => setListaAleasa(l)}
+                      className="h-auto min-h-11 flex-1 py-1.5 leading-tight sm:min-h-9"
+                    >
+                      {l ?? ALTE_PRODUSE}
+                    </ButonGrup>
+                  ))}
+                </GrupButoane>
+              )}
+            </Camp>
+          )}
+
           {eroareLinii && (
             <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger">
               {eroareLinii}
@@ -371,6 +437,7 @@ export function FormularVanzare({
             <RandLinie
               key={linie.cheie}
               linie={linie}
+              lista={listaVanzarii}
               poateSterge={linii.length > 1}
               eroareArticol={peCamp[`${linie.cheie}:articol_id`] ?? null}
               eroareCantitate={peCamp[`${linie.cheie}:cantitate`] ?? null}
@@ -396,8 +463,7 @@ export function FormularVanzare({
             citește nimeni la recepție.
           */}
           <p className="text-[13px] text-ink-faint">
-            Se vând doar produsele din „{CATEGORIE_CLIENTI}”. Serviciile se încasează din
-            programare, după ce ședința e marcată ca efectuată.
+            Serviciile se încasează din programare, după ce ședința e marcată ca efectuată.
           </p>
         </div>
 
@@ -446,6 +512,7 @@ export function FormularVanzare({
  */
 function RandLinie({
   linie,
+  lista,
   poateSterge,
   eroareArticol,
   eroareCantitate,
@@ -456,6 +523,8 @@ function RandLinie({
   onSterge,
 }: {
   linie: LinieFormular
+  /** Lista de prețuri din care se alege produsul; v. `FormularVanzare`. */
+  lista: string | null
   poateSterge: boolean
   eroareArticol: string | null
   eroareCantitate: string | null
@@ -501,16 +570,16 @@ function RandLinie({
     <div className="rounded-xl border border-line bg-surface p-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-2.5">
         {/*
-          Doar produsele clienților: serviciile intră în încasare din
+          Doar produse, din lista aleasă: serviciile intră în încasare din
           programarea efectuată. Un produs care lipsește din nomenclator
-          („Cremă 50 ml”) se adaugă de aici, de administrator, direct pe lista
-          clienților; prețul se scrie apoi pe linie.
+          („Cremă 50 ml”) se adaugă de aici, de administrator, direct în lista
+          aleasă; prețul se scrie apoi pe linie.
         */}
         <SelectorArticol
           valoare={linie.articol_id}
           onSchimba={onArticol}
           tip="produs"
-          categorie={CATEGORIE_CLIENTI}
+          categorie={lista}
           cuCreare
           eticheta="Produs"
           eroare={eroareArticol}

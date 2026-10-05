@@ -4,7 +4,7 @@ import { mesajEroare } from '@/api/errors'
 import { useAutentificare } from '@/app/auth'
 import { useArticole } from '@/app/queries'
 import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
-import { categoriileProduselor } from '@/domain/categorii'
+import { ALTE_PRODUSE, categoriileProduselor } from '@/domain/categorii'
 import type { Articol } from '@/domain/types'
 import { contine } from '@/lib/text'
 import {
@@ -41,7 +41,7 @@ import { ListaArticole } from './liste'
   Pe filele de produse stă și „Vinde produse”, pentru ORICE cont: acolo caută
   recepția când îi dă unei cliente niște creme (așa a desenat-o clinica:
   „Nomenclator → Produse → Maria → Cremă 50 ml / 150 RON”). Formularul este
-  cel din „Încasări”, nu o copie.
+  cel din „Încasări”, nu o copie, și vinde din lista filei pe care stai.
 
   Fiecare categorie de produse are fila ei, lângă „Servicii” — cerut de
   clinică: „Servicii | Produse clienți | Produse colaboratori”, nu o singură
@@ -125,7 +125,7 @@ export function PaginaNomenclator() {
       ? [
           {
             valoare: FILA_FARA_CATEGORIE,
-            eticheta: categorii.length === 0 ? 'Produse' : 'Alte produse',
+            eticheta: categorii.length === 0 ? 'Produse' : ALTE_PRODUSE,
             contor: cateIn(null),
           },
         ]
@@ -285,6 +285,8 @@ export function PaginaNomenclator() {
 
       {vanzareNoua && (
         <FormularVanzare
+          // Din lista filei: de pe „Produse colaboratori”, colaboratorii.
+          lista={categorieActiva}
           {...(produsDeVandut ? { produsInitial: produsDeVandut } : {})}
           onInchide={() => {
             setVanzareNoua(false)

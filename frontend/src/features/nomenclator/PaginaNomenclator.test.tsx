@@ -137,30 +137,89 @@ it('administrator: aceeași cremă și pe cealaltă listă, cu o categorie scris
   })
 })
 
-it('vânzare: se aleg doar produsele clienților', async () => {
+/** Deschide lista de produse a unui rând din formularul de vânzare și întoarce opțiunile. */
+async function optiunileProdusului(formular: ReturnType<typeof within>, rand = 0) {
+  fireEvent.click(formular.getAllByRole('combobox', { name: /^Produs/ })[rand]!)
+  const lista = formular.getByRole('listbox')
+  await waitFor(() => expect(within(lista).getAllByRole('option').length).toBeGreaterThan(0))
+  return { lista, text: within(lista).getAllByRole('option').map((o) => o.textContent).join(' ') }
+}
+
+/** Butonul apăsat din „Lista de prețuri” a formularului de vânzare. */
+const listaApasata = (formular: ReturnType<typeof within>) =>
+  within(formular.getByRole('group', { name: 'Lista de prețuri' }))
+    .getAllByRole('button')
+    .find((b) => b.getAttribute('aria-pressed') === 'true')?.textContent
+
+it('vânzare: de pe fiecare filă se vinde din lista ei — cum a cerut clinica', async () => {
   await autentifica('andreea.popescu@clinica.ro')
   randeaza(<PaginaNomenclator />)
 
-  // Pe lista colaboratorilor nu există „Vinde” pe rând.
-  fireEvent.click(await screen.findByRole('tab', { name: /Produse colaboratori/ }))
+  // De pe „Produse clienți”: lista clienților, fără colaboratori și fără
+  // produsele rămase fără categorie.
+  fireEvent.click(await screen.findByRole('tab', { name: /Produse clienți/ }))
+  fireEvent.click(await screen.findByRole('button', { name: /Vinde produse/ }))
+  let formular = within(screen.getAllByRole('dialog').at(-1)!)
+  // Comutatorul apare când sosesc produsele (listele se citesc din ele).
+  await waitFor(() => expect(listaApasata(formular)).toBe('Produse clienți'))
+  const clienti = await optiunileProdusului(formular)
+  expect(clienti.text).toMatch(/Loțiune tonică/)
+  expect(clienti.text).not.toMatch(/Ulei pentru masaj|Mască facială cu argilă|Balsam pentru gene/)
+  expect(clienti.lista.querySelectorAll('li[role="presentation"]')).toHaveLength(0)
+  fireEvent.click(formular.getByRole('button', { name: 'Renunță' }))
+  await waitFor(() => expect(screen.queryAllByRole('dialog')).toHaveLength(0))
+
+  // De pe „Produse colaboratori”: lista colaboratorilor (mesajul clinicii:
+  // „dacă intru la colaboratori și dau Vinde produse, … nu-mi apar produsele
+  // din lista asta, ci din lista de clienți”).
+  fireEvent.click(screen.getByRole('tab', { name: /Produse colaboratori/ }))
   await waitFor(() => expect(randurileTabelului()).toHaveLength(2))
-  expect(screen.queryByRole('button', { name: /^Vinde Ulei pentru masaj/ })).toBeNull()
-
   fireEvent.click(screen.getByRole('button', { name: /Vinde produse/ }))
+  formular = within(screen.getAllByRole('dialog').at(-1)!)
+  await waitFor(() => expect(listaApasata(formular)).toBe('Produse colaboratori'))
+  const colaboratori = await optiunileProdusului(formular)
+  expect(within(colaboratori.lista).getAllByRole('option')).toHaveLength(2)
+  expect(colaboratori.text).toMatch(/Mască facială cu argilă.*Ulei pentru masaj/)
+  expect(colaboratori.text).not.toMatch(/Loțiune tonică/)
+
+  // Prețul vine din lista colaboratorilor, iar vânzarea se și salvează.
+  fireEvent.click(within(colaboratori.lista).getByRole('option', { name: /Ulei pentru masaj/ }))
+  expect(formular.getByLabelText('Preț unitar')).toHaveValue('70')
+  const colaborator = await api.clienti.create({ nume: 'Colaborator Salon' })
+  fireEvent.click(formular.getByRole('combobox', { name: /^Client/ }))
+  fireEvent.change(formular.getByRole('textbox', { name: 'Caută în listă' }), {
+    target: { value: 'Colaborator Salon' },
+  })
+  fireEvent.click(await formular.findByRole('option', { name: /Colaborator Salon/ }, { timeout: 10_000 }))
+  fireEvent.click(formular.getByRole('button', { name: /^Neachitat$/ }))
+  fireEvent.click(formular.getByRole('button', { name: 'Salvează vânzarea' }))
+  // `de_incasat` stă pe rândul din lista de clienți.
+  await waitFor(async () => {
+    const { randuri } = await api.clienti.list({ q: 'Colaborator Salon' })
+    expect(randuri.find((c) => c.id === colaborator.id)?.de_incasat).toBe(70)
+  })
+})
+
+it('vânzare: „Vinde” pe un produs al colaboratorilor pornește din lista lui, care se poate schimba', async () => {
+  await autentifica('andreea.popescu@clinica.ro')
+  randeaza(<PaginaNomenclator />)
+
+  fireEvent.click(await screen.findByRole('tab', { name: /Produse colaboratori/ }))
+  // Butonul stă și pe rândul din tabel, și pe cardul de telefon.
+  fireEvent.click((await screen.findAllByRole('button', { name: /^Vinde Ulei pentru masaj/ }))[0]!)
   const formular = within(screen.getAllByRole('dialog').at(-1)!)
+  await waitFor(() => expect(listaApasata(formular)).toBe('Produse colaboratori'))
+  expect(formular.getByRole('combobox', { name: /^Produs/ })).toHaveTextContent('Ulei pentru masaj')
+  expect(formular.getByLabelText('Preț unitar')).toHaveValue('70')
 
-  fireEvent.click(formular.getByRole('combobox', { name: /^Produs/ }))
-  const lista = formular.getByRole('listbox')
-  await waitFor(() => expect(within(lista).getAllByRole('option').length).toBeGreaterThan(0))
-  const optiuni = within(lista).getAllByRole('option').map((o) => o.textContent).join(' ')
-  // Lista clienților, fără colaboratori și fără produsele rămase fără categorie.
-  expect(optiuni).toMatch(/Loțiune tonică/)
-  expect(optiuni).not.toMatch(/Ulei pentru masaj|Mască facială cu argilă|Balsam pentru gene/)
-  expect(lista.querySelectorAll('li[role="presentation"]')).toHaveLength(0)
-
-  // Prețul vine din lista clienților.
-  fireEvent.click(within(lista).getByRole('option', { name: /Loțiune tonică/ }))
-  expect(formular.getByLabelText('Preț unitar')).toHaveValue('85')
+  // Altă listă: rândul completat rămâne cum era, cel nou alege din lista nouă.
+  fireEvent.click(formular.getByRole('button', { name: 'Produse clienți' }))
+  expect(listaApasata(formular)).toBe('Produse clienți')
+  expect(formular.getByRole('combobox', { name: /^Produs/ })).toHaveTextContent('Ulei pentru masaj')
+  fireEvent.click(formular.getByRole('button', { name: /Adaugă produs/ }))
+  const { text } = await optiunileProdusului(formular, 1)
+  expect(text).toMatch(/Loțiune tonică/)
+  expect(text).not.toMatch(/Mască facială cu argilă/)
 })
 
 it('produse neachitate: se plătește doar ce s-a bifat, restul rămâne datorie', async () => {

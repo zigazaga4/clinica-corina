@@ -94,7 +94,6 @@ import type {
   VanzareDetaliu,
   VanzareLinie,
 } from '@/domain/types'
-import { CATEGORIE_CLIENTI, seVindeClientilor } from '@/domain/categorii'
 import { persoanaLiniei } from '@/domain/facutaDe'
 import { METODE_PLATA } from '@/domain/labels'
 import { acum, addDays, laTimestamptz } from '@/lib/dates'
@@ -1740,12 +1739,7 @@ export function creeazaApiInMemorie(): ApiClient {
           if (date.linii.length === 0) {
             throw eroareValidare('Vânzarea trebuie să aibă cel puțin o linie.', 'linii')
           }
-          // Ce era pe bon înainte rămâne permis la corecție — ca pe server.
-          const dejaPeBon = new Set<Uuid>()
-          for (const linie of magazin.vanzare_linie.values()) {
-            if (linie.vanzare_id === id) dejaPeBon.add(linie.articol_id)
-          }
-          const pregatite = date.linii.map((linie) => pregatesteLinie(linie, dejaPeBon))
+          const pregatite = date.linii.map((linie) => pregatesteLinie(linie))
           // Validate întâi, șterse abia apoi — o linie invalidă nu trebuie să
           // lase vânzarea fără cele vechi.
           for (const [linieId, linie] of magazin.vanzare_linie) {
@@ -2533,20 +2527,11 @@ function potrivestePretulSedintei(programare_id: Uuid, autor_id: Uuid): void {
  * Prețul lipsă se completează din `articol.pret_lista`, apoi se COPIAZĂ —
  * o schimbare ulterioară de preț nu trebuie să rescrie vânzările vechi.
  *
- * Un produs se vinde doar de pe lista clienților, ca pe server; `dejaPeBon`
- * sunt articolele vânzării care se corectează și rămân permise.
+ * Produsul poate veni de pe orice listă de prețuri — o alege interfața, ca
+ * pe server (backend/src/lib/incasari.ts).
  */
-function pregatesteLinie(
-  linie: DateLinieVanzare,
-  dejaPeBon: ReadonlySet<Uuid> = new Set(),
-): Omit<VanzareLinie, 'id' | 'vanzare_id'> {
+function pregatesteLinie(linie: DateLinieVanzare): Omit<VanzareLinie, 'id' | 'vanzare_id'> {
   const articol = ceruta(magazin.articol, linie.articol_id, 'Articolul')
-  if (articol.tip === 'produs' && !seVindeClientilor(articol) && !dejaPeBon.has(articol.id)) {
-    throw eroareValidare(
-      `„${articol.denumire}” nu este pe lista „${CATEGORIE_CLIENTI}”. La vânzare se aleg doar produsele clienților.`,
-      'linii',
-    )
-  }
   verificaCantitate(linie.cantitate)
 
   const pret_unitar = linie.pret_unitar ?? articol.pret_lista
