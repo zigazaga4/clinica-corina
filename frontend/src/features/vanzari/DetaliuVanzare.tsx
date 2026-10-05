@@ -50,6 +50,7 @@ export function DetaliuVanzare({
           {l.programare_incepe_la && (
             <p className="mt-0.5 text-[12px] text-ink-faint">
               Ședința din {formateazaData(l.programare_incepe_la)}
+              {l.executant_nume && ` · făcută de ${l.executant_nume}`}
             </p>
           )}
         </div>
@@ -151,6 +152,7 @@ export function DetaliuVanzare({
                   {l.programare_incepe_la && (
                     <p className="text-[12px] text-ink-faint">
                       Ședința din {formateazaData(l.programare_incepe_la)}
+                      {l.executant_nume && ` · făcută de ${l.executant_nume}`}
                     </p>
                   )}
                 </div>

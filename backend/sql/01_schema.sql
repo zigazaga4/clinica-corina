@@ -934,16 +934,22 @@ FROM cheltuiala ch
 LEFT JOIN utilizator u ON u.id = ch.creat_de;
 
 
--- Linia de vânzare, cu denumirea articolului și data ședinței stinse.
+-- Linia de vânzare, cu denumirea articolului, data ședinței stinse și cine a
+-- făcut-o. Executantul stă pe linie, nu pe antet: operatorul antetului este
+-- cine a introdus plata la recepție, iar salariul se socotește după cine a
+-- lucrat (cerința clinicii, 2026-10-05). NULL pe produse — n-au executant.
 CREATE OR REPLACE VIEW v_vanzare_linie_detaliu AS
 SELECT
   vl.*,
   COALESCE(a.denumire, '—')     AS articol_denumire,
   COALESCE(a.tip, 'produs')     AS articol_tip,
-  pr.incepe_la                  AS programare_incepe_la
+  pr.incepe_la                  AS programare_incepe_la,
+  pr.executant_id               AS executant_id,
+  e.nume                        AS executant_nume
 FROM vanzare_linie vl
 LEFT JOIN articol    a  ON a.id  = vl.articol_id
-LEFT JOIN programare pr ON pr.id = vl.programare_id;
+LEFT JOIN programare pr ON pr.id = vl.programare_id
+LEFT JOIN utilizator e  ON e.id  = pr.executant_id;
 
 
 -- Antetul încasării. Liniile se aduc separat, printr-o singură interogare

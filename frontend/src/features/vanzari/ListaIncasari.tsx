@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Banknote, Clock3, CreditCard, Pencil, Receipt, ShoppingBag, Trash2, Wallet } from 'lucide-react'
+import { Banknote, Clock3, CreditCard, Pencil, Receipt, ShoppingBag, Trash2, UserRound, Wallet } from 'lucide-react'
 import type { FiltruVanzari } from '@/api/contract'
 import { mesajEroare } from '@/api/errors'
 import { useStergeVanzare, useVanzari } from '@/app/queries'
 import { BaraFiltre } from '@/components/Pagina'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
+import { facutaDe, persoanaLiniei } from '@/domain/facutaDe'
 import type { Uuid, VanzareDetaliu } from '@/domain/types'
 import {
   endOfDay,
@@ -74,7 +75,8 @@ const LIMITA_REZUMAT = 500
 
 interface StareFiltre {
   client_id: Uuid | null
-  operator_id: Uuid | null
+  /** „Făcută de” — cine a lucrat, nu cine a introdus plata. Pentru salariu. */
+  persoana_id: Uuid | null
   articol_id: Uuid | null
   /** Zile „YYYY-MM-DD”, cum le dă `<input type="date">`. */
   de_la: string
@@ -85,7 +87,7 @@ interface StareFiltre {
 
 const FILTRE_GOALE: StareFiltre = {
   client_id: null,
-  operator_id: null,
+  persoana_id: null,
   articol_id: null,
   de_la: '',
   pana_la: '',
@@ -155,7 +157,7 @@ export function ListaIncasari() {
   const filtruBaza = useMemo<FiltruVanzari>(
     () => ({
       ...(filtre.client_id ? { client_id: filtre.client_id } : {}),
-      ...(filtre.operator_id ? { operator_id: filtre.operator_id } : {}),
+      ...(filtre.persoana_id ? { persoana_id: filtre.persoana_id } : {}),
       ...(filtre.articol_id ? { articol_id: filtre.articol_id } : {}),
       ...(filtre.de_la ? { de_la: laTimestamptz(startOfDay(laData(filtre.de_la))) } : {}),
       // Capătul de sus acoperă ziua ÎNTREAGĂ, până la 23:59:59.999. Cu miezul
@@ -182,6 +184,30 @@ export function ListaIncasari() {
     sumaTotal(randuriRezumat.filter((v) => v.achitat && v.metoda_plata === metoda).map((v) => v.total))
   const deIncasat = sumaTotal(randuriRezumat.filter((v) => !v.achitat).map((v) => v.total))
   const rezumatPartial = (rezumat.data?.total ?? 0) > randuriRezumat.length
+
+  // Partea persoanei alese: doar liniile ei, din vânzările achitate. O plată
+  // poate stinge ședința Andei și o cremă vândută de Irina deodată — totalul
+  // bonului ar pune în salariul Andei și crema.
+  const partea = useMemo(() => {
+    const id = filtre.persoana_id
+    if (!id) return null
+    let nume: string | null = null
+    const suma: number[] = []
+    let sedinte = 0
+    let produse = 0
+    for (const v of randuriRezumat) {
+      for (const l of v.linii) {
+        const p = persoanaLiniei(v, l)
+        if (p.id !== id) continue
+        nume = p.nume
+        if (!v.achitat) continue
+        suma.push(l.total_linie)
+        if (l.programare_id !== null) sedinte += 1
+        else produse += 1
+      }
+    }
+    return { nume, suma: sumaTotal(suma), sedinte, produse }
+  }, [filtre.persoana_id, randuriRezumat])
 
   const areFiltre = useMemo(
     () => Object.values(filtre).some((valoare) => valoare !== null && valoare !== ''),
@@ -220,12 +246,20 @@ export function ListaIncasari() {
       celula: (v) => <span className="text-ink-soft">{descrieLinii(v)}</span>,
     },
     {
-      cheie: 'operator',
-      antet: 'Operator',
-      // Locul rămas liber de coloana punctului de lucru îl ia operatorul: pe
-      // ecranele medii era ascuns degeaba.
+      cheie: 'facuta-de',
+      antet: 'Făcută de',
+      // Cine a lucrat, nu cine a introdus plata: după coloana asta se socotește
+      // salariul. Operatorul apare dedesubt doar când e altcineva.
       ascunsaSub: 'lg',
-      celula: (v) => <span className="text-ink-soft">{v.operator_nume}</span>,
+      celula: (v) => {
+        const persoane = facutaDe(v)
+        return (
+          <CelulaDubla
+            principal={<span className="text-ink-soft">{persoane.join(', ')}</span>}
+            secundar={persoane.includes(v.operator_nume) ? undefined : `introdusă de ${v.operator_nume}`}
+          />
+        )
+      },
     },
     {
       cheie: 'plata',
@@ -253,7 +287,7 @@ export function ListaIncasari() {
       <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <p className="text-[13px] text-ink-faint">
           Ședințele achitate și produsele vândute — plătite sau rămase de plată — cu clientul,
-          momentul și operatorul lor.
+          momentul și cine a lucrat.
         </p>
         <Buton varianta="primar" onClick={() => setFormular({})} className="shrink-0">
           <ShoppingBag className="size-4" />
@@ -261,7 +295,21 @@ export function ListaIncasari() {
         </Buton>
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:max-w-5xl lg:grid-cols-5">
+      <div
+        className={
+          partea
+            ? 'mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:max-w-6xl lg:grid-cols-6'
+            : 'mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:max-w-5xl lg:grid-cols-5'
+        }
+      >
+        {partea && (
+          <Statistica
+            eticheta={partea.nume ? `Lucrat de ${partea.nume}` : 'Lucrat de persoana aleasă'}
+            valoare={formateazaBani(partea.suma)}
+            pictograma={<UserRound className="size-4" />}
+            detaliu={`${partea.sedinte} ${plural(partea.sedinte, 'ședință', 'ședințe')} · ${partea.produse} ${plural(partea.produse, 'produs', 'produse')}`}
+          />
+        )}
         <Statistica
           eticheta="Încasări"
           valoare={numar}
@@ -317,11 +365,11 @@ export function ListaIncasari() {
           containerClassName="w-40"
         />
         <SelectorUtilizator
-          valoare={filtre.operator_id}
-          onSchimba={(id) => schimba('operator_id', id)}
-          eticheta="Operator"
+          valoare={filtre.persoana_id}
+          onSchimba={(id) => schimba('persoana_id', id)}
+          eticheta="Făcută de"
           cuGolire
-          placeholder="Toți operatorii"
+          placeholder="Toată echipa"
           className="w-48"
         />
         <SelectorArticol
@@ -367,7 +415,7 @@ export function ListaIncasari() {
                 <p className="truncate text-sm font-medium text-ink">{v.client_nume}</p>
                 <p className="truncate text-[13px] text-ink-soft">{descrieLinii(v)}</p>
                 <p className="mt-0.5 truncate text-[12px] text-ink-faint">
-                  {formateazaDataOra(v.efectuat_la)} · {v.operator_nume}
+                  {formateazaDataOra(v.efectuat_la)} · {facutaDe(v).join(', ')}
                 </p>
                 <div className="mt-2">
                   <PlataInRand vanzare={v} />

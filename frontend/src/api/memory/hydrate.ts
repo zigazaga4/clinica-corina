@@ -188,6 +188,8 @@ export function liniiVanzare(vanzare_id: Uuid): VanzareLinieDetaliu[] {
       articol_denumire: articol?.denumire ?? '—',
       articol_tip: articol?.tip ?? 'produs',
       programare_incepe_la: programare?.incepe_la ?? null,
+      executant_id: programare?.executant_id ?? null,
+      executant_nume: programare ? (magazin.utilizator.get(programare.executant_id)?.nume ?? null) : null,
     })
   }
   return linii

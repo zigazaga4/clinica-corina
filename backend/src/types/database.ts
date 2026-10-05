@@ -319,6 +319,9 @@ export interface VanzareLinieDetaliu extends VanzareLinie {
   articol_tip: TipArticol
   /** Când a avut loc ședința stinsă de linie — NULL pentru produse. */
   programare_incepe_la: string | null
+  /** Cine a făcut ședința — NULL pentru produse. */
+  executant_id: string | null
+  executant_nume: string | null
 }
 
 /** Încasare hidratată: `v_vanzare_detaliu` + liniile aduse separat. */

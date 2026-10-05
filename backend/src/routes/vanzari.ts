@@ -263,6 +263,19 @@ router.get('/', accesListaVanzari, ruta(async (req: AuthRequest, res: Response) 
   if (achitat === true) unde.brut('achitat_la IS NOT NULL')
   if (achitat === false) unde.brut('achitat_la IS NULL')
 
+  // „Făcută de”: cine a câștigat linia — executantul ședinței, iar la produse
+  // cine le-a vândut (operatorul). După asta se socotește salariul, nu după
+  // cine a introdus plata la recepție.
+  const persoana_id = textDin(req.query['persoana_id'])
+  if (persoana_id) {
+    unde.brut(
+      `EXISTS (SELECT 1 FROM vanzare_linie vl
+               LEFT JOIN programare pr ON pr.id = vl.programare_id
+               WHERE vl.vanzare_id = v_vanzare_detaliu.id
+                 AND COALESCE(pr.executant_id, v_vanzare_detaliu.operator_id) = ${unde.marcaj(persoana_id)})`,
+    )
+  }
+
   // Filtrarea pe articol privește liniile: antetul singur nu știe ce s-a vândut.
   const articol_id = textDin(req.query['articol_id'])
   if (articol_id) {

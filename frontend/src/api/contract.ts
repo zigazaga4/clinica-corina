@@ -492,6 +492,11 @@ export interface FiltruVanzari extends IntervalTimp, ParametriPaginare {
   client_id?: Uuid
   punct_lucru_id?: Uuid
   operator_id?: Uuid
+  /**
+   * „Făcută de”: vânzările cu măcar o linie câștigată de persoană — ședințe
+   * făcute de ea sau produse vândute de ea. Pentru salariu.
+   */
+  persoana_id?: Uuid
   articol_id?: Uuid
   /** true = doar cele plătite; false = doar cele neachitate; lipsă = toate. */
   achitat?: boolean

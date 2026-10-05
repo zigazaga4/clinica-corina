@@ -95,6 +95,7 @@ import type {
   VanzareLinie,
 } from '@/domain/types'
 import { CATEGORIE_CLIENTI, seVindeClientilor } from '@/domain/categorii'
+import { persoanaLiniei } from '@/domain/facutaDe'
 import { METODE_PLATA } from '@/domain/labels'
 import { acum, addDays, laTimestamptz } from '@/lib/dates'
 import { uuid } from '@/lib/id'
@@ -1608,6 +1609,9 @@ export function creeazaApiInMemorie(): ApiClient {
           // Filtrarea pe articol se face după hidratare: liniile sunt într-o
           // tabelă separată, iar antetul singur nu știe ce s-a vândut.
           if (filtru.articol_id && !detaliu.linii.some((l) => l.articol_id === filtru.articol_id)) {
+            continue
+          }
+          if (filtru.persoana_id && !detaliu.linii.some((l) => persoanaLiniei(detaliu, l).id === filtru.persoana_id)) {
             continue
           }
           randuri.push(detaliu)
