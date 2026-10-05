@@ -4,7 +4,7 @@ import { mesajEroare } from '@/api/errors'
 import { useAutentificare } from '@/app/auth'
 import { useArticole } from '@/app/queries'
 import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
-import { categoriileProduselor, FARA_CATEGORIE } from '@/domain/categorii'
+import { categoriileProduselor } from '@/domain/categorii'
 import type { Articol } from '@/domain/types'
 import { contine } from '@/lib/text'
 import {
@@ -12,12 +12,10 @@ import {
   ButonGrup,
   Card,
   CampCautare,
-  Combobox,
   File,
   GrupButoane,
   StareGoala,
   type Fila,
-  type OptiuneCombobox,
 } from '@/ui'
 import { FormularVanzare } from '../vanzari/FormularVanzare'
 import { VanzariNeachitate } from '../vanzari/VanzariNeachitate'
@@ -40,19 +38,34 @@ import { ListaArticole } from './liste'
 
   Punctele de lucru nu mai au filă: clinica are o singură locație.
 
-  Pe fila „Produse” stă și „Vinde produse”, pentru ORICE cont: acolo caută
+  Pe filele de produse stă și „Vinde produse”, pentru ORICE cont: acolo caută
   recepția când îi dă unei cliente niște creme (așa a desenat-o clinica:
   „Nomenclator → Produse → Maria → Cremă 50 ml / 150 RON”). Formularul este
   cel din „Încasări”, nu o copie.
 
-  Produsele au categorii — listele de prețuri ale clinicii, „Produse clienți”
-  și „Produse colaboratori” — cu filtru și coloană proprie pe aceeași filă.
+  Fiecare categorie de produse are fila ei, lângă „Servicii” — cerut de
+  clinică: „Servicii | Produse clienți | Produse colaboratori”, nu o singură
+  filă „Produse” cu un filtru înăuntru. Filele se citesc din categoriile
+  folosite, deci o categorie nouă își face singură loc. Produsele rămase fără
+  categorie stau la „Alte produse”, fila care apare doar cât timp există; fără
+  nicio categorie, fila lor se cheamă simplu „Produse”.
 */
 
-/** Valoarea filtrului pentru produsele fără categorie: nicio categorie nu e goală. */
-const FILTRU_FARA_CATEGORIE = ''
+/**
+ * Cheia filei: „servicii”, „produse” (produsele fără categorie) sau
+ * `categorie:<nume>` — o categorie poate avea orice nume, deci nu poate fi
+ * ea însăși cheia fără să se ciocnească, cândva, cu primele două.
+ */
+type FilaNomenclator = string
+const FILA_SERVICII = 'servicii'
+const FILA_FARA_CATEGORIE = 'produse'
+const PREFIX_CATEGORIE = 'categorie:'
 
-type FilaNomenclator = 'servicii' | 'produse'
+/** Categoria produselor de pe filă; null = fără categorie. */
+function categoriaFilei(fila: FilaNomenclator): string | null {
+  return fila.startsWith(PREFIX_CATEGORIE) ? fila.slice(PREFIX_CATEGORIE.length) : null
+}
+
 type FiltruStare = 'toate' | 'active' | 'inactive'
 
 const STARI: { valoare: FiltruStare; eticheta: string }[] = [
@@ -64,11 +77,9 @@ const STARI: { valoare: FiltruStare; eticheta: string }[] = [
 export function PaginaNomenclator() {
   const { esteAdministrator } = useAutentificare()
 
-  const [fila, setFila] = useState<FilaNomenclator>('servicii')
+  const [fila, setFila] = useState<FilaNomenclator>(FILA_SERVICII)
   const [cautare, setCautare] = useState('')
   const [stare, setStare] = useState<FiltruStare>('toate')
-  // null = toate categoriile; FILTRU_FARA_CATEGORIE = doar cele fără.
-  const [categorie, setCategorie] = useState<string | null>(null)
 
   // `'nou'` distinge „formular deschis pentru o înregistrare nouă” de „închis”.
   const [articolEditat, setArticolEditat] = useState<Articol | 'nou' | null>(null)
@@ -90,48 +101,55 @@ export function PaginaNomenclator() {
     () => (servicii.data ?? []).filter((articol) => contine(articol.denumire, cautare)),
     [servicii.data, cautare],
   )
-  // Categoriile se citesc din produse — vezi @/domain/categorii.
-  const optiuniCategorie = useMemo<OptiuneCombobox<string>[]>(() => {
-    const toate = produse.data ?? []
-    return [
-      ...categoriileProduselor(toate).map((c) => ({ valoare: c, eticheta: c })),
-      ...(toate.some((a) => a.categorie === null)
-        ? [{ valoare: FILTRU_FARA_CATEGORIE, eticheta: FARA_CATEGORIE }]
-        : []),
-    ]
-  }, [produse.data])
-  const areCategorii = optiuniCategorie.some((o) => o.valoare !== FILTRU_FARA_CATEGORIE)
-  // O categorie aleasă care nu mai are produse (s-a schimbat filtrul de stare)
-  // nu mai filtrează: câmpul ar arăta „Toate categoriile” peste o listă tăiată.
-  const categorieActiva =
-    categorie !== null && optiuniCategorie.some((o) => o.valoare === categorie) ? categorie : null
-
   const produseFiltrate = useMemo(
-    () =>
-      (produse.data ?? []).filter(
-        (articol) =>
-          contine(articol.denumire, cautare) &&
-          (categorieActiva === null || (articol.categorie ?? FILTRU_FARA_CATEGORIE) === categorieActiva),
-      ),
-    [produse.data, cautare, categorieActiva],
+    () => (produse.data ?? []).filter((articol) => contine(articol.denumire, cautare)),
+    [produse.data, cautare],
   )
 
+  // Filele produselor vin din TOATE produsele, nu din cele filtrate pe stare:
+  // altfel o filă ar dispărea sub cursor la „Inactive”. Aceeași cerere ca a
+  // formularului de produs — din memoria cache, fără drum în plus la server.
+  const toateProdusele = useArticole({ tip: 'produs' })
+  const categorii = useMemo(
+    () => categoriileProduselor(toateProdusele.data ?? []),
+    [toateProdusele.data],
+  )
+  const areFaraCategorie = (toateProdusele.data ?? []).some((a) => a.categorie === null)
+  const cateIn = (categorie: string | null) =>
+    produseFiltrate.filter((a) => a.categorie === categorie).length
+
   const file: Fila<FilaNomenclator>[] = [
-    { valoare: 'servicii', eticheta: 'Servicii', contor: serviciiFiltrate.length },
-    { valoare: 'produse', eticheta: 'Produse', contor: produseFiltrate.length },
+    { valoare: FILA_SERVICII, eticheta: 'Servicii', contor: serviciiFiltrate.length },
+    ...categorii.map((c) => ({ valoare: PREFIX_CATEGORIE + c, eticheta: c, contor: cateIn(c) })),
+    ...(categorii.length === 0 || areFaraCategorie
+      ? [
+          {
+            valoare: FILA_FARA_CATEGORIE,
+            eticheta: categorii.length === 0 ? 'Produse' : 'Alte produse',
+            contor: cateIn(null),
+          },
+        ]
+      : []),
   ]
+  // Fila unei categorii golite între timp (ultimul ei produs mutat în alta)
+  // nu mai există: ecranul se întoarce la servicii, nu rămâne pe o filă fantomă.
+  const filaActiva = file.some((f) => f.valoare === fila) ? fila : FILA_SERVICII
+  const peProduse = filaActiva !== FILA_SERVICII
+  const categorieActiva = peProduse ? categoriaFilei(filaActiva) : null
+  const produseleFilei = useMemo(
+    () => produseFiltrate.filter((a) => a.categorie === categorieActiva),
+    [produseFiltrate, categorieActiva],
+  )
 
   const actiuneNoua = {
-    eticheta: fila === 'servicii' ? 'Serviciu nou' : 'Produs nou',
+    eticheta: peProduse ? 'Produs nou' : 'Serviciu nou',
     porneste: () => setArticolEditat('nou'),
   }
 
-  const filtruCategorie = fila === 'produse' ? categorieActiva : null
-  const areFiltre = cautare.trim() !== '' || stare !== 'toate' || filtruCategorie !== null
+  const areFiltre = cautare.trim() !== '' || stare !== 'toate'
   const golesteFiltrele = () => {
     setCautare('')
     setStare('toate')
-    setCategorie(null)
   }
 
   // Lista goală din cauza filtrelor și lista goală pentru că nu s-a creat încă
@@ -159,13 +177,13 @@ export function PaginaNomenclator() {
         titlu="Nomenclator"
         descriere="Serviciile și produsele din ofertă."
         actiuni={
-          esteAdministrator || fila === 'produse' ? (
+          esteAdministrator || peProduse ? (
             <>
               {esteAdministrator && (
                 <Buton
-                  // Pe „Produse”, vânzarea e gestul de zi cu zi; adăugarea în
+                  // Pe produse, vânzarea e gestul de zi cu zi; adăugarea în
                   // nomenclator trece pe planul doi.
-                  varianta={fila === 'produse' ? 'secundar' : 'primar'}
+                  varianta={peProduse ? 'secundar' : 'primar'}
                   onClick={actiuneNoua.porneste}
                 >
                   <Plus className="size-4" />
@@ -173,7 +191,7 @@ export function PaginaNomenclator() {
                   <span className="sm:hidden">Adaugă</span>
                 </Buton>
               )}
-              {fila === 'produse' && (
+              {peProduse && (
                 <Buton varianta="primar" onClick={() => setVanzareNoua(true)}>
                   <ShoppingBag className="size-4" />
                   Vinde produse
@@ -184,7 +202,7 @@ export function PaginaNomenclator() {
         }
       />
 
-      <File file={file} activa={fila} onSchimba={setFila} className="mb-4" />
+      <File file={file} activa={filaActiva} onSchimba={setFila} className="mb-4" />
 
       <BaraFiltre>
         <CampCautare
@@ -206,17 +224,6 @@ export function PaginaNomenclator() {
             </ButonGrup>
           ))}
         </GrupButoane>
-        {fila === 'produse' && areCategorii && (
-          <Combobox
-            optiuni={optiuniCategorie}
-            valoare={categorieActiva}
-            onSchimba={setCategorie}
-            cuGolire
-            placeholder="Toate categoriile"
-            aria-label="Filtrare după categorie"
-            className="w-56"
-          />
-        )}
       </BaraFiltre>
 
       {!esteAdministrator && (
@@ -228,7 +235,7 @@ export function PaginaNomenclator() {
       )}
 
       <Card className="overflow-hidden">
-        {fila === 'servicii' && (
+        {!peProduse && (
           <ListaArticole
             tip="serviciu"
             randuri={serviciiFiltrate}
@@ -243,10 +250,10 @@ export function PaginaNomenclator() {
           />
         )}
 
-        {fila === 'produse' && (
+        {peProduse && (
           <ListaArticole
             tip="produs"
-            randuri={produseFiltrate}
+            randuri={produseleFilei}
             incarca={produse.isFetching}
             eroare={produse.isError ? mesajEroare(produse.error) : null}
             onReincearca={() => void produse.refetch()}
@@ -256,7 +263,7 @@ export function PaginaNomenclator() {
               setVanzareNoua(true)
             }}
             stareGoala={stareGoala(
-              'Niciun produs în nomenclator',
+              categorieActiva ? `Niciun produs în „${categorieActiva}”` : 'Niciun produs în nomenclator',
               'Produsele adăugate aici pot fi trecute pe liniile unei vânzări.',
             )}
           />
@@ -264,14 +271,14 @@ export function PaginaNomenclator() {
 
       </Card>
 
-      {fila === 'produse' && <VanzariNeachitate />}
+      {peProduse && <VanzariNeachitate />}
 
       {articolEditat !== null && (
         <FormularArticol
           articol={articolEditat === 'nou' ? null : articolEditat}
-          tipInitial={fila === 'produse' ? 'produs' : 'serviciu'}
-          // Produsul nou pornit din lista colaboratorilor intră în ea.
-          categorieInitiala={filtruCategorie || null}
+          tipInitial={peProduse ? 'produs' : 'serviciu'}
+          // Produsul nou pornit de pe fila colaboratorilor intră în ea.
+          categorieInitiala={categorieActiva}
           onInchide={() => setArticolEditat(null)}
         />
       )}

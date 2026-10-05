@@ -329,6 +329,15 @@ async function ruleaza(): Promise<void> {
     categoriePeServiciu.status === 400 && categoriePeServiciu.corp?.camp === 'categorie',
     JSON.stringify(categoriePeServiciu.corp))
 
+  // Curățenie: fiecare categorie e o filă în Nomenclator, iar una de test
+  // rămasă după fiecare rulare ar umple bara de file a bazei de lucru.
+  const curatat = await cere('PATCH', `/articole/${pentruColaboratori.corp?.id}`, {
+    token: admin, corp: { categorie: null },
+  })
+  verifica('categoria de test se scoate la final (null = fără categorie)',
+    curatat.status === 200 && curatat.corp?.categorie === null,
+    JSON.stringify(curatat.corp))
+
   // -------------------------------------------------------------------------
   console.log('\nClienți')
 

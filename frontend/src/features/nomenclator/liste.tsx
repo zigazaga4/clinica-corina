@@ -54,23 +54,12 @@ function ButonVinde({ articol, onVinde }: { articol: Articol; onVinde: (a: Artic
   )
 }
 
-function coloaneArticol(
-  tip: TipArticol,
-  cuCategorie: boolean,
-  onVinde?: (a: Articol) => void,
-): Coloana<Articol>[] {
+function coloaneArticol(tip: TipArticol, onVinde?: (a: Articol) => void): Coloana<Articol>[] {
   const durata: Coloana<Articol> = {
     cheie: 'durata',
     antet: 'Durată',
     className: 'w-28 whitespace-nowrap tabular-nums text-ink-soft',
     celula: (articol) => formateazaDurata(articol.durata_minute),
-  }
-  // Lista de prețuri: aceeași cremă apare de două ori, o dată pe fiecare.
-  const categorie: Coloana<Articol> = {
-    cheie: 'categorie',
-    antet: 'Categorie',
-    className: 'w-44 whitespace-nowrap text-ink-soft',
-    celula: (articol) => articol.categorie ?? <span className="text-ink-faint">—</span>,
   }
 
   return [
@@ -88,7 +77,6 @@ function coloaneArticol(
       ),
     },
     ...(tip === 'serviciu' ? [durata] : []),
-    ...(cuCategorie ? [categorie] : []),
     {
       cheie: 'pret_lista',
       antet: 'Preț listă',
@@ -132,10 +120,10 @@ export function ListaArticole({
   /** Doar la produse: butonul „Vinde” de pe fiecare rând. */
   onVinde?: (articol: Articol) => void
 }) {
-  const cuCategorie = tip === 'produs' && randuri.some((articol) => articol.categorie !== null)
+  // Fără coloană de categorie: fiecare categorie are fila ei în Nomenclator.
   return (
     <Tabel
-      coloane={coloaneArticol(tip, cuCategorie, onVinde)}
+      coloane={coloaneArticol(tip, onVinde)}
       randuri={randuri}
       cheieRand={(articol) => articol.id}
       incarca={incarca}
@@ -156,11 +144,7 @@ export function ListaArticole({
             // Denumirile din listele de prețuri sunt lungi și se deosebesc la
             // capăt („… 250 ml” / „… 50 ml”): tăiate, ar arăta la fel.
             intreg
-            secundar={
-              tip === 'serviciu'
-                ? formateazaDurata(articol.durata_minute)
-                : (articol.categorie ?? undefined)
-            }
+            secundar={tip === 'serviciu' ? formateazaDurata(articol.durata_minute) : undefined}
           />
           <div className="flex shrink-0 flex-col items-end gap-1">
             <span className="text-sm font-medium text-ink tabular-nums">

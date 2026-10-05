@@ -46,30 +46,33 @@ it('administrator: listează, creează un serviciu și comută tipul', async () 
   })
 })
 
-/** Textele rândurilor din tabel — produsul, categoria, prețul, starea. */
+/** Textele rândurilor din tabel — produsul, prețul, starea. */
 const randurileTabelului = () =>
   [...document.querySelectorAll('tbody tr')].map((rand) => rand.textContent ?? '')
 
-it('produse: categoria are coloană și filtru; produsul nou intră în lista filtrată', async () => {
+/** Numele filelor, fără contorul de la capăt: „Produse clienți8” -> „Produse clienți”. */
+const numeleFilelor = () =>
+  screen.getAllByRole('tab').map((fila) => fila.textContent?.replace(/\d+$/, '').trim())
+
+it('produse: fiecare categorie are fila ei; produsul nou intră în fila din care a pornit', async () => {
   await autentifica('admin@clinica.ro')
   randeaza(<PaginaNomenclator />)
 
-  fireEvent.click(await screen.findByRole('tab', { name: /Produse/ }))
-  expect(await screen.findByRole('columnheader', { name: 'Categorie' })).toBeInTheDocument()
+  // Cum a cerut clinica: serviciile și listele de prețuri, una lângă alta — nu
+  // o filă „Produse” cu un filtru înăuntru. Produsele fără categorie la urmă.
+  await waitFor(() =>
+    expect(numeleFilelor()).toEqual([
+      'Servicii',
+      'Produse clienți',
+      'Produse colaboratori',
+      'Alte produse',
+    ]),
+  )
+  fireEvent.click(screen.getByRole('tab', { name: /Produse colaboratori/ }))
+  await waitFor(() => expect(randurileTabelului()).toHaveLength(2))
+  expect(randurileTabelului().join(' ')).toMatch(/Mască facială cu argilă.*Ulei pentru masaj/)
 
-  // Listele de prețuri ale clinicii, plus produsele rămase fără categorie.
-  fireEvent.click(screen.getByRole('combobox', { name: 'Filtrare după categorie' }))
-  expect(screen.getByRole('option', { name: 'Produse clienți' })).toBeInTheDocument()
-  expect(screen.getByRole('option', { name: 'Fără categorie' })).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('option', { name: 'Produse colaboratori' }))
-
-  await waitFor(() => {
-    const randuri = randurileTabelului()
-    expect(randuri).toHaveLength(2)
-    expect(randuri.every((r) => r.includes('Produse colaboratori'))).toBe(true)
-  })
-
-  // Pornit din lista colaboratorilor, produsul nou intră în ea.
+  // Pornit de pe fila colaboratorilor, produsul nou intră în ea.
   fireEvent.click(screen.getByRole('button', { name: /Produs nou/ }))
   const dialog = document.querySelector('dialog') as HTMLElement
   expect(within(dialog).getByRole('combobox', { name: /^Categorie/ })).toHaveTextContent(
@@ -85,13 +88,28 @@ it('produse: categoria are coloană și filtru; produsul nou intră în lista fi
   const [nou] = await api.articole.list({ q: 'Cremă de probă' })
   expect(nou?.categorie).toBe('Produse colaboratori')
   expect(nou?.pret_lista).toBe(185)
+
+  // Pe fila clienților nu apare.
+  fireEvent.click(screen.getByRole('tab', { name: /Produse clienți/ }))
+  await waitFor(() => expect(randurileTabelului().join(' ')).toMatch(/Loțiune tonică/))
+  expect(randurileTabelului().join(' ')).not.toMatch(/Cremă de probă/)
+})
+
+it('fără nicio categorie, produsele stau pe o singură filă „Produse”', async () => {
+  await autentifica('admin@clinica.ro')
+  for (const produs of await api.articole.list({ tip: 'produs' })) {
+    await api.articole.update(produs.id, { categorie: null })
+  }
+  randeaza(<PaginaNomenclator />)
+
+  await waitFor(() => expect(numeleFilelor()).toEqual(['Servicii', 'Produse']))
 })
 
 it('administrator: aceeași cremă și pe cealaltă listă, cu o categorie scrisă de mână', async () => {
   await autentifica('admin@clinica.ro')
   randeaza(<PaginaNomenclator />)
 
-  fireEvent.click(await screen.findByRole('tab', { name: /Produse/ }))
+  fireEvent.click(await screen.findByRole('tab', { name: /Produse clienți/ }))
   fireEvent.click(await screen.findByRole('button', { name: /Produs nou/ }))
   const dialog = document.querySelector('dialog') as HTMLElement
 
@@ -123,7 +141,7 @@ it('vânzare: produsele apar grupate pe listele de prețuri, iar căutarea găse
   await autentifica('andreea.popescu@clinica.ro')
   randeaza(<PaginaNomenclator />)
 
-  fireEvent.click(await screen.findByRole('tab', { name: /Produse/ }))
+  fireEvent.click(await screen.findByRole('tab', { name: /Produse clienți/ }))
   fireEvent.click(await screen.findByRole('button', { name: /Vinde produse/ }))
   const formular = within(screen.getAllByRole('dialog').at(-1)!)
 
@@ -155,7 +173,7 @@ it('nu mai există filă de puncte de lucru', async () => {
   randeaza(<PaginaNomenclator />)
 
   expect(await screen.findByRole('tab', { name: /Servicii/ })).toBeInTheDocument()
-  expect(screen.getByRole('tab', { name: /Produse/ })).toBeInTheDocument()
+  expect(await screen.findByRole('tab', { name: /Produse clienți/ })).toBeInTheDocument()
   expect(screen.queryByRole('tab', { name: /Puncte de lucru/ })).toBeNull()
 })
 

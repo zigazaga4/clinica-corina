@@ -89,11 +89,6 @@ export interface ComboboxProps<V extends string> {
   onCreare?: (text: string) => void
   /** Textul rândului de creare; implicit „Adaugă „<text>””. */
   etichetaCreare?: (text: string) => string
-  /**
-   * Numele câmpului pentru cititorul de ecran, când n-are etichetă vizibilă —
-   * în barele de filtre, ca și căutarea de lângă el.
-   */
-  'aria-label'?: string
   className?: string
 }
 
@@ -113,7 +108,6 @@ export function Combobox<V extends string>({
   incarca = false,
   onCreare,
   etichetaCreare = (text) => `Adaugă „${text}”`,
-  'aria-label': etichetaAccesibila,
   className,
 }: ComboboxProps<V>) {
   const [deschis, setDeschis] = useState(false)
@@ -229,7 +223,6 @@ export function Combobox<V extends string>({
             id={id}
             type="button"
             role="combobox"
-            aria-label={etichetaAccesibila}
             aria-expanded={deschis}
             aria-haspopup="listbox"
             aria-describedby={descrisDe}
