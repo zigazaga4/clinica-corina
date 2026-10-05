@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { api, esteStatisticiIncuiate } from '@/api'
 import type {
   AccesStatistici,
+  DateAchitareLinii,
   DateArticolModificat,
   DateArticolNou,
   DateCheltuialaModificata,
@@ -693,6 +694,20 @@ export function useModificaVanzare(): UseMutationResult<
       qc.setQueryData(chei.vanzari.una(vanzare.id), vanzare)
       invalideazaVanzari(qc, vanzare.client_id)
     },
+  })
+}
+
+/** Achită doar liniile alese ale unei vânzări neachitate; restul rămâne datorie. */
+export function useAchitaLinii(): UseMutationResult<
+  VanzareDetaliu,
+  Error,
+  { id: Uuid; date: DateAchitareLinii }
+> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, date }: { id: Uuid; date: DateAchitareLinii }) =>
+      api.vanzari.achitaLinii(id, date),
+    onSuccess: (vanzare) => invalideazaVanzari(qc, vanzare.client_id),
   })
 }
 

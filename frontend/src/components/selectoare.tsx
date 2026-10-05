@@ -7,7 +7,7 @@ import {
   useUtilizatori,
 } from '@/app/queries'
 import { useAutentificare } from '@/app/auth'
-import { comparaCategorii, FARA_CATEGORIE } from '@/domain/categorii'
+import { aceeasiCategorie, comparaCategorii, FARA_CATEGORIE } from '@/domain/categorii'
 import { etichetaTipArticol, tonTipArticol } from '@/domain/labels'
 import type { TipArticol, Uuid } from '@/domain/types'
 import { useIntarziat } from '@/lib/hooks'
@@ -189,6 +189,7 @@ export function SelectorArticol({
   eticheta,
   placeholder = 'Alege…',
   doarActive = true,
+  categorie,
   cuCreare = false,
   ...comune
 }: ProprietatiComune & {
@@ -198,6 +199,14 @@ export function SelectorArticol({
   tip?: TipArticol
   /** Articolele scoase din ofertă rămân alese pe vânzările vechi, dar nu se pot adăuga. */
   doarActive?: boolean
+  /**
+   * Restrânge la o singură listă de prețuri — vânzarea cere „Produse clienți”.
+   *
+   * Articolul deja ales rămâne în listă chiar dacă e din alta: o vânzare veche
+   * se corectează fără ca linia ei să apară goală. Produsul creat de aici intră
+   * direct în această listă, altfel n-ar mai putea fi ales.
+   */
+  categorie?: string
   /**
    * Permite crearea unui articol nou din textul căutat.
    *
@@ -230,6 +239,8 @@ export function SelectorArticol({
         denumire,
         durata_minute: tip === 'serviciu' ? DURATA_SERVICIU_IMPLICITA : null,
         pret_lista: 0,
+        // Doar produsele au categorie (articol_categorie_ck).
+        ...(tip === 'produs' && categorie ? { categorie } : {}),
       })
       setCreatRecent({
         valoare: articol.id,
@@ -252,7 +263,9 @@ export function SelectorArticol({
   }
 
   const optiuni = useMemo<OptiuneCombobox<Uuid>[]>(() => {
-    const articole = data ?? []
+    const articole = (data ?? []).filter(
+      (a) => categorie === undefined || a.id === valoare || aceeasiCategorie(a.categorie, categorie),
+    )
     /*
       Produsele, pe listele lor de prețuri. Aceeași cremă stă și la „Produse
       clienți”, și la „Produse colaboratori”, cu alt preț: fără titlul grupului,
@@ -260,8 +273,10 @@ export function SelectorArticol({
       categorie folosită, lista rămâne simplă, fără titluri. Doar în listele
       de produse: în cele mixte (filtrul din „Încasări”) serviciile își țin
       locul, iar prețul de pe al doilea rând deosebește cele două variante.
+      Restrânsă la o singură listă (`categorie`), nu are ce grupa.
     */
-    const peCategorii = tip === 'produs' && articole.some((a) => a.categorie !== null)
+    const peCategorii =
+      tip === 'produs' && categorie === undefined && articole.some((a) => a.categorie !== null)
     const ordonate = peCategorii
       ? [...articole].sort((a, b) => comparaCategorii(a.categorie, b.categorie))
       : articole
@@ -279,7 +294,7 @@ export function SelectorArticol({
       })),
       creatRecent,
     )
-  }, [data, tip, creatRecent])
+  }, [data, tip, categorie, valoare, creatRecent])
 
   return (
     <Combobox

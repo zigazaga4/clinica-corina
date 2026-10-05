@@ -12,6 +12,7 @@
 
 import 'dotenv/config'
 import pool from './lib/db.js'
+import { seVindeClientilor } from './lib/categorii.js'
 
 const BAZA = process.env.API_URL ?? `http://localhost:${process.env.PORT ?? 3000}`
 const EMAIL_ADMIN = 'admin@clinica.ro'
@@ -248,7 +249,8 @@ async function ruleaza(): Promise<void> {
     `a venit ${typeof serviciu?.pret_lista}: ${JSON.stringify(serviciu?.pret_lista)}`)
 
   const produse = await cere('GET', '/articole?tip=produs&activ=true', { token: admin })
-  const produs = produse.corp[0]
+  // Unul care se poate vinde: de pe lista clienților (`seVindeClientilor`).
+  const produs = produse.corp.find(seVindeClientilor)
   verifica('produsele nu au durată', produs?.durata_minute === null)
 
   const scrieCaOperator = await cere('POST', '/articole', {

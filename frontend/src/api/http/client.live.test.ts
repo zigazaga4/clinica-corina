@@ -20,6 +20,7 @@ import { creeazaApiHttp } from './client'
 import { esteEroareApi, esteStatisticiIncuiate } from '@/api/errors'
 import { scrieTokenuri, stergeTokenuri, type TokenuriSesiune } from '@/api/session'
 import type { ApiClient } from '@/api/contract'
+import { seVindeClientilor } from '@/domain/categorii'
 import type { Articol, Uuid } from '@/domain/types'
 
 /*
@@ -101,11 +102,13 @@ describe.skipIf(!ADRESA)('clientul HTTP împotriva serverului real', () => {
       trei ședințe, iar „preț din nomenclator” să pice cu a treia parte din el.
     */
     const serviciuSimplu = servicii.find((s) => s.numar_sedinte === 1)
-    if (!serviciuSimplu || !produse[0] || !utilizatori[0]) {
+    // Unul care se poate vinde: de pe lista clienților.
+    const produsClienti = produse.find(seVindeClientilor)
+    if (!serviciuSimplu || !produsClienti || !utilizatori[0]) {
       throw new Error('Baza nu are date de pornire. Rulează `npm run seed` în backend.')
     }
     serviciu = serviciuSimplu
-    produs = produse[0]
+    produs = produsClienti
     executant_id = utilizatori[0].id
 
     client_id = (await api.clienti.create({ nume: eticheta, telefon: '0700111222' })).id

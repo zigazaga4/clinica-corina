@@ -571,6 +571,21 @@ export interface DateIncasare {
   metoda_plata?: MetodaPlata
 }
 
+/**
+ * Plata unei părți dintr-o vânzare neachitată — POST /vanzari/:id/achitare.
+ *
+ * Clienta a luat cinci creme pe datorie și plătește azi două (cerința
+ * clinicii, 5 oct. 2026). Liniile alese trec pe un bon nou, achitat ACUM, cu
+ * aceeași clientă și aceeași dată a vânzării; restul rămâne datorie, cu totalul
+ * scăzut. Toate liniile alese = toată vânzarea trece achitată, ca la „Achitat”.
+ */
+export interface DateAchitareLinii {
+  /** Liniile plătite acum — cel puțin una, toate de pe această vânzare. */
+  linie_ids: Uuid[]
+  /** Numerar sau card. */
+  metoda_plata: MetodaPlata
+}
+
 export interface ApiVanzari {
   /**
    * GET /vanzari — orice rol, CU STATISTICILE DEBLOCATE (v. `ApiStatistici`).
@@ -589,6 +604,11 @@ export interface ApiVanzari {
    * Stinge într-o singură plată ședințele rămase de achitat ale unui client.
    */
   incaseaza(date: DateIncasare): Promise<VanzareDetaliu>
+  /**
+   * POST /vanzari/:id/achitare — orice rol. Achită doar liniile alese ale unei
+   * vânzări neachitate; v. `DateAchitareLinii`. Întoarce bonul achitat.
+   */
+  achitaLinii(id: Uuid, date: DateAchitareLinii): Promise<VanzareDetaliu>
   /**
    * DELETE /vanzari/:id — orice rol, CU STATISTICILE DEBLOCATE.
    * Ședințele stinse de bon redevin „de plată”; bonul rămâne în jurnal.

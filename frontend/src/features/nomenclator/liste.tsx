@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { ShoppingBag } from 'lucide-react'
 import { InsemnInactiv } from '@/components/insemne'
+import { seVindeClientilor } from '@/domain/categorii'
 import type { Articol, TipArticol } from '@/domain/types'
 import { formateazaDurata } from '@/lib/dates'
 import { formateazaBani } from '@/lib/money'
@@ -39,8 +40,13 @@ function InsemnStare({ activ }: { activ: boolean }) {
   „Vinde” pe fiecare produs: recepția caută crema în listă și o vinde de acolo,
   cu produsul deja pus pe bon. Clicul nu urcă la rând — rândul deschide
   modificarea produsului, iar vânzarea nu trebuie să deschidă și fereastra aceea.
+
+  Doar pe produsele active de pe lista clienților: unul scos din ofertă sau de
+  pe altă listă (colaboratori, fără categorie) nu se vinde — serverul l-ar
+  refuza. Rândul rămâne fără buton.
 */
 function ButonVinde({ articol, onVinde }: { articol: Articol; onVinde: (a: Articol) => void }) {
+  if (!articol.activ || !seVindeClientilor(articol)) return null
   return (
     <ButonRand
       varianta="primar"
@@ -97,9 +103,7 @@ function coloaneArticol(tip: TipArticol, onVinde?: (a: Articol) => void): Coloan
             antet: '',
             laDreapta: true,
             className: 'w-28',
-            // Un produs scos din ofertă nu se mai vinde — serverul l-ar refuza.
-            celula: (articol: Articol) =>
-              articol.activ ? <ButonVinde articol={articol} onVinde={onVinde} /> : null,
+            celula: (articol: Articol) => <ButonVinde articol={articol} onVinde={onVinde} />,
           },
         ]
       : []),
@@ -132,8 +136,7 @@ export function ListaArticole({
       onRandClick={onDeschide}
       {...(tip === 'produs' && onVinde
         ? {
-            actiuneMobil: (articol: Articol) =>
-              articol.activ ? <ButonVinde articol={articol} onVinde={onVinde} /> : null,
+            actiuneMobil: (articol: Articol) => <ButonVinde articol={articol} onVinde={onVinde} />,
           }
         : {})}
       stareGoala={stareGoala}

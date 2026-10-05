@@ -371,6 +371,8 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
       create: (date) => cerere<VanzareDetaliu>('POST', '/vanzari', { corp: date }),
       update: (id, date) => cerere<VanzareDetaliu>('PATCH', `/vanzari/${id}`, { corp: date }),
       incaseaza: (date) => cerere<VanzareDetaliu>('POST', '/vanzari/incasare', { corp: date }),
+      achitaLinii: (id, date) =>
+        cerere<VanzareDetaliu>('POST', `/vanzari/${id}/achitare`, { corp: date }),
       remove: (id) => cerere<void>('DELETE', `/vanzari/${id}`, { statistici: true }),
     },
 

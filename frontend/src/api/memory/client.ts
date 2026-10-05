@@ -12,6 +12,7 @@
 import type {
   AccesStatistici,
   ApiClient,
+  DateAchitareLinii,
   DateArticolModificat,
   DateArticolNou,
   DateCheltuialaModificata,
@@ -93,6 +94,7 @@ import type {
   VanzareDetaliu,
   VanzareLinie,
 } from '@/domain/types'
+import { CATEGORIE_CLIENTI, seVindeClientilor } from '@/domain/categorii'
 import { METODE_PLATA } from '@/domain/labels'
 import { acum, addDays, laTimestamptz } from '@/lib/dates'
 import { uuid } from '@/lib/id'
@@ -1639,7 +1641,7 @@ export function creeazaApiInMemorie(): ApiClient {
         }
         // Liniile se validează ÎNAINTE de a scrie antetul: pe server totul este
         // o tranzacție, deci nu poate rămâne o vânzare fără linii.
-        const pregatite = date.linii.map(pregatesteLinie)
+        const pregatite = date.linii.map((linie) => pregatesteLinie(linie))
         // Lipsă = achitată pe loc, ca înainte să existe alegerea.
         const achitat = achitatDin(date.achitat) ?? true
         refuzaSedintePeDatorie(achitat, pregatite)
@@ -1734,7 +1736,12 @@ export function creeazaApiInMemorie(): ApiClient {
           if (date.linii.length === 0) {
             throw eroareValidare('Vânzarea trebuie să aibă cel puțin o linie.', 'linii')
           }
-          const pregatite = date.linii.map(pregatesteLinie)
+          // Ce era pe bon înainte rămâne permis la corecție — ca pe server.
+          const dejaPeBon = new Set<Uuid>()
+          for (const linie of magazin.vanzare_linie.values()) {
+            if (linie.vanzare_id === id) dejaPeBon.add(linie.articol_id)
+          }
+          const pregatite = date.linii.map((linie) => pregatesteLinie(linie, dejaPeBon))
           // Validate întâi, șterse abia apoi — o linie invalidă nu trebuie să
           // lase vânzarea fără cele vechi.
           for (const [linieId, linie] of magazin.vanzare_linie) {
@@ -1768,6 +1775,78 @@ export function creeazaApiInMemorie(): ApiClient {
         }
 
         return hidrateazaVanzare(rand)
+      },
+
+      /** POST /vanzari/:id/achitare — orice rol. Ca pe server: liniile plătite trec pe un bon nou. */
+      async achitaLinii(id, date: DateAchitareLinii): Promise<VanzareDetaliu> {
+        await intarziere()
+        const autor = cereUtilizator()
+        if (!Array.isArray(date.linie_ids) || date.linie_ids.length === 0) {
+          throw eroareValidare('Alege cel puțin un produs plătit.', 'linie_ids')
+        }
+        const metoda_plata = metodaPlataDin(date.metoda_plata)
+        if (metoda_plata === null) {
+          throw eroareValidare('Alege cum s-a plătit: numerar sau card.', 'metoda_plata')
+        }
+        const rand = ceruta(magazin.vanzare, id, 'Vânzarea')
+        if (rand.achitat_la !== null) throw eroareValidare('Vânzarea este deja achitată.', 'linie_ids')
+
+        const alese = new Set(date.linie_ids)
+        const linii = [...magazin.vanzare_linie.values()].filter((l) => l.vanzare_id === id)
+        if (![...alese].every((l) => linii.some((x) => x.id === l))) {
+          throw eroareValidare('Produsele alese nu sunt toate pe această vânzare.', 'linie_ids')
+        }
+        const achitat_la = acum()
+
+        // Toate liniile: e chiar bifa „Achitat” pe toată vânzarea.
+        if (alese.size === linii.length) {
+          rand.achitat_la = achitat_la
+          rand.metoda_plata = metoda_plata
+          atinge(rand)
+          scrieJurnal({
+            utilizator_id: autor.id,
+            actiune: 'modificare',
+            entitate: 'vanzare',
+            entitate_id: id,
+            date_vechi: { achitat_la: null, metoda_plata: null },
+            date_noi: { achitat_la, metoda_plata },
+          })
+          return hidrateazaVanzare(rand)
+        }
+
+        const platita: Vanzare = {
+          ...rand,
+          id: uuid(),
+          programare_id: null,
+          creat_la: achitat_la,
+          actualizat_la: achitat_la,
+          achitat_la,
+          metoda_plata,
+        }
+        magazin.vanzare.set(platita.id, platita)
+        for (const linie of linii) if (alese.has(linie.id)) linie.vanzare_id = platita.id
+        atinge(rand)
+
+        scrieJurnal({
+          utilizator_id: autor.id,
+          actiune: 'creare',
+          entitate: 'vanzare',
+          entitate_id: platita.id,
+          date_noi: {
+            ...instantaneu(platita as unknown as Record<string, unknown>),
+            numar_linii: alese.size,
+            achitat_din_vanzarea: id,
+          },
+        })
+        scrieJurnal({
+          utilizator_id: autor.id,
+          actiune: 'modificare',
+          entitate: 'vanzare',
+          entitate_id: id,
+          date_noi: { linii_achitate: alese.size, mutate_pe_vanzarea: platita.id },
+        })
+
+        return hidrateazaVanzare(platita)
       },
 
       /** POST /vanzari/incasare — orice rol */
@@ -2449,9 +2528,21 @@ function potrivestePretulSedintei(programare_id: Uuid, autor_id: Uuid): void {
  * Validează o linie și îi calculează totalul, fără să o scrie.
  * Prețul lipsă se completează din `articol.pret_lista`, apoi se COPIAZĂ —
  * o schimbare ulterioară de preț nu trebuie să rescrie vânzările vechi.
+ *
+ * Un produs se vinde doar de pe lista clienților, ca pe server; `dejaPeBon`
+ * sunt articolele vânzării care se corectează și rămân permise.
  */
-function pregatesteLinie(linie: DateLinieVanzare): Omit<VanzareLinie, 'id' | 'vanzare_id'> {
+function pregatesteLinie(
+  linie: DateLinieVanzare,
+  dejaPeBon: ReadonlySet<Uuid> = new Set(),
+): Omit<VanzareLinie, 'id' | 'vanzare_id'> {
   const articol = ceruta(magazin.articol, linie.articol_id, 'Articolul')
+  if (articol.tip === 'produs' && !seVindeClientilor(articol) && !dejaPeBon.has(articol.id)) {
+    throw eroareValidare(
+      `„${articol.denumire}” nu este pe lista „${CATEGORIE_CLIENTI}”. La vânzare se aleg doar produsele clienților.`,
+      'linii',
+    )
+  }
   verificaCantitate(linie.cantitate)
 
   const pret_unitar = linie.pret_unitar ?? articol.pret_lista
@@ -2885,7 +2976,7 @@ function inregistreazaIncasare(
 ): VanzareDetaliu {
   // Totul se validează înainte de prima scriere: pe server este o tranzacție,
   // deci un produs invalid nu are voie să lase ședințele pe jumătate stinse.
-  const liniiProduse = produse.map(pregatesteLinie)
+  const liniiProduse = produse.map((linie) => pregatesteLinie(linie))
 
   const vanzare: Vanzare = {
     id: uuid(),

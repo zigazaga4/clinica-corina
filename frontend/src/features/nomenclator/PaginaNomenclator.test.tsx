@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, it } from 'vitest'
 import { api } from '@/api'
-import { autentifica, randeaza } from '@/test/render'
+import { autentifica, deschideStatisticile, randeaza } from '@/test/render'
 import { PaginaNomenclator } from './PaginaNomenclator'
 
 /*
@@ -137,33 +137,69 @@ it('administrator: aceeași cremă și pe cealaltă listă, cu o categorie scris
   })
 })
 
-it('vânzare: produsele apar grupate pe listele de prețuri, iar căutarea găsește și după listă', async () => {
+it('vânzare: se aleg doar produsele clienților', async () => {
   await autentifica('andreea.popescu@clinica.ro')
   randeaza(<PaginaNomenclator />)
 
-  fireEvent.click(await screen.findByRole('tab', { name: /Produse clienți/ }))
-  fireEvent.click(await screen.findByRole('button', { name: /Vinde produse/ }))
+  // Pe lista colaboratorilor nu există „Vinde” pe rând.
+  fireEvent.click(await screen.findByRole('tab', { name: /Produse colaboratori/ }))
+  await waitFor(() => expect(randurileTabelului()).toHaveLength(2))
+  expect(screen.queryByRole('button', { name: /^Vinde Ulei pentru masaj/ })).toBeNull()
+
+  fireEvent.click(screen.getByRole('button', { name: /Vinde produse/ }))
   const formular = within(screen.getAllByRole('dialog').at(-1)!)
 
   fireEvent.click(formular.getByRole('combobox', { name: /^Produs/ }))
   const lista = formular.getByRole('listbox')
-  await waitFor(() =>
-    expect(
-      [...lista.querySelectorAll('li[role="presentation"]')].map((li) => li.textContent),
-    ).toEqual(['Produse clienți', 'Produse colaboratori', 'Fără categorie']),
+  await waitFor(() => expect(within(lista).getAllByRole('option').length).toBeGreaterThan(0))
+  const optiuni = within(lista).getAllByRole('option').map((o) => o.textContent).join(' ')
+  // Lista clienților, fără colaboratori și fără produsele rămase fără categorie.
+  expect(optiuni).toMatch(/Loțiune tonică/)
+  expect(optiuni).not.toMatch(/Ulei pentru masaj|Mască facială cu argilă|Balsam pentru gene/)
+  expect(lista.querySelectorAll('li[role="presentation"]')).toHaveLength(0)
+
+  // Prețul vine din lista clienților.
+  fireEvent.click(within(lista).getByRole('option', { name: /Loțiune tonică/ }))
+  expect(formular.getByLabelText('Preț unitar')).toHaveValue('85')
+})
+
+it('produse neachitate: se plătește doar ce s-a bifat, restul rămâne datorie', async () => {
+  await autentifica('admin@clinica.ro')
+  const clienta = await api.clienti.create({ nume: 'Clientă Bucăți' })
+  const produse = (await api.articole.list({ tip: 'produs', activ: true })).filter(
+    (p) => p.categorie === 'Produse clienți',
   )
-
-  // „colab” aduce lista colaboratorilor, sub titlul ei.
-  fireEvent.change(formular.getByRole('textbox', { name: 'Caută în listă' }), {
-    target: { value: 'colab' },
+  const [lotiune, gel] = [
+    produse.find((p) => p.denumire === 'Loțiune tonică')!,
+    produse.find((p) => p.denumire === 'Gel de curățare facială')!,
+  ]
+  const datorie = await api.vanzari.create({
+    client_id: clienta.id,
+    efectuat_la: new Date().toISOString(),
+    achitat: false,
+    linii: [
+      { articol_id: lotiune.id, cantitate: 1 },
+      { articol_id: gel.id, cantitate: 1 },
+    ],
   })
-  const optiuni = within(lista).getAllByRole('option').map((o) => o.textContent)
-  expect(optiuni).toHaveLength(2)
-  expect(optiuni.join(' ')).toMatch(/Mască facială cu argilă.*Ulei pentru masaj/)
+  randeaza(<PaginaNomenclator />)
+  fireEvent.click(await screen.findByRole('tab', { name: /Produse clienți/ }))
 
-  // Prețul vine din lista aleasă.
-  fireEvent.click(within(lista).getByRole('option', { name: /Ulei pentru masaj/ }))
-  expect(formular.getByLabelText('Preț unitar')).toHaveValue('70')
+  const rand = within((await screen.findByText('Clientă Bucăți')).closest('li')!)
+  fireEvent.click(rand.getByRole('checkbox', { name: /Loțiune tonică/ }))
+  expect(rand.getByText(/rămân 95,00 RON/)).toBeInTheDocument()
+  fireEvent.click(rand.getByRole('button', { name: /Numerar/ }))
+
+  await waitFor(async () => {
+    const ramasa = await api.vanzari.get(datorie.id)
+    expect(ramasa.achitat).toBe(false)
+    expect(ramasa.linii.map((l) => l.articol_denumire)).toEqual(['Gel de curățare facială'])
+  })
+  // Lista încasărilor achitate cere parola Statisticilor.
+  await deschideStatisticile()
+  const [platita] = (await api.vanzari.list({ client_id: clienta.id, achitat: true })).randuri
+  expect(platita?.metoda_plata).toBe('numerar')
+  expect(platita?.linii.map((l) => l.articol_denumire)).toEqual(['Loțiune tonică'])
 })
 
 it('nu mai există filă de puncte de lucru', async () => {

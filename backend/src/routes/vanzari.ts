@@ -111,6 +111,8 @@ async function refuzaSedintePeDatorie(ex: Executor, vanzare_id: string): Promise
  * Toate se validează înainte ca vreuna să fie scrisă: pe server este o
  * tranzacție, deci un articol inexistent pe ultima linie nu are voie să lase
  * bonul cu primele trei.
+ *
+ * `dejaPeBon` — articolele de pe bon dinaintea corecției; v. `pregatesteLinie`.
  */
 async function scrieLinii(
   ex: Executor,
@@ -118,13 +120,14 @@ async function scrieLinii(
   client_id: string,
   linii: DateLinieVanzare[],
   autor: { id: string; adresa_ip: string | null },
+  dejaPeBon?: ReadonlySet<string>,
 ): Promise<void> {
   // Ședințele trecute pe linii trec prin aceleași reguli ca la încasarea de pe
   // fișă: să fie ale clientului de pe bon, onorate, și neîncasate deja.
   await verificaSedinteleLiniilor(ex, client_id, linii, vanzare_id)
 
   const pregatite = []
-  for (const linie of linii) pregatite.push(await pregatesteLinie(ex, linie))
+  for (const linie of linii) pregatite.push(await pregatesteLinie(ex, linie, dejaPeBon))
 
   for (const l of pregatite) {
     await ex.query(
@@ -450,10 +453,17 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
     */
     if (corp['linii'] !== undefined) {
       const linii = liniiCerute(corp['linii'], true)
-      await ex.query(`DELETE FROM vanzare_linie WHERE vanzare_id = $1`, [id])
+      // Ce era pe bon înainte rămâne permis la corecție, chiar dacă produsul
+      // nu (mai) e pe lista clienților; v. `pregatesteLinie`.
+      const { rows: vechi } = await ex.query<{ articol_id: string }>(
+        `DELETE FROM vanzare_linie WHERE vanzare_id = $1 RETURNING articol_id`, [id],
+      )
       // Clientul bonului DUPĂ modificare: dacă antetul tocmai a fost mutat pe
       // alt client, ședințele trebuie să fie ale aceluia, nu ale celui vechi.
-      await scrieLinii(ex, id, dupa.client_id, linii, { id: autor.id, adresa_ip: adresaCererii(req) })
+      await scrieLinii(
+        ex, id, dupa.client_id, linii, { id: autor.id, adresa_ip: adresaCererii(req) },
+        new Set(vechi.map((l) => l.articol_id)),
+      )
     }
 
     await refuzaSedintePeDatorie(ex, id)
@@ -483,6 +493,121 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
   })
 
   res.json(vanzare)
+}))
+
+// ---------------------------------------------------------------------------
+// POST /vanzari/:id/achitare — orice rol. Plătește doar liniile alese.
+//
+// Clienta a luat cinci creme pe datorie și plătește azi două (cerința
+// clinicii, 5 oct. 2026). Liniile alese se MUTĂ pe un bon nou, achitat acum,
+// cu aceeași clientă, același operator și aceeași dată a vânzării; restul
+// rămâne datorie, cu totalul scăzut. Așa fiecare bon rămâne întreg plătit sau
+// întreg datorie, iar fișa, „De plată” și Statisticile nu au nimic de învățat.
+//
+// Nu trece prin regula „doar produsele clienților”: nu se vinde nimic nou,
+// se plătește ce a plecat deja.
+// ---------------------------------------------------------------------------
+
+/** `linie_ids` din cerere: o listă nevidă de identificatori, fără repetări. */
+function liniiDeAchitat(valoare: unknown): string[] {
+  if (!Array.isArray(valoare) || valoare.length === 0) {
+    throw eroareValidare('Alege cel puțin un produs plătit.', 'linie_ids')
+  }
+  if (!valoare.every((v) => typeof v === 'string')) {
+    throw eroareValidare('Produsele alese trebuie trimise ca listă de identificatori.', 'linie_ids')
+  }
+  return [...new Set(valoare as string[])]
+}
+
+router.post('/:id/achitare', ruta(async (req: AuthRequest, res: Response) => {
+  const autor = cont(req)
+  const id = req.params['id']!
+  const corp = req.body as { linie_ids?: unknown; metoda_plata?: unknown }
+  const linie_ids = liniiDeAchitat(corp.linie_ids)
+  const metoda_plata = metodaPlataDin(corp.metoda_plata)
+  if (metoda_plata === null) {
+    throw eroareValidare('Alege cum s-a plătit: numerar sau card.', 'metoda_plata')
+  }
+  const adresa_ip = adresaCererii(req)
+
+  const achitata = await tranzactie(async (ex: Executor) => {
+    const vanzare = await unu<Vanzare>(
+      ex, `SELECT * FROM vanzare WHERE id = $1 FOR UPDATE`, [id], 'Vânzarea',
+    )
+    if (vanzare.achitat_la !== null) {
+      throw eroareValidare('Vânzarea este deja achitată.', 'linie_ids')
+    }
+    const { rows: linii } = await ex.query<{ id: string }>(
+      `SELECT id FROM vanzare_linie WHERE vanzare_id = $1`, [id],
+    )
+    const aleVanzarii = new Set(linii.map((l) => l.id))
+    if (!linie_ids.every((l) => aleVanzarii.has(l))) {
+      throw eroareValidare('Produsele alese nu sunt toate pe această vânzare.', 'linie_ids')
+    }
+    const achitat_la = new Date().toISOString()
+
+    // Toate liniile: e chiar bifa „Achitat” pe toată vânzarea.
+    if (linie_ids.length === linii.length) {
+      await ex.query(
+        `UPDATE vanzare SET achitat_la = $2, metoda_plata = $3 WHERE id = $1`,
+        [id, achitat_la, metoda_plata],
+      )
+      await scrieJurnal(ex, {
+        utilizator_id: autor.id,
+        actiune: 'modificare',
+        entitate: 'vanzare',
+        entitate_id: id,
+        date_vechi: { achitat_la: null, metoda_plata: null },
+        date_noi: { achitat_la, metoda_plata },
+        adresa_ip,
+      })
+      return vanzareDetaliu(ex, id)
+    }
+
+    const { rows } = await ex.query<Vanzare>(
+      `INSERT INTO vanzare (client_id, punct_lucru_id, operator_id, programare_id, efectuat_la, nota, achitat_la, metoda_plata)
+       VALUES ($1, $2, $3, NULL, $4, $5, $6, $7) RETURNING *`,
+      [
+        vanzare.client_id, vanzare.punct_lucru_id, vanzare.operator_id,
+        vanzare.efectuat_la, vanzare.nota, achitat_la, metoda_plata,
+      ],
+    )
+    const platita = rows[0]!
+    await ex.query(
+      `UPDATE vanzare_linie SET vanzare_id = $1 WHERE id = ANY($2::uuid[])`,
+      [platita.id, linie_ids],
+    )
+    // Vânzarea rămasă s-a schimbat (alt total): `actualizat_la` o spune.
+    await ex.query(`UPDATE vanzare SET actualizat_la = now() WHERE id = $1`, [id])
+
+    await scrieJurnal(ex, {
+      utilizator_id: autor.id,
+      actiune: 'creare',
+      entitate: 'vanzare',
+      entitate_id: platita.id,
+      date_noi: {
+        client_id: platita.client_id,
+        efectuat_la: platita.efectuat_la,
+        achitat_la: platita.achitat_la,
+        metoda_plata: platita.metoda_plata,
+        numar_linii: linie_ids.length,
+        achitat_din_vanzarea: id,
+      },
+      adresa_ip,
+    })
+    await scrieJurnal(ex, {
+      utilizator_id: autor.id,
+      actiune: 'modificare',
+      entitate: 'vanzare',
+      entitate_id: id,
+      date_noi: { linii_achitate: linie_ids.length, mutate_pe_vanzarea: platita.id },
+      adresa_ip,
+    })
+
+    return vanzareDetaliu(ex, platita.id)
+  })
+
+  res.json(achitata)
 }))
 
 // ---------------------------------------------------------------------------

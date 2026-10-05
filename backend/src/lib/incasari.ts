@@ -14,6 +14,7 @@
  */
 
 import { sumaTotal, totalLinie } from './bani.js'
+import { CATEGORIE_CLIENTI, seVindeClientilor } from './categorii.js'
 import type { Executor } from './db.js'
 import { unu } from './db.js'
 import { eroareConflict, eroareValidare } from './erori.js'
@@ -55,14 +56,26 @@ interface LiniePregatita {
  *
  * Prețul lipsă se completează din `articol.pret_lista` și apoi se COPIAZĂ pe
  * linie: o scumpire de mâine nu are voie să rescrie ce s-a încasat azi.
+ *
+ * Un produs se vinde doar de pe lista clienților (`seVindeClientilor`).
+ * `dejaPeBon` sunt articolele aflate pe vânzarea care se corectează: un produs
+ * vândut înainte de regulă (sau mutat apoi pe altă listă) rămâne pe bonul lui
+ * la o simplă corecție de preț — doar nu se mai adaugă.
  */
 export async function pregatesteLinie(
   ex: Executor,
   linie: DateLinieVanzare,
+  dejaPeBon: ReadonlySet<string> = new Set(),
 ): Promise<LiniePregatita> {
   const articol = await unu<Articol>(
     ex, `SELECT * FROM articol WHERE id = $1`, [linie.articol_id], 'Articolul',
   )
+  if (articol.tip === 'produs' && !seVindeClientilor(articol) && !dejaPeBon.has(articol.id)) {
+    throw eroareValidare(
+      `„${articol.denumire}” nu este pe lista „${CATEGORIE_CLIENTI}”. La vânzare se aleg doar produsele clienților.`,
+      'linii',
+    )
+  }
   const cantitate = verificaCantitate(Number(linie.cantitate))
   /*
     `== null` prinde și `undefined`, și `null`.

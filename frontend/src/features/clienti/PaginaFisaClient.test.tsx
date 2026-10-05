@@ -3,6 +3,7 @@ import { expect, it } from 'vitest'
 import { Route, Routes } from 'react-router-dom'
 import { api } from '@/api'
 import { esteStatisticiIncuiate } from '@/api/errors'
+import { seVindeClientilor } from '@/domain/categorii'
 import type { Uuid } from '@/domain/types'
 import { autentifica, deschideStatisticile, randeaza } from '@/test/render'
 import { PaginaFisaClient } from './PaginaFisaClient'
@@ -33,6 +34,13 @@ function sumaDinText(text: string): number {
   const potrivire = /(\d[\d.]*,\d{2})/.exec(text)
   if (!potrivire?.[1]) return Number.NaN
   return Number(potrivire[1].replace(/\./g, '').replace(',', '.'))
+}
+
+/** Un produs activ care se poate vinde: de pe lista clienților. */
+async function produsDeVanzare() {
+  const produs = (await api.articole.list({ tip: 'produs', activ: true })).find(seVindeClientilor)
+  if (!produs) throw new Error('Datele demo nu conțin niciun produs activ pentru clienți.')
+  return produs
 }
 
 /**
@@ -158,8 +166,7 @@ it('nu repetă ședința ca rând de bon după ce a fost încasată', async () =
 
 it('păstrează produsele cumpărate, chiar plătite odată cu ședințele', async () => {
   const { id, serviciu, programare_ids } = await clientCuDouaRestante()
-  const produs = (await api.articole.list({ tip: 'produs', activ: true }))[0]
-  if (!produs) throw new Error('Datele demo nu conțin niciun produs activ.')
+  const produs = await produsDeVanzare()
 
   await api.vanzari.incaseaza({
     client_id: id,
@@ -179,8 +186,7 @@ it('păstrează produsele cumpărate, chiar plătite odată cu ședințele', asy
 
 it('adună produsele neachitate la „De plată” și le încasează odată cu ședințele', async () => {
   const { id, total } = await clientCuDouaRestante()
-  const produs = (await api.articole.list({ tip: 'produs', activ: true }))[0]
-  if (!produs) throw new Error('Datele demo nu conțin niciun produs activ.')
+  const produs = await produsDeVanzare()
   const datorie = await api.vanzari.create({
     client_id: id,
     efectuat_la: new Date().toISOString(),
@@ -221,8 +227,7 @@ it('recepția, fără parola statisticilor, vede cât are clientul de plată și
   // Parola statisticilor încuie rapoartele și lista TUTUROR încasărilor — nu
   // banii unui client anume. Recepția trebuie să-i vadă datoria și s-o încaseze.
   const { id, total, programare_ids } = await clientCuDouaRestante()
-  const produs = (await api.articole.list({ tip: 'produs', activ: true }))[0]
-  if (!produs) throw new Error('Datele demo nu conțin niciun produs activ.')
+  const produs = await produsDeVanzare()
   const datorie = await api.vanzari.create({
     client_id: id,
     efectuat_la: new Date().toISOString(),
@@ -262,8 +267,7 @@ it('recepția, fără parola statisticilor, vede cât are clientul de plată și
 it('trece o vânzare de produse achitată chiar de pe rândul ei din fișă', async () => {
   await autentifica()
   const client = await api.clienti.create({ nume: 'Maria Datoare' })
-  const produs = (await api.articole.list({ tip: 'produs', activ: true }))[0]
-  if (!produs) throw new Error('Datele demo nu conțin niciun produs activ.')
+  const produs = await produsDeVanzare()
   const datorie = await api.vanzari.create({
     client_id: client.id,
     efectuat_la: new Date().toISOString(),

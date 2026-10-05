@@ -5,6 +5,7 @@ import { useAutentificare, useUtilizator } from '@/app/auth'
 import { useArticole, useCreeazaVanzare, useModificaVanzare } from '@/app/queries'
 import { GrilaFormular, PeToataLatimea } from '@/components/Pagina'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
+import { CATEGORIE_CLIENTI, seVindeClientilor } from '@/domain/categorii'
 import type { Articol, Uuid, VanzareDetaliu } from '@/domain/types'
 import { dinInputDatetime, formateazaData, laInputDatetime } from '@/lib/dates'
 import { useEroriFormular } from '@/lib/formular'
@@ -20,6 +21,10 @@ import { AlegerePlata, starePlata, type StarePlata } from './PlataVanzarii'
   ședința e marcată ca efectuată: prețul convenit atunci este singurul adevăr,
   iar o a doua cale de a vinde același serviciu ar produce ședințe plătite de
   două ori și programări rămase veșnic „de plată”.
+
+  Și doar produsele din „Produse clienți” (cerința clinicii, 5 oct. 2026):
+  aceeași cremă stă și pe lista colaboratorilor, mai ieftină, iar pe bonul unei
+  cliente nu are ce căuta prețul acela. Serverul refuză oricum restul.
 
   Drumul este cel desenat de clinică: clientul („Maria”), produsele cu prețul
   lor, câte vrei, totalul la final — și „Achitat” sau „Neachitat”. Neachitată,
@@ -131,7 +136,7 @@ export function FormularVanzare({
               }
             : {}),
         }))
-      : [produsInitial ? linieCuProdus(produsInitial) : linieGoala()],
+      : [produsInitial && seVindeClientilor(produsInitial) ? linieCuProdus(produsInitial) : linieGoala()],
   )
 
   // Aceleași opțiuni pe care le încarcă și `SelectorArticol`, deci fără cerere
@@ -391,7 +396,8 @@ export function FormularVanzare({
             citește nimeni la recepție.
           */}
           <p className="text-[13px] text-ink-faint">
-            Serviciile se încasează din programare, după ce ședința e marcată ca efectuată.
+            Se vând doar produsele din „{CATEGORIE_CLIENTI}”. Serviciile se încasează din
+            programare, după ce ședința e marcată ca efectuată.
           </p>
         </div>
 
@@ -495,14 +501,16 @@ function RandLinie({
     <div className="rounded-xl border border-line bg-surface p-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-2.5">
         {/*
-          Doar produse: serviciile intră în încasare din programarea efectuată.
-          Un produs care lipsește din nomenclator („Cremă 50 ml”) se adaugă de
-          aici, de administrator; prețul se scrie apoi pe linie.
+          Doar produsele clienților: serviciile intră în încasare din
+          programarea efectuată. Un produs care lipsește din nomenclator
+          („Cremă 50 ml”) se adaugă de aici, de administrator, direct pe lista
+          clienților; prețul se scrie apoi pe linie.
         */}
         <SelectorArticol
           valoare={linie.articol_id}
           onSchimba={onArticol}
           tip="produs"
+          categorie={CATEGORIE_CLIENTI}
           cuCreare
           eticheta="Produs"
           eroare={eroareArticol}
