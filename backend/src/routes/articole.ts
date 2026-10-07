@@ -201,13 +201,36 @@ router.patch('/:id', requireRole('administrator'), ruta(async (req: AuthRequest,
 }))
 
 /**
- * DELETE /articole/:id — doar administrator.
+ * De ce nu se poate șterge un articol — cu numerele, ca recepția să vadă că
+ * nu e o defecțiune. Același text în implementarea în memorie
+ * (frontend/src/api/memory/constraints.ts).
+ */
+function mesajArticolFolosit(
+  tip: TipArticol,
+  folosit: { programari: number; linii: number; tratamente: number },
+): string {
+  const parti: string[] = []
+  if (folosit.linii > 0) parti.push(`pe ${folosit.linii} ${folosit.linii === 1 ? 'bon' : 'bonuri'}`)
+  if (folosit.programari > 0) {
+    parti.push(`în ${folosit.programari} ${folosit.programari === 1 ? 'programare' : 'programări'}`)
+  }
+  if (folosit.tratamente > 0) {
+    parti.push(`în ${folosit.tratamente} ${folosit.tratamente === 1 ? 'tratament' : 'tratamente'}`)
+  }
+  const cine = tip === 'produs' ? 'Produsul' : 'Serviciul'
+  return (
+    `${cine} apare ${parti.join(', ')} și nu poate fi șters — istoricul are nevoie de el. ` +
+    'Dezactivează-l în schimb: dispare din liste, iar rândurile vechi își păstrează denumirea.'
+  )
+}
+
+/**
+ * DELETE /articole/:id — doar administrator. Butonul „Șterge” din Nomenclator.
  *
- * Nu este calea obișnuită și interfața nu o folosește: articolele ieșite din
- * ofertă se DEZACTIVEAZĂ (`activ = false`), ca programările și bonurile vechi
- * să-și păstreze denumirea. Ștergerea rămâne pentru rândurile create din
- * greșeală, înainte de prima folosire — cheile ON DELETE RESTRICT o refuză pe
- * oricare alta, iar mesajul spune ce e de făcut în schimb.
+ * Doar pentru rândurile nefolosite — create din greșeală sau niciodată
+ * vândute. Cel folosit se DEZACTIVEAZĂ (`activ = false`), ca programările,
+ * tratamentele și bonurile vechi să-și păstreze denumirea: cheile ON DELETE
+ * RESTRICT îl refuză oricum, iar mesajul spune ce e de făcut în schimb.
  */
 router.delete('/:id', requireRole('administrator'), ruta(async (req: AuthRequest, res: Response) => {
   const autor = cont(req)
@@ -221,18 +244,20 @@ router.delete('/:id', requireRole('administrator'), ruta(async (req: AuthRequest
     // Numărate dinainte, ca mesajul să spună CE anume îl reține. Cheile
     // RESTRICT ar refuza oricum ștergerea, dar cu un 23503 din care nimeni nu
     // înțelege dacă e vorba de o programare de anul trecut sau de un bon.
-    const [folosit] = await multe<{ programari: number; linii: number }>(
+    const [folosit] = await multe<{ programari: number; linii: number; tratamente: number }>(
       ex,
       `SELECT (SELECT count(*) FROM programare    WHERE articol_id = $1) AS programari,
-              (SELECT count(*) FROM vanzare_linie WHERE articol_id = $1) AS linii`,
+              (SELECT count(*) FROM vanzare_linie WHERE articol_id = $1) AS linii,
+              (SELECT count(*) FROM tratament     WHERE articol_id = $1) AS tratamente`,
       [id],
     )
-    if ((folosit?.programari ?? 0) > 0 || (folosit?.linii ?? 0) > 0) {
-      throw eroareConflict(
-        'Articolul este folosit în programări sau încasări și nu poate fi șters. ' +
-          'Dezactivează-l în schimb — rândurile vechi își păstrează denumirea.',
-        { detalii: { programari: folosit?.programari ?? 0, linii: folosit?.linii ?? 0 } },
-      )
+    const programari = folosit?.programari ?? 0
+    const linii = folosit?.linii ?? 0
+    const tratamente = folosit?.tratamente ?? 0
+    if (programari > 0 || linii > 0 || tratamente > 0) {
+      throw eroareConflict(mesajArticolFolosit(articol.tip, { programari, linii, tratamente }), {
+        detalii: { programari, linii, tratamente },
+      })
     }
 
     await scrieJurnal(ex, {

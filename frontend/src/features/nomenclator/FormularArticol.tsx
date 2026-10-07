@@ -1,6 +1,13 @@
 import { useId, useMemo, useState, type FormEvent } from 'react'
+import { Trash2 } from 'lucide-react'
 import type { DateArticolNou } from '@/api/contract'
-import { useArticole, useCreeazaArticol, useModificaArticol } from '@/app/queries'
+import { esteEroareApi, mesajEroare } from '@/api/errors'
+import {
+  useArticole,
+  useCreeazaArticol,
+  useModificaArticol,
+  useStergeArticol,
+} from '@/app/queries'
 import { GrilaFormular, PeToataLatimea } from '@/components/Pagina'
 import { categoriileProduselor, FARA_CATEGORIE } from '@/domain/categorii'
 import { etichetaTipArticol } from '@/domain/labels'
@@ -16,6 +23,7 @@ import {
   GrupButoane,
   Input,
   Modala,
+  ModalaConfirmare,
   useNotificari,
   type OptiuneCombobox,
 } from '@/ui'
@@ -34,6 +42,11 @@ const CATEGORII_OBISNUITE = ['Produse clienți', 'Produse colaboratori']
  * Se montează doar cât timp este deschis: starea pornește din `articol` la
  * fiecare deschidere, fără efect de sincronizare care să readucă valori vechi
  * după o salvare.
+ *
+ * „Șterge” scoate de tot un articol nefolosit — creat din greșeală, niciodată
+ * vândut sau programat. Unul folosit îl refuză serverul (409, istoricul are
+ * nevoie de el), iar fereastra propune atunci dezactivarea: dispare din liste
+ * la fel, doar că rândurile vechi își păstrează denumirea.
  */
 export function FormularArticol({
   articol,
@@ -54,6 +67,9 @@ export function FormularArticol({
   const erori = useEroriFormular<CampArticol>()
   const creeaza = useCreeazaArticol()
   const modifica = useModificaArticol()
+  const sterge = useStergeArticol()
+  // Întâi confirmarea; refuzat ca folosit, mesajul serverului și dezactivarea.
+  const [stergere, setStergere] = useState<null | 'confirma' | { folosit: string }>(null)
   // Aceeași listă pe care o are deja deschisă Nomenclatorul — fără cerere nouă.
   const produse = useArticole({ tip: 'produs' })
 
@@ -69,7 +85,7 @@ export function FormularArticol({
     articol ? articol.categorie : categorieInitiala,
   )
 
-  const seTrimite = creeaza.isPending || modifica.isPending
+  const seTrimite = creeaza.isPending || modifica.isPending || sterge.isPending
 
   const optiuniCategorie = useMemo<OptiuneCombobox<string>[]>(() => {
     const folosite = categoriileProduselor(produse.data ?? [])
@@ -168,177 +184,254 @@ export function FormularArticol({
     }
   }
 
+  const stergeArticol = async () => {
+    if (!articol) return
+    try {
+      await sterge.mutateAsync(articol.id)
+      notificari.succes(`${etichetaTipArticol[articol.tip]} șters`, articol.denumire)
+      setStergere(null)
+      onInchide()
+    } catch (err) {
+      if (esteEroareApi(err) && err.cod === 'conflict') {
+        setStergere({ folosit: mesajEroare(err) })
+      } else {
+        setStergere(null)
+        erori.preia(err)
+      }
+    }
+  }
+
+  // Doar `activ`: restul formularului, eventual modificat pe ecran, nu se salvează.
+  const dezactiveaza = async () => {
+    if (!articol) return
+    try {
+      await modifica.mutateAsync({ id: articol.id, date: { activ: false } })
+      notificari.succes(`${etichetaTipArticol[articol.tip]} dezactivat`, articol.denumire)
+      setStergere(null)
+      onInchide()
+    } catch (err) {
+      setStergere(null)
+      erori.preia(err)
+    }
+  }
+
+  // „produsul” / „serviciul”
+  const numeArticol = articol ? `${etichetaTipArticol[articol.tip].toLowerCase()}ul` : ''
+
   return (
-    <Modala
-      deschisa
-      onInchide={onInchide}
-      blocata={seTrimite}
-      titlu={articol ? 'Modifică articolul' : tip === 'serviciu' ? 'Serviciu nou' : 'Produs nou'}
-      descriere={
-        articol
-          ? articol.denumire
-          : 'Serviciile au durată și se pot programa; produsele se vând la bucată.'
-      }
-      subsol={
-        <>
-          <Buton onClick={onInchide} disabled={seTrimite} className="sm:w-auto" plin>
-            Renunță
-          </Buton>
-          {/*
-            Butonul stă în subsolul modalei, în afara elementului `form`, deci
-            este legat de el prin atributul `form`.
-          */}
-          <Buton
-            type="submit"
-            form={idFormular}
-            varianta="primar"
-            incarca={seTrimite}
-            className="sm:w-auto"
-            plin
-          >
-            {articol ? 'Salvează' : 'Adaugă'}
-          </Buton>
-        </>
-      }
-    >
-      <form id={idFormular} onSubmit={trimite} noValidate>
-        <GrilaFormular>
-          <PeToataLatimea>
-            {/*
-              Grupul își poartă singur eticheta prin `aria-label`: legarea
-              etichetei „Tip” de primul buton i-ar înlocui numele accesibil, iar
-              cititorul de ecran ar anunța „Tip” în loc de „Serviciu”.
-            */}
-            <Camp eticheta="Tip" ajutor="Doar serviciile pot fi programate în calendar.">
-              {() => (
-                <GrupButoane eticheta="Tipul articolului" className="w-full">
-                  {TIP_ARTICOL.map((valoare) => (
-                    <ButonGrup
-                      key={valoare}
-                      activ={tip === valoare}
-                      disabled={seTrimite}
-                      onClick={() => schimbaTip(valoare)}
-                      className="h-11 flex-1 sm:h-9"
-                    >
-                      {etichetaTipArticol[valoare]}
-                    </ButonGrup>
-                  ))}
-                </GrupButoane>
-              )}
-            </Camp>
-          </PeToataLatimea>
-
-          <PeToataLatimea>
-            <Input
-              eticheta="Denumire"
-              obligatoriu
-              autoFocus
-              maxLength={120}
-              value={denumire}
-              onChange={(e) => setDenumire(e.target.value)}
-              eroare={erori.peCamp.denumire}
-              placeholder={
-                tip === 'serviciu' ? 'ex. Tratament facial hidratant' : 'ex. Cremă hidratantă 50 ml'
-              }
-            />
-          </PeToataLatimea>
-
-          {/* Câmpul apare doar la servicii: la produse durata trebuie să fie NULL. */}
-          {tip === 'serviciu' && (
-            <Input
-              eticheta="Durată"
-              obligatoriu
-              type="number"
-              inputMode="numeric"
-              min={1}
-              step={5}
-              value={durata}
-              onChange={(e) => setDurata(e.target.value)}
-              eroare={erori.peCamp.durata_minute}
-              sufix="min"
-              placeholder="60"
-            />
-          )}
-
-          <Input
-            eticheta="Preț listă"
-            obligatoriu
-            type="text"
-            inputMode="decimal"
-            value={pret}
-            onChange={(e) => setPret(e.target.value)}
-            eroare={erori.peCamp.pret_lista}
-            sufix="RON"
-            className="pr-13"
-            ajutor={
-              esteTratament
-                ? `Pentru toate cele ${sedinteNumar} ședințe împreună; fiecare programare primește o parte.`
-                : 'Separatorul zecimal poate fi virgulă sau punct.'
-            }
-            placeholder="150"
-          />
-
-          {/*
-            Peste 1, serviciul devine tratament: prima programare a lui deschide
-            un tratament pe fișa clientului, iar următoarele intră în el.
-          */}
-          {tip === 'serviciu' && (
-            <Input
-              eticheta="Număr de ședințe"
-              obligatoriu
-              type="number"
-              inputMode="numeric"
-              min={1}
-              step={1}
-              value={numarSedinte}
-              onChange={(e) => setNumarSedinte(e.target.value)}
-              eroare={erori.peCamp.numar_sedinte}
-              ajutor="1 = o singură venire. Peste 1, serviciul se face ca tratament, în mai multe programări."
-            />
-          )}
-
-          {/*
-            Lista de prețuri a produsului. Aceeași cremă, la alt preț pentru
-            colaboratori, este un al doilea produs, în cealaltă categorie.
-          */}
-          {tip === 'produs' && (
-            <PeToataLatimea>
-              <Combobox
-                eticheta="Categorie"
-                optiuni={optiuniCategorie}
-                valoare={categorie}
-                onSchimba={setCategorie}
-                cuGolire
-                placeholder={FARA_CATEGORIE}
-                onCreare={(text) => setCategorie(text.trim())}
-                etichetaCreare={(text) => `Categorie nouă: „${text.trim()}”`}
+    <>
+      <Modala
+        deschisa
+        onInchide={onInchide}
+        blocata={seTrimite}
+        titlu={articol ? 'Modifică articolul' : tip === 'serviciu' ? 'Serviciu nou' : 'Produs nou'}
+        descriere={
+          articol
+            ? articol.denumire
+            : 'Serviciile au durată și se pot programa; produsele se vând la bucată.'
+        }
+        subsol={
+          <>
+            {articol && (
+              <Buton
+                varianta="discret"
+                onClick={() => setStergere('confirma')}
                 disabled={seTrimite}
-                eroare={erori.peCamp.categorie ?? null}
-                ajutor="Lista de prețuri: la vânzare, produsele apar grupate pe categorii."
+                className="text-danger hover:text-danger sm:mr-auto"
+              >
+                <Trash2 className="size-4" />
+                Șterge
+              </Buton>
+            )}
+            <Buton onClick={onInchide} disabled={seTrimite} className="sm:w-auto" plin>
+              Renunță
+            </Buton>
+            {/*
+              Butonul stă în subsolul modalei, în afara elementului `form`, deci
+              este legat de el prin atributul `form`.
+            */}
+            <Buton
+              type="submit"
+              form={idFormular}
+              varianta="primar"
+              incarca={seTrimite}
+              className="sm:w-auto"
+              plin
+            >
+              {articol ? 'Salvează' : 'Adaugă'}
+            </Buton>
+          </>
+        }
+      >
+        <form id={idFormular} onSubmit={trimite} noValidate>
+          <GrilaFormular>
+            <PeToataLatimea>
+              {/*
+                Grupul își poartă singur eticheta prin `aria-label`: legarea
+                etichetei „Tip” de primul buton i-ar înlocui numele accesibil, iar
+                cititorul de ecran ar anunța „Tip” în loc de „Serviciu”.
+              */}
+              <Camp eticheta="Tip" ajutor="Doar serviciile pot fi programate în calendar.">
+                {() => (
+                  <GrupButoane eticheta="Tipul articolului" className="w-full">
+                    {TIP_ARTICOL.map((valoare) => (
+                      <ButonGrup
+                        key={valoare}
+                        activ={tip === valoare}
+                        disabled={seTrimite}
+                        onClick={() => schimbaTip(valoare)}
+                        className="h-11 flex-1 sm:h-9"
+                      >
+                        {etichetaTipArticol[valoare]}
+                      </ButonGrup>
+                    ))}
+                  </GrupButoane>
+                )}
+              </Camp>
+            </PeToataLatimea>
+
+            <PeToataLatimea>
+              <Input
+                eticheta="Denumire"
+                obligatoriu
+                autoFocus
+                maxLength={120}
+                value={denumire}
+                onChange={(e) => setDenumire(e.target.value)}
+                eroare={erori.peCamp.denumire}
+                placeholder={
+                  tip === 'serviciu' ? 'ex. Tratament facial hidratant' : 'ex. Cremă hidratantă 50 ml'
+                }
               />
             </PeToataLatimea>
-          )}
 
-          <PeToataLatimea>
-            <Comutator
-              eticheta="Activ"
-              descriere="Articolele scoase din ofertă se dezactivează, nu se șterg: programările și vânzările deja înregistrate trimit mai departe la ele."
-              bifat={activ}
-              onChange={setActiv}
-              disabled={seTrimite}
+            {/* Câmpul apare doar la servicii: la produse durata trebuie să fie NULL. */}
+            {tip === 'serviciu' && (
+              <Input
+                eticheta="Durată"
+                obligatoriu
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={5}
+                value={durata}
+                onChange={(e) => setDurata(e.target.value)}
+                eroare={erori.peCamp.durata_minute}
+                sufix="min"
+                placeholder="60"
+              />
+            )}
+
+            <Input
+              eticheta="Preț listă"
+              obligatoriu
+              type="text"
+              inputMode="decimal"
+              value={pret}
+              onChange={(e) => setPret(e.target.value)}
+              eroare={erori.peCamp.pret_lista}
+              sufix="RON"
+              className="pr-13"
+              ajutor={
+                esteTratament
+                  ? `Pentru toate cele ${sedinteNumar} ședințe împreună; fiecare programare primește o parte.`
+                  : 'Separatorul zecimal poate fi virgulă sau punct.'
+              }
+              placeholder="150"
             />
-          </PeToataLatimea>
-        </GrilaFormular>
 
-        {erori.general && (
-          <p
-            role="alert"
-            className="mt-4 rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger"
-          >
-            {erori.general}
-          </p>
-        )}
-      </form>
-    </Modala>
+            {/*
+              Peste 1, serviciul devine tratament: prima programare a lui deschide
+              un tratament pe fișa clientului, iar următoarele intră în el.
+            */}
+            {tip === 'serviciu' && (
+              <Input
+                eticheta="Număr de ședințe"
+                obligatoriu
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                value={numarSedinte}
+                onChange={(e) => setNumarSedinte(e.target.value)}
+                eroare={erori.peCamp.numar_sedinte}
+                ajutor="1 = o singură venire. Peste 1, serviciul se face ca tratament, în mai multe programări."
+              />
+            )}
+
+            {/*
+              Lista de prețuri a produsului. Aceeași cremă, la alt preț pentru
+              colaboratori, este un al doilea produs, în cealaltă categorie.
+            */}
+            {tip === 'produs' && (
+              <PeToataLatimea>
+                <Combobox
+                  eticheta="Categorie"
+                  optiuni={optiuniCategorie}
+                  valoare={categorie}
+                  onSchimba={setCategorie}
+                  cuGolire
+                  placeholder={FARA_CATEGORIE}
+                  onCreare={(text) => setCategorie(text.trim())}
+                  etichetaCreare={(text) => `Categorie nouă: „${text.trim()}”`}
+                  disabled={seTrimite}
+                  eroare={erori.peCamp.categorie ?? null}
+                  ajutor="Lista de prețuri: la vânzare, produsele apar grupate pe categorii."
+                />
+              </PeToataLatimea>
+            )}
+
+            <PeToataLatimea>
+              <Comutator
+                eticheta="Activ"
+                descriere="Dezactivat, nu mai apare la programări, la vânzare și nici în Nomenclator (doar la „Inactive”). Programările și bonurile vechi îl păstrează."
+                bifat={activ}
+                onChange={setActiv}
+                disabled={seTrimite}
+              />
+            </PeToataLatimea>
+          </GrilaFormular>
+
+          {erori.general && (
+            <p
+              role="alert"
+              className="mt-4 rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger"
+            >
+              {erori.general}
+            </p>
+          )}
+        </form>
+      </Modala>
+
+      {articol && (
+        <>
+          <ModalaConfirmare
+            deschisa={stergere === 'confirma'}
+            onInchide={() => setStergere(null)}
+            onConfirma={() => void stergeArticol()}
+            titlu={`Ștergi ${numeArticol}?`}
+            mesaj={`„${articol.denumire}” dispare de tot din Nomenclator. Se poate șterge doar dacă n-a fost folosit niciodată; ștergerea rămâne în jurnal.`}
+            etichetaConfirmare="Șterge"
+            periculoasa
+            inCurs={sterge.isPending}
+          />
+          <ModalaConfirmare
+            deschisa={stergere !== null && stergere !== 'confirma'}
+            onInchide={() => setStergere(null)}
+            onConfirma={() => (articol.activ ? void dezactiveaza() : setStergere(null))}
+            titlu={`„${articol.denumire}” nu se poate șterge`}
+            mesaj={
+              stergere !== null && stergere !== 'confirma'
+                ? articol.activ
+                  ? stergere.folosit
+                  : `${stergere.folosit} Este deja dezactivat.`
+                : ''
+            }
+            etichetaConfirmare={articol.activ ? 'Dezactivează' : 'Am înțeles'}
+            inCurs={modifica.isPending}
+          />
+        </>
+      )}
+    </>
   )
 }

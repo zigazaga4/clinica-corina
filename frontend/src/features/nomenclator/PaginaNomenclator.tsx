@@ -25,11 +25,13 @@ import { ListaArticole } from './liste'
 /*
   Nomenclatorul: serviciile și produsele din ofertă.
 
-  NU există ștergere — §7 nu prevede DELETE pe /articole, iar asta este
-  intenționat: un serviciu scos din ofertă rămâne referit de programările și de
-  vânzările deja înregistrate, iar o ștergere ar rupe istoricul pe care se
-  sprijină rapoartele. Singurul mod de a scoate ceva din uz este comutatorul
-  „Activ” din formulare, iar în ecran nu apare niciun buton de ștergere.
+  Scoaterea din ofertă: „Șterge” din fereastra articolului, doar pentru unul
+  nefolosit (creat din greșeală). Unul folosit rămâne referit de programări,
+  tratamente și bonuri — o ștergere ar rupe istoricul pe care se sprijină
+  rapoartele —, așa că serverul îl refuză și fereastra propune dezactivarea.
+  Lista pornește pe „Active” (cerut de clinică, 7 oct. 2026: produsul
+  dezactivat rămânea pe ecran și părea că nu s-a întâmplat nimic); cele
+  dezactivate se văd la „Inactive”.
 
   Citirea este deschisă tuturor; POST și PATCH sunt rezervate administratorului
   (§7). Pentru ceilalți ecranul rămâne o listă, fără butoane care oricum ar fi
@@ -69,17 +71,20 @@ function categoriaFilei(fila: FilaNomenclator): string | null {
 type FiltruStare = 'toate' | 'active' | 'inactive'
 
 const STARI: { valoare: FiltruStare; eticheta: string }[] = [
-  { valoare: 'toate', eticheta: 'Toate' },
   { valoare: 'active', eticheta: 'Active' },
   { valoare: 'inactive', eticheta: 'Inactive' },
+  { valoare: 'toate', eticheta: 'Toate' },
 ]
+
+/** Ce vede Nomenclatorul la deschidere: ce e în ofertă. */
+const STARE_IMPLICITA: FiltruStare = 'active'
 
 export function PaginaNomenclator() {
   const { esteAdministrator } = useAutentificare()
 
   const [fila, setFila] = useState<FilaNomenclator>(FILA_SERVICII)
   const [cautare, setCautare] = useState('')
-  const [stare, setStare] = useState<FiltruStare>('toate')
+  const [stare, setStare] = useState<FiltruStare>(STARE_IMPLICITA)
 
   // `'nou'` distinge „formular deschis pentru o înregistrare nouă” de „închis”.
   const [articolEditat, setArticolEditat] = useState<Articol | 'nou' | null>(null)
@@ -146,10 +151,10 @@ export function PaginaNomenclator() {
     porneste: () => setArticolEditat('nou'),
   }
 
-  const areFiltre = cautare.trim() !== '' || stare !== 'toate'
+  const areFiltre = cautare.trim() !== '' || stare !== STARE_IMPLICITA
   const golesteFiltrele = () => {
     setCautare('')
-    setStare('toate')
+    setStare(STARE_IMPLICITA)
   }
 
   // Lista goală din cauza filtrelor și lista goală pentru că nu s-a creat încă

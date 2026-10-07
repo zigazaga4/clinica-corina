@@ -41,8 +41,8 @@ function InsemnStare({ activ }: { activ: boolean }) {
   modificarea produsului, iar vânzarea nu trebuie să deschidă și fereastra aceea.
 
   Pe orice listă de prețuri — vânzarea pornește din lista produsului. Doar un
-  produs scos din ofertă nu se vinde (serverul l-ar refuza): rândul rămâne
-  fără buton.
+  produs scos din ofertă nu se vinde: lipsește și din lista formularului de
+  vânzare, deci rândul rămâne fără buton.
 */
 function ButonVinde({ articol, onVinde }: { articol: Articol; onVinde: (a: Articol) => void }) {
   if (!articol.activ) return null

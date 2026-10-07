@@ -916,6 +916,18 @@ export function useModificaArticol(): UseMutationResult<
   })
 }
 
+/** Șterge un articol nefolosit; unul folosit întoarce 409 (se dezactivează). */
+export function useStergeArticol(): UseMutationResult<void, Error, Uuid> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: Uuid) => api.articole.remove(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: chei.articole.tot })
+      void qc.invalidateQueries({ queryKey: chei.jurnal.tot })
+    },
+  })
+}
+
 /*
   Punctele de lucru nu au hook.
 

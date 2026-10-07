@@ -759,6 +759,11 @@ export interface ApiArticole {
   create(date: DateArticolNou): Promise<Articol>
   /** PATCH /articole/:id — doar administrator. */
   update(id: Uuid, date: DateArticolModificat): Promise<Articol>
+  /**
+   * DELETE /articole/:id — doar administrator, doar un articol nefolosit.
+   * Unul aflat pe bonuri, în programări sau în tratamente -> 409: se dezactivează.
+   */
+  remove(id: Uuid): Promise<void>
 }
 
 export interface DatePunctLucruNou {

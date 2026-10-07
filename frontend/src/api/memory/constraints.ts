@@ -203,6 +203,33 @@ export function verificaStergereClient(client_id: Uuid): void {
   }
 }
 
+/**
+ * Ștergerea unui articol: doar nefolosit (ON DELETE RESTRICT pe programare,
+ * vanzare_linie și tratament). Același mesaj ca pe server
+ * (backend/src/routes/articole.ts, `mesajArticolFolosit`).
+ */
+export function verificaStergereArticol(articol_id: Uuid, tip: TipArticol): void {
+  let programari = 0
+  for (const p of magazin.programare.values()) if (p.articol_id === articol_id) programari++
+  let linii = 0
+  for (const l of magazin.vanzare_linie.values()) if (l.articol_id === articol_id) linii++
+  let tratamente = 0
+  for (const t of magazin.tratament.values()) if (t.articol_id === articol_id) tratamente++
+
+  if (programari > 0 || linii > 0 || tratamente > 0) {
+    const parti: string[] = []
+    if (linii > 0) parti.push(`pe ${linii} ${linii === 1 ? 'bon' : 'bonuri'}`)
+    if (programari > 0) parti.push(`în ${programari} ${programari === 1 ? 'programare' : 'programări'}`)
+    if (tratamente > 0) parti.push(`în ${tratamente} ${tratamente === 1 ? 'tratament' : 'tratamente'}`)
+    const cine = tip === 'produs' ? 'Produsul' : 'Serviciul'
+    throw eroareConflict(
+      `${cine} apare ${parti.join(', ')} și nu poate fi șters — istoricul are nevoie de el. ` +
+        'Dezactivează-l în schimb: dispare din liste, iar rândurile vechi își păstrează denumirea.',
+      { programari, linii, tratamente },
+    )
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Validări comune de formular
 // ---------------------------------------------------------------------------

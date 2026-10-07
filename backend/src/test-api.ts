@@ -876,6 +876,12 @@ async function ruleaza(): Promise<void> {
   verifica('DELETE articol folosit -> 409, cu îndemn la dezactivare',
     stersFolosit.status === 409 && /[Dd]ezactiv/.test(stersFolosit.corp?.mesaj ?? ''),
     JSON.stringify(stersFolosit.corp?.mesaj))
+  verifica('mesajul spune unde e folosit („Serviciul apare … în N programări”)',
+    /^Serviciul apare .*în \d+ programări?/.test(stersFolosit.corp?.mesaj ?? ''),
+    JSON.stringify(stersFolosit.corp?.mesaj))
+
+  const ceruteDeOperator = await cere('DELETE', `/articole/${serviciu.id}`, { token: operator })
+  verifica('DELETE /articole ca recepție -> 403', ceruteDeOperator.status === 403)
 
   const punctNou = await cere('POST', '/puncte-lucru', {
     token: admin, corp: { denumire: `Punct test ${Date.now()}` },

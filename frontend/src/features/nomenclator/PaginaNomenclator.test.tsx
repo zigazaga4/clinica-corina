@@ -261,6 +261,67 @@ it('produse neachitate: se plătește doar ce s-a bifat, restul rămâne datorie
   expect(platita?.linii.map((l) => l.articol_denumire)).toEqual(['Loțiune tonică'])
 })
 
+/** Deschide fereastra articolului dintr-un rând al tabelului (administrator). */
+async function deschideArticolul(denumire: string) {
+  // Denumirea stă și pe rândul tabelului, și pe cardul de telefon.
+  const gasite = await screen.findAllByText(denumire)
+  const rand = gasite.map((el) => el.closest('tr')).find((tr) => tr !== null) as HTMLElement
+  fireEvent.click(rand)
+  return within(await screen.findByRole('dialog'))
+}
+
+it('administrator: „Șterge” scoate de tot un produs nefolosit', async () => {
+  await autentifica('admin@clinica.ro')
+  await api.articole.create({
+    tip: 'produs', denumire: 'Cremă pusă din greșeală', pret_lista: 1, categorie: 'Produse clienți',
+  })
+  randeaza(<PaginaNomenclator />)
+  fireEvent.click(await screen.findByRole('tab', { name: /Produse clienți/ }))
+
+  const fereastra = await deschideArticolul('Cremă pusă din greșeală')
+  fireEvent.click(fereastra.getByRole('button', { name: /Șterge/ }))
+  const confirmare = within(screen.getAllByRole('dialog').at(-1)!)
+  expect(confirmare.getByText(/dispare de tot din Nomenclator/)).toBeInTheDocument()
+  fireEvent.click(confirmare.getByRole('button', { name: 'Șterge' }))
+
+  await waitFor(() => expect(randurileTabelului().join(' ')).not.toMatch(/Cremă pusă din greșeală/))
+  expect(await api.articole.list({ q: 'Cremă pusă din greșeală' })).toHaveLength(0)
+})
+
+it('administrator: produsul vândut nu se șterge — se dezactivează și dispare din listă', async () => {
+  await autentifica('admin@clinica.ro')
+  const produs = await api.articole.create({
+    tip: 'produs', denumire: 'Cremă vândută', pret_lista: 50, categorie: 'Produse clienți',
+  })
+  const clienta = await api.clienti.create({ nume: 'Clientă Cremă' })
+  await api.vanzari.create({
+    client_id: clienta.id,
+    efectuat_la: new Date().toISOString(),
+    metoda_plata: 'card',
+    linii: [{ articol_id: produs.id, cantitate: 1 }],
+  })
+  randeaza(<PaginaNomenclator />)
+  fireEvent.click(await screen.findByRole('tab', { name: /Produse clienți/ }))
+
+  const fereastra = await deschideArticolul('Cremă vândută')
+  fireEvent.click(fereastra.getByRole('button', { name: /Șterge/ }))
+  fireEvent.click(within(screen.getAllByRole('dialog').at(-1)!).getByRole('button', { name: 'Șterge' }))
+
+  // Serverul refuză: istoricul are nevoie de el. Fereastra propune dezactivarea.
+  // Toate modalele împart id-ul titlului: cea de deasupra e ultima.
+  expect(await screen.findByText(/„Cremă vândută” nu se poate șterge/)).toBeInTheDocument()
+  const refuz = within(screen.getAllByRole('dialog').at(-1)!)
+  expect(refuz.getByText(/pe 1 bon/)).toBeInTheDocument()
+  fireEvent.click(refuz.getByRole('button', { name: 'Dezactivează' }))
+
+  await waitFor(async () => expect((await api.articole.list({ q: 'Cremă vândută' }))[0]?.activ).toBe(false))
+  // Nomenclatorul pornește pe „Active”: produsul dezactivat nu mai stă în listă…
+  await waitFor(() => expect(randurileTabelului().join(' ')).not.toMatch(/Cremă vândută/))
+  // …dar se găsește la „Inactive”.
+  fireEvent.click(screen.getByRole('button', { name: 'Inactive' }))
+  await waitFor(() => expect(randurileTabelului().join(' ')).toMatch(/Cremă vândută/))
+})
+
 it('nu mai există filă de puncte de lucru', async () => {
   // Clinica are o singură locație. Testul rămâne ca regresie: dacă selectorul
   // sau fila reapar, cineva a readus un câmp pe care Beneficiarul l-a cerut scos.

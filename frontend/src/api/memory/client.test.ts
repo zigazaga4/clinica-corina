@@ -416,6 +416,53 @@ describe('articol_categorie_ck — listele de prețuri ale produselor', () => {
   })
 })
 
+describe('DELETE /articole — doar nefolosit, ca ON DELETE RESTRICT', () => {
+  beforeEach(async () => {
+    await autentificaCa(ADMIN)
+  })
+
+  it('șterge un produs nefolosit și lasă urma în jurnal', async () => {
+    const produs = await api.articole.create({ tip: 'produs', denumire: 'Creat din greșeală', pret_lista: 1 })
+    await api.articole.remove(produs.id)
+
+    expect(magazin.articol.has(produs.id)).toBe(false)
+    const urma = magazin.jurnal_operatiuni.find(
+      (j) => j.entitate === 'articol' && j.entitate_id === produs.id && j.actiune === 'stergere',
+    )
+    expect(urma?.date_vechi).toMatchObject({ denumire: 'Creat din greșeală' })
+  })
+
+  it('refuză produsul aflat pe un bon (409) și îndeamnă la dezactivare', async () => {
+    const produs = await api.articole.create({ tip: 'produs', denumire: 'Vândut o dată', pret_lista: 40 })
+    const client = gaseste(magazin.client, () => true, 'un client')
+    await api.vanzari.create({
+      client_id: client.id,
+      efectuat_la: new Date().toISOString(),
+      metoda_plata: 'numerar',
+      linii: [{ articol_id: produs.id, cantitate: 1 }],
+    })
+
+    const eroare = await api.articole.remove(produs.id).catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.cod).toBe('conflict')
+    expect(eroare.message).toMatch(/pe 1 bon .*Dezactivează-l/)
+    expect(magazin.articol.has(produs.id)).toBe(true)
+  })
+
+  it('refuză serviciul aflat în programări', async () => {
+    const programare = gaseste(magazin.programare, () => true, 'o programare')
+    const eroare = await api.articole.remove(programare.articol_id).catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.cod).toBe('conflict')
+    expect(eroare.message).toMatch(/^Serviciul apare .*în \d+ programări?/)
+  })
+
+  it('recepția nu poate șterge', async () => {
+    const produs = await api.articole.create({ tip: 'produs', denumire: 'De păstrat', pret_lista: 1 })
+    await autentificaCa(OPERATOR)
+    const eroare = await api.articole.remove(produs.id).catch((e) => e)
+    expect(esteEroareApi(eroare) && eroare.cod).toBe('interzis')
+  })
+})
+
 describe('clienți: arhivare și ON DELETE RESTRICT', () => {
   beforeEach(async () => {
     await autentificaCa(ADMIN)

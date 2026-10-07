@@ -409,6 +409,7 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
         cerere<Articol[]>('GET', '/articole', { parametri: filtru }),
       create: (date) => cerere<Articol>('POST', '/articole', { corp: date }),
       update: (id, date) => cerere<Articol>('PATCH', `/articole/${id}`, { corp: date }),
+      remove: (id) => cerere<void>('DELETE', `/articole/${id}`),
     },
 
     puncteLucru: {

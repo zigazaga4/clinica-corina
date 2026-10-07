@@ -115,6 +115,7 @@ import {
   verificaNumarSedinte,
   verificaParola,
   verificaPret,
+  verificaStergereArticol,
   verificaStergereClient,
   verificaSumaPozitiva,
 } from './constraints'
@@ -2235,6 +2236,23 @@ export function creeazaApiInMemorie(): ApiClient {
         }
 
         return { ...rand }
+      },
+
+      /** DELETE /articole/:id — doar administrator, doar nefolosit */
+      async remove(id): Promise<void> {
+        await intarziere()
+        const autor = cereAdministrator()
+        const rand = ceruta(magazin.articol, id, 'Articolul')
+        verificaStergereArticol(id, rand.tip)
+
+        scrieJurnal({
+          utilizator_id: autor.id,
+          actiune: 'stergere',
+          entitate: 'articol',
+          entitate_id: id,
+          date_vechi: instantaneu(rand as unknown as Record<string, unknown>),
+        })
+        magazin.articol.delete(id)
       },
     },
 
