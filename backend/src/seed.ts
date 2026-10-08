@@ -217,8 +217,8 @@ async function ruleaza(): Promise<void> {
       const existent = tratamente.get(cheie)
       if (existent) return existent
       const { rows } = await ex.query<{ id: string }>(
-        `INSERT INTO tratament (client_id, articol_id, numar_sedinte, pret_total, creat_de)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        `INSERT INTO tratament (client_id, articol_id, numar_sedinte, pret_total, creat_de, pret_lista)
+         VALUES ($1, $2, $3, $4, $5, $4) RETURNING id`,
         [cliente.get(client), articol.id, articol.sedinte, articol.pret, admin_id],
       )
       tratamente.set(cheie, rows[0]!.id)

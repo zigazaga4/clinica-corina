@@ -51,6 +51,15 @@ async function deschideLa(l: LocAles) {
 const durata = (formular: ReturnType<typeof within>) =>
   (formular.getByLabelText(/^Durata/) as HTMLSelectElement).value
 
+/** Alege un serviciu în selectorul dat și așteaptă să rămână ales. */
+async function alege(formular: ReturnType<typeof within>, eticheta: RegExp, denumire: string) {
+  await cautaIn(formular, eticheta, denumire)
+  fireEvent.click(await formular.findByRole('option', { name: new RegExp(denumire) }, ASTEPTARE))
+  await waitFor(() =>
+    expect(formular.getByRole('combobox', { name: eticheta })).toHaveTextContent(denumire),
+  ASTEPTARE)
+}
+
 describe('client nou din formularul de programare', () => {
   it('oferă crearea cu numele tastat și îl lasă ales', async () => {
     await autentifica()
@@ -210,15 +219,6 @@ describe('mai multe servicii într-o programare', () => {
   /** Zi departe de agenda generată, ca să nu se ciocnească de nimic. */
   const ZI = new Date(2031, 2, 4, 10, 0)
 
-  /** Alege un serviciu în selectorul dat și așteaptă să rămână ales. */
-  async function alege(formular: ReturnType<typeof within>, eticheta: RegExp, denumire: string) {
-    await cautaIn(formular, eticheta, denumire)
-    fireEvent.click(await formular.findByRole('option', { name: new RegExp(denumire) }, ASTEPTARE))
-    await waitFor(() =>
-      expect(formular.getByRole('combobox', { name: eticheta })).toHaveTextContent(denumire),
-    ASTEPTARE)
-  }
-
   it('al doilea serviciu intră în aceeași programare, iar durata lor se adună', async () => {
     await autentifica('admin@clinica.ro')
     // Fișă fără istoric: prețurile pornesc de la listă.
@@ -275,5 +275,67 @@ describe('mai multe servicii într-o programare', () => {
 
     await waitFor(() => expect(magazin.programare.get(servicii[1]!.id)?.stare).toBe('anulat'), ASTEPTARE)
     expect(magazin.programare.get(servicii[0]!.id)?.stare).toBe('programat')
+  })
+})
+
+describe('reducere la abonamente (cerința clinicii, 8 oct. 2026)', () => {
+  /** Altă zi decât a celorlalte teste, ca să nu se ciocnească de nimic. */
+  const ZI = new Date(2031, 3, 8, 10, 0)
+  const AXILE = 'Epilare definitivă IPL — axile' // 6 ședințe, 900 RON
+  const PICIOARE = 'Epilare definitivă IPL — picioare complet' // 8 ședințe, 2400 RON
+
+  const tratamenteleClientei = (client_id: string) =>
+    [...magazin.tratament.values()].filter((t) => t.client_id === client_id)
+
+  it('50% la abonament: totalul de plată și partea ședinței se calculează singure', async () => {
+    await autentifica('admin@clinica.ro')
+    const clienta = await api.clienti.create({ nume: 'Clientă Cu Reducere' })
+    const formular = await deschideLa({ inceput: ZI, sfarsit: null, executantId: null, clientId: clienta.id })
+
+    await alege(formular, /^Serviciu/, AXILE)
+    expect(await formular.findByText('Total abonament', {}, ASTEPTARE)).toBeInTheDocument()
+    expect(formular.getByLabelText(/^Total de plată/)).toHaveValue('900')
+
+    fireEvent.change(formular.getByLabelText(/^Reducere/), { target: { value: '50' } })
+    expect(formular.getByLabelText(/^Total de plată/)).toHaveValue('450')
+    expect(formular.getByLabelText(/^Preț/)).toHaveValue('75')
+    expect(formular.getByText(/6 ședințe × 75,00 RON · reducere 50%/)).toBeInTheDocument()
+    expect(formular.getByText(/450,00 RON în total/)).toBeInTheDocument()
+
+    // Și invers: totalul scris de mână arată reducerea.
+    fireEvent.change(formular.getByLabelText(/^Total de plată/), { target: { value: '600' } })
+    expect(formular.getByLabelText(/^Reducere/)).toHaveValue('33,33')
+    expect(formular.getByLabelText(/^Preț/)).toHaveValue('100')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Adaugă programarea' }))
+    await waitFor(() => expect(tratamenteleClientei(clienta.id)).toHaveLength(1), ASTEPTARE)
+    expect(tratamenteleClientei(clienta.id)[0]).toMatchObject({ pret_lista: 900, pret_total: 600 })
+    const [sedinta] = [...magazin.programare.values()].filter((p) => p.client_id === clienta.id)
+    expect(sedinta?.pret).toBe(100)
+  })
+
+  it('o singură reducere pentru toate abonamentele noi, cu totalurile lor', async () => {
+    await autentifica('admin@clinica.ro')
+    const clienta = await api.clienti.create({ nume: 'Clientă Cu Două Abonamente' })
+    const formular = await deschideLa({ inceput: ZI, sfarsit: null, executantId: null, clientId: clienta.id })
+
+    await alege(formular, /^Serviciu/, AXILE)
+    fireEvent.click(formular.getByRole('button', { name: 'Adaugă încă un serviciu' }))
+    await alege(formular, /^Serviciul 2/, PICIOARE)
+
+    const reducereaTuturor = await formular.findByLabelText(/^Reducere la toate abonamentele/, {}, ASTEPTARE)
+    fireEvent.change(reducereaTuturor, { target: { value: '50' } })
+    expect(formular.getByLabelText(/^Total de plată 1/)).toHaveValue('450')
+    expect(formular.getByLabelText(/^Total de plată 2/)).toHaveValue('1200')
+    expect(formular.getByLabelText(/^Prețul 1/)).toHaveValue('75')
+    expect(formular.getByLabelText(/^Prețul 2/)).toHaveValue('150')
+    expect(formular.getByText(/Total abonamente/)).toHaveTextContent('3.300,00')
+    expect(formular.getByText(/^De plată/)).toHaveTextContent('1.650,00')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Adaugă programarea' }))
+    await waitFor(() => expect(tratamenteleClientei(clienta.id)).toHaveLength(2), ASTEPTARE)
+    expect(
+      tratamenteleClientei(clienta.id).map((t) => [t.pret_lista, t.pret_total]).sort((a, b) => a[0]! - b[0]!),
+    ).toEqual([[900, 450], [2400, 1200]])
   })
 })

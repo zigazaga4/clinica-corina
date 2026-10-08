@@ -1,4 +1,5 @@
 import { UserRound } from 'lucide-react'
+import { formateazaProcent, reducereaTratamentului } from '@/domain/reducere'
 import type { ProgramareDetaliu, TratamentDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { formateazaBani } from '@/lib/money'
@@ -127,10 +128,17 @@ export function ExecutantiTratament({
 }
 
 export function BaniTratament({ tratament, className }: { tratament: TratamentDetaliu; className?: string }) {
+  // „Total abonament și total cât am încasa de la el” (cerința clinicii, 8 oct. 2026).
+  const reducere = reducereaTratamentului(tratament)
   return (
     <div className={cn('text-[13px] tabular-nums', className)}>
       <span className="font-medium text-ink">{formateazaBani(tratament.incasat)}</span>
       <span className="text-ink-faint"> din {formateazaBani(tratament.pret_total)}</span>
+      {reducere && (
+        <span className="block text-[12px] text-ink-faint">
+          reducere {formateazaProcent(reducere.procent)} din {formateazaBani(reducere.lista)}
+        </span>
+      )}
       {tratament.de_incasat > 0 && (
         <span className="block text-[12px] font-medium text-warning">
           De plată: {formateazaBani(tratament.de_incasat)}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Layers, Plus, Trash2 } from 'lucide-react'
 import {
   useArticole,
@@ -10,6 +10,12 @@ import { useAutentificare } from '@/app/auth'
 import type { PretSugerat, ServiciuProgramare, SugestieTratament } from '@/api/contract'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
 import { GrilaFormular, PeToataLatimea } from '@/components/Pagina'
+import {
+  formateazaProcent,
+  parteaSedintei,
+  procentReducere,
+  totalCuReducere,
+} from '@/domain/reducere'
 import type { Articol, ProgramareDetaliu, Uuid } from '@/domain/types'
 import { addMinutes, dinInputDatetime, laInputDatetime } from '@/lib/dates'
 import { useEroriFormular } from '@/lib/formular'
@@ -17,11 +23,12 @@ import { uuid } from '@/lib/id'
 import { formateazaBani, numarInCamp, parseNumar, sumaTotal } from '@/lib/money'
 import { plural } from '@/lib/text'
 import { Buton, Input, Modala, Textarea, useNotificari } from '@/ui'
+import { ReducereAbonament } from '../tratamente/ReducereAbonament'
 import { CampuriInterval, proximulSfertDeOra } from './CampuriInterval'
 import type { LocAles } from './locAles'
 
 /** Ce poate greși la un serviciu din listă. */
-type CampServiciu = 'articol_id' | 'pret' | 'tratament_id' | 'id'
+type CampServiciu = 'articol_id' | 'pret' | 'tratament_id' | 'tratament_pret_total' | 'id'
 
 /**
  * Câmpurile care pot purta o eroare. Cele ale unui serviciu poartă și locul
@@ -55,6 +62,11 @@ interface RandServiciu {
    * client sau de serviciu nu are voie să șteargă o sumă convenită deja.
    */
   pretAtins: boolean
+  /**
+   * Totalul de plată al abonamentului pe care îl ÎNCEPE serviciul — după
+   * reducere (cerința clinicii, 8 oct. 2026). null = cel propus de server.
+   */
+  totalAbonament: string | null
 }
 
 /**
@@ -107,6 +119,8 @@ export function FormularProgramare({
   const [incepeLa, setIncepeLa] = useState('')
   const [seTerminaLa, setSeTerminaLa] = useState('')
   const [nota, setNota] = useState('')
+  // „Reducere la toate abonamentele” — ce s-a tastat; se aplică pe loc fiecăruia.
+  const [reducereTuturor, setReducereTuturor] = useState('')
 
   // Un interval TRAS în calendar este o alegere, nu o propunere: serviciul ales
   // după aceea nu-i mai mută sfârșitul. O simplă apăsare lasă durata serviciului.
@@ -122,11 +136,77 @@ export function FormularProgramare({
     return rand.pretAtins || !sugestie ? rand.pret : numarInCamp(sugestie.pret)
   }
 
+  /** Câte ședințe noi din același serviciu stau mai sus în listă. */
+  const maiDevremeLa = (i: number) =>
+    randuri.slice(0, i).filter((r) => !r.existent && r.articolId === randuri[i]?.articolId).length
+
+  /**
+   * Abonamentul pe care îl ÎNCEPE serviciul de pe rândul `i` — doar acela
+   * primește reducere aici (cerința clinicii, 8 oct. 2026). Unul în curs se
+   * corectează din fișa tratamentului, iar a doua ședință din același serviciu,
+   * pusă în aceeași programare, intră în abonamentul deschis de prima.
+   */
+  const abonamentNou = (rand: RandServiciu, i: number) => {
+    const sugestie = sugestii[i]
+    const tratament = sugestie?.tratament
+    if (rand.existent || rand.tratamentId || !sugestie || !tratament) return null
+    if (tratament.id !== null || maiDevremeLa(i) > 0) return null
+    return {
+      lista: sugestie.pret_lista,
+      numar_sedinte: tratament.numar_sedinte,
+      total: rand.totalAbonament ?? numarInCamp(tratament.pret_total),
+    }
+  }
+
+  // Totalul de plată se scrie, partea ședinței urmează: total / ședințe.
+  const schimbaTotalAbonament = (cheie: string, total: string, numarSedinte: number) => {
+    const valoare = parseNumar(total)
+    setRanduri((precedente) =>
+      precedente.map((r) =>
+        r.cheie !== cheie
+          ? r
+          : {
+              ...r,
+              totalAbonament: total,
+              ...(valoare !== null && valoare >= 0
+                ? { pret: numarInCamp(parteaSedintei(valoare, numarSedinte)), pretAtins: true }
+                : {}),
+            },
+      ),
+    )
+  }
+
+  const abonamenteNoi = randuri.flatMap((rand, i) => {
+    const abonament = abonamentNou(rand, i)
+    return abonament ? [{ cheie: rand.cheie, ...abonament }] : []
+  })
+
+  const aplicaReducereaTuturor = (text: string) => {
+    setReducereTuturor(text)
+    const procent = parseNumar(text)
+    if (procent === null || procent < 0 || procent > 100) return
+    const noi = new Map(abonamenteNoi.map((a) => [a.cheie, a]))
+    setRanduri((precedente) =>
+      precedente.map((r) => {
+        const abonament = noi.get(r.cheie)
+        if (!abonament) return r
+        const total = totalCuReducere(abonament.lista, procent)
+        return {
+          ...r,
+          totalAbonament: numarInCamp(total),
+          pret: numarInCamp(parteaSedintei(total, abonament.numar_sedinte)),
+          pretAtins: true,
+        }
+      }),
+    )
+  }
+
   // Reîncărcarea valorilor la fiecare deschidere: dialogul rămâne montat, deci
   // fără asta o a doua deschidere ar arăta datele programării dinainte.
   useEffect(() => {
     if (!deschisa) return
     erori.goleste()
+    setReducereTuturor('')
     // La fiecare deschidere, din nou: o corectură deschisă după un interval
     // tras nu are voie să moștenească regula lui.
     intervalTras.current = !programare && Boolean(loc?.sfarsit)
@@ -147,6 +227,7 @@ export function FormularProgramare({
           tratamentId: null,
           pret: numarInCamp(s.pret),
           pretAtins: true,
+          totalAbonament: null,
         })),
       )
       return
@@ -244,6 +325,15 @@ export function FormularProgramare({
       const pret = parseNumar(pretAfisat(rand, i))
       if (pret === null) return erori.setCamp(`servicii.${i}.pret`, 'Completează prețul.')
       if (pret < 0) return erori.setCamp(`servicii.${i}.pret`, 'Prețul nu poate fi negativ.')
+      // Abonamentul început acum pleacă cu totalul lui de plată (reducerea).
+      const abonament = abonamentNou(rand, i)
+      const totalAbonament = abonament ? parseNumar(abonament.total) : null
+      if (abonament && totalAbonament === null) {
+        return erori.setCamp(`servicii.${i}.tratament_pret_total`, 'Completează totalul de plată al abonamentului.')
+      }
+      if (totalAbonament !== null && totalAbonament < 0) {
+        return erori.setCamp(`servicii.${i}.tratament_pret_total`, 'Totalul nu poate fi negativ.')
+      }
       servicii.push({
         ...(rand.existent ? { id: rand.existent.id } : {}),
         articol_id: rand.articolId,
@@ -251,6 +341,7 @@ export function FormularProgramare({
         // Din fișa tratamentului, ședința intră EXPLICIT în el; altfel,
         // serverul o pune singur în tratamentul în curs al clientului.
         ...(rand.tratamentId ? { tratament_id: rand.tratamentId } : {}),
+        ...(totalAbonament !== null ? { tratament_pret_total: totalAbonament } : {}),
       })
     }
 
@@ -300,6 +391,10 @@ export function FormularProgramare({
   )?.[1] as string | undefined
   const maiMulte = randuri.length > 1
   const total = sumaTotal(randuri.map((r, i) => parseNumar(pretAfisat(r, i)) ?? 0))
+  // „Total abonament și total cât am încasa de la el” — pentru toate cele noi.
+  const listaAbonamente = sumaTotal(abonamenteNoi.map((a) => a.lista))
+  const plataAbonamente = sumaTotal(abonamenteNoi.map((a) => parseNumar(a.total) ?? 0))
+  const reducereAbonamente = procentReducere(listaAbonamente, plataAbonamente)
 
   return (
     <Modala
@@ -362,27 +457,81 @@ export function FormularProgramare({
           */}
           <PeToataLatimea>
             <div className="flex flex-col gap-2.5">
-              {randuri.map((rand, i) => (
-                <RandServiciuFormular
-                  key={rand.cheie}
-                  rand={rand}
-                  index={maiMulte ? i : null}
-                  pret={pretAfisat(rand, i)}
-                  sugestie={sugestii[i]}
-                  // A câta ședință ar fi: sugestia nu știe de ședințele din
-                  // același tratament puse mai sus, în aceeași programare.
-                  maiDevreme={
-                    randuri.slice(0, i).filter((r) => !r.existent && r.articolId === rand.articolId).length
-                  }
-                  poateFiScos={maiMulte && !rand.tratamentId && !rand.existent?.achitat}
-                  eroareServiciu={erori.peCamp[`servicii.${i}.articol_id`] ?? null}
-                  eroarePret={erori.peCamp[`servicii.${i}.pret`] ?? null}
-                  eroareTratament={erori.peCamp[`servicii.${i}.tratament_id`] ?? null}
-                  onServiciu={(articolId) => alegeServiciu(rand.cheie, articolId)}
-                  onPret={(pret) => schimbaPretul(rand.cheie, pret)}
-                  onScoate={() => scoateServiciu(rand.cheie)}
-                />
-              ))}
+              {randuri.map((rand, i) => {
+                const abonament = abonamentNou(rand, i)
+                const sugestie = sugestii[i]
+                const totalScris = abonament ? parseNumar(abonament.total) : null
+                return (
+                  <RandServiciuFormular
+                    key={rand.cheie}
+                    rand={rand}
+                    index={maiMulte ? i : null}
+                    pret={pretAfisat(rand, i)}
+                    // Nota „începe un tratament nou de …” spune totalul de după reducere.
+                    sugestie={
+                      sugestie?.tratament && totalScris !== null
+                        ? { ...sugestie, tratament: { ...sugestie.tratament, pret_total: totalScris } }
+                        : sugestie
+                    }
+                    // A câta ședință ar fi: sugestia nu știe de ședințele din
+                    // același tratament puse mai sus, în aceeași programare.
+                    maiDevreme={maiDevremeLa(i)}
+                    poateFiScos={maiMulte && !rand.tratamentId && !rand.existent?.achitat}
+                    eroareServiciu={erori.peCamp[`servicii.${i}.articol_id`] ?? null}
+                    eroarePret={erori.peCamp[`servicii.${i}.pret`] ?? null}
+                    eroareTratament={erori.peCamp[`servicii.${i}.tratament_id`] ?? null}
+                    onServiciu={(articolId) => alegeServiciu(rand.cheie, articolId)}
+                    onPret={(pret) => schimbaPretul(rand.cheie, pret)}
+                    onScoate={() => scoateServiciu(rand.cheie)}
+                    abonament={
+                      abonament && (
+                        <ReducereAbonament
+                          lista={abonament.lista}
+                          total={abonament.total}
+                          onTotal={(t) => schimbaTotalAbonament(rand.cheie, t, abonament.numar_sedinte)}
+                          numarSedinte={abonament.numar_sedinte}
+                          sufixEticheta={maiMulte ? ` ${i + 1}` : ''}
+                          disabled={seTrimite}
+                          eroare={erori.peCamp[`servicii.${i}.tratament_pret_total`] ?? null}
+                        />
+                      )
+                    }
+                  />
+                )
+              })}
+
+              {/*
+                „Eu de obicei mai fac 50% reducere la toate abonamentele”: cu
+                două sau mai multe abonamente noi, o singură reducere pentru
+                toate, și totalurile lor — cât costă după listă și cât se
+                încasează. Fiecare abonament se poate apoi corecta pe rândul lui.
+              */}
+              {abonamenteNoi.length >= 2 && (
+                <div className="flex flex-col gap-2.5 rounded-xl bg-primary-50 p-3 sm:flex-row sm:items-end sm:justify-between">
+                  <Input
+                    eticheta="Reducere la toate abonamentele"
+                    inputMode="decimal"
+                    value={reducereTuturor}
+                    onChange={(e) => aplicaReducereaTuturor(e.target.value)}
+                    disabled={seTrimite}
+                    sufix="%"
+                    placeholder="ex. 50"
+                    className="text-right tabular-nums"
+                    containerClassName="sm:w-60"
+                  />
+                  <p className="text-[13px] text-ink-soft tabular-nums sm:text-right">
+                    Total abonamente{' '}
+                    <strong className="font-semibold text-ink">{formateazaBani(listaAbonamente)}</strong>
+                    <span className="block">
+                      De plată{' '}
+                      <strong className="font-semibold text-ink">{formateazaBani(plataAbonamente)}</strong>
+                      {reducereAbonamente !== null && reducereAbonamente > 0 && (
+                        <> · reducere {formateazaProcent(reducereAbonamente)}</>
+                      )}
+                    </span>
+                  </p>
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Buton
@@ -444,10 +593,18 @@ export function FormularProgramare({
 
 /** Câmpurile pe care formularul le arată sub căsuța lor; restul merg în banda generală. */
 const CAMPURI_AFISATE =
-  /^(client_id|executant_id|incepe_la|se_termina_la|servicii|servicii\.\d+\.(articol_id|pret|tratament_id))$/
+  /^(client_id|executant_id|incepe_la|se_termina_la|servicii|servicii\.\d+\.(articol_id|pret|tratament_id|tratament_pret_total))$/
 
 function randGol(): RandServiciu {
-  return { cheie: uuid(), existent: null, articolId: null, tratamentId: null, pret: '', pretAtins: false }
+  return {
+    cheie: uuid(),
+    existent: null,
+    articolId: null,
+    tratamentId: null,
+    pret: '',
+    pretAtins: false,
+    totalAbonament: null,
+  }
 }
 
 /** Cât durează toate serviciile alese, după nomenclator. */
@@ -479,6 +636,7 @@ function RandServiciuFormular({
   onServiciu,
   onPret,
   onScoate,
+  abonament,
 }: {
   rand: RandServiciu
   /** Locul în listă, pentru etichete — null când programarea are un singur serviciu. */
@@ -494,6 +652,8 @@ function RandServiciuFormular({
   onServiciu: (articolId: Uuid | null) => void
   onPret: (pret: string) => void
   onScoate: () => void
+  /** Totalul și reducerea abonamentului pe care îl începe serviciul (`ReducereAbonament`). */
+  abonament?: ReactNode
 }) {
   const achitat = rand.existent?.achitat ?? false
   const serviciuBlocat = rand.tratamentId !== null || rand.existent?.tratament_id != null || achitat
@@ -552,6 +712,9 @@ function RandServiciuFormular({
 
       {achitat ? (
         <p className="text-[13px] text-ink-faint">Încasat — serviciul și prețul nu se mai schimbă.</p>
+      ) : abonament ? (
+        // Partea ședinței o spune chiar blocul abonamentului: „8 ședințe × 56,25”.
+        abonament
       ) : (
         ajutorPret(sugestie) && <p className="text-[13px] text-ink-faint">{ajutorPret(sugestie)}</p>
       )}

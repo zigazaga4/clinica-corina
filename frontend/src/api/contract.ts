@@ -234,6 +234,12 @@ export interface ServiciuProgramare {
    * tratamentul în curs al clientului pentru acest serviciu, sau unul nou.
    */
   tratament_id?: Uuid | null
+  /**
+   * Prețul convenit (după reducere) al abonamentului pe care îl DESCHIDE acest
+   * serviciu. Lipsă = prețul obișnuit. Fără efect când ședința intră într-un
+   * tratament în curs — acela se corectează din fișa lui.
+   */
+  tratament_pret_total?: number
 }
 
 export interface DateProgramareNoua {
@@ -398,13 +404,17 @@ export interface DateTratamentNou {
   numar_sedinte?: number
   /** Lipsă = prețul reținut al clientului pentru acest serviciu, altfel `articol.pret_lista`. */
   pret_total?: number
+  /** Prețul de listă, față de care se citește reducerea. Lipsă = nomenclatorul de azi. */
+  pret_lista?: number
   nota?: string | null
 }
 
 export interface DateTratamentModificat {
   /** Nu poate coborî sub ședințele deja programate sau făcute. */
   numar_sedinte?: number
+  /** Alt preț sau alt număr împarte din nou banii pe ședințele încă programate. */
   pret_total?: number
+  pret_lista?: number | null
   nota?: string | null
 }
 

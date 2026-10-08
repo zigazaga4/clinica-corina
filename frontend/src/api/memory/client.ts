@@ -96,6 +96,7 @@ import type {
 } from '@/domain/types'
 import { persoanaLiniei } from '@/domain/facutaDe'
 import { METODE_PLATA } from '@/domain/labels'
+import { pretListaPentru } from '@/domain/reducere'
 import { acum, addDays, laTimestamptz } from '@/lib/dates'
 import { uuid } from '@/lib/id'
 import { rotunjeste, sumaTotal, totalLinie } from '@/lib/money'
@@ -1295,6 +1296,10 @@ export function creeazaApiInMemorie(): ApiClient {
           verificaPret(date.pret_total, 'pret_total')
           rand.pret_total = date.pret_total
         }
+        if (date.pret_lista !== undefined) {
+          if (date.pret_lista !== null) verificaPret(date.pret_lista, 'pret_lista')
+          rand.pret_lista = date.pret_lista
+        }
         if (date.nota !== undefined) rand.nota = textOptional(date.nota)
         atinge(rand)
 
@@ -1310,6 +1315,9 @@ export function creeazaApiInMemorie(): ApiClient {
             entitate_id: rand.id,
             ...dif,
           })
+        }
+        if (rand.pret_total !== inainte.pret_total || rand.numar_sedinte !== inainte.numar_sedinte) {
+          reimparteSedintelePlanificate(rand, autor.id)
         }
 
         return hidrateazaTratament(rand)
@@ -2702,7 +2710,9 @@ function adaugaServiciu(
   articol: Articol,
   serviciu: ServiciuProgramare,
 ): Programare {
-  const inTratament = tratamentulSedintei(vizita.client_id, articol, serviciu.tratament_id, autor_id)
+  const inTratament = tratamentulSedintei(
+    vizita.client_id, articol, serviciu.tratament_id, autor_id, serviciu.tratament_pret_total,
+  )
   // Prețul lipsă se completează din memoria clientului, nu direct din
   // nomenclator. Într-un tratament, memoria e chiar tratamentul.
   const pret = serviciu.pret ?? inTratament?.pret ?? pretPentru(vizita.client_id, articol.id).pret
@@ -2774,7 +2784,7 @@ function pretTotalPentru(client_id: Uuid, articol: Articol): { pret_total: numbe
 function deschideTratament(
   client_id: Uuid,
   articol: Articol,
-  date: Pick<DateTratamentNou, 'numar_sedinte' | 'pret_total' | 'nota'>,
+  date: Pick<DateTratamentNou, 'numar_sedinte' | 'pret_total' | 'pret_lista' | 'nota'>,
   autor_id: Uuid,
 ): Tratament {
   if (articol.tip !== 'serviciu') {
@@ -2792,6 +2802,8 @@ function deschideTratament(
     date.numar_sedinte === undefined ? articol.numar_sedinte : verificaNumarSedinte(date.numar_sedinte)
   const pret_total = date.pret_total ?? pretTotalPentru(client_id, articol).pret_total
   verificaPret(pret_total, 'pret_total')
+  const pret_lista = date.pret_lista ?? pretListaPentru(articol, numar_sedinte)
+  verificaPret(pret_lista, 'pret_lista')
 
   const rand: Tratament = {
     id: uuid(),
@@ -2805,6 +2817,7 @@ function deschideTratament(
     creat_de: autor_id,
     creat_la: acum(),
     actualizat_la: acum(),
+    pret_lista,
   }
   magazin.tratament.set(rand.id, rand)
 
@@ -2828,6 +2841,8 @@ function tratamentulSedintei(
   articol: Articol,
   tratament_id: Uuid | null | undefined,
   autor_id: Uuid,
+  /** Prețul convenit al tratamentului deschis acum (`tratament_pret_total`). */
+  pret_total?: number,
 ): { tratament: TratamentDetaliu; pret: number } | null {
   let tratament: Tratament | null = null
 
@@ -2845,7 +2860,9 @@ function tratamentulSedintei(
   } else {
     tratament = tratamentInCurs(client_id, articol.id)
     if (!tratament && articol.numar_sedinte > 1) {
-      tratament = deschideTratament(client_id, articol, {}, autor_id)
+      tratament = deschideTratament(
+        client_id, articol, pret_total === undefined ? {} : { pret_total }, autor_id,
+      )
     }
   }
 
@@ -2860,6 +2877,43 @@ function tratamentulSedintei(
     )
   }
   return { tratament: detaliu, pret: detaliu.pret_urmatoarea }
+}
+
+/**
+ * Prețul tratamentului, împărțit din nou pe ședințele încă programate — ca
+ * `reimparteSedintelePlanificate` pe server (backend/src/lib/tratamente.ts).
+ */
+function reimparteSedintelePlanificate(tratament: Tratament, autor_id: Uuid): void {
+  const incasate = new Set<Uuid>()
+  for (const l of magazin.vanzare_linie.values()) if (l.programare_id) incasate.add(l.programare_id)
+
+  const sedinte = [...magazin.programare.values()]
+    .filter((p) => p.tratament_id === tratament.id && (p.stare === 'programat' || p.stare === 'onorat'))
+    .sort((a, b) => a.incepe_la.localeCompare(b.incepe_la) || a.creat_la.localeCompare(b.creat_la))
+  const fixe = sedinte.filter((p) => p.stare === 'onorat' || incasate.has(p.id))
+  const planificate = sedinte.filter((p) => p.stare === 'programat' && !incasate.has(p.id))
+  const locuri = tratament.numar_sedinte - fixe.length
+  if (planificate.length === 0 || locuri <= 0) return
+
+  const rest = Math.max(rotunjeste(tratament.pret_total - fixe.reduce((s, p) => s + p.pret, 0)), 0)
+  const parte = rotunjeste(rest / locuri)
+
+  for (const [i, sedinta] of planificate.entries()) {
+    const ultimaDinToate = planificate.length === locuri && i === planificate.length - 1
+    const pret = ultimaDinToate ? Math.max(rotunjeste(rest - parte * (locuri - 1)), 0) : parte
+    if (pret === sedinta.pret) continue
+    const vechi = sedinta.pret
+    sedinta.pret = pret
+    atinge(sedinta)
+    scrieJurnal({
+      utilizator_id: autor_id,
+      actiune: 'modificare',
+      entitate: 'programare',
+      entitate_id: sedinta.id,
+      date_vechi: { pret: vechi },
+      date_noi: { pret, motiv: 'prețul tratamentului s-a schimbat' },
+    })
+  }
 }
 
 /** Ultima ședință onorată încheie tratamentul singură; drumul invers e de mână. */

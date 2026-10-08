@@ -279,7 +279,13 @@ CREATE TABLE IF NOT EXISTS tratament (
   creat_de       uuid REFERENCES utilizator(id) ON DELETE SET NULL,
   creat_la       timestamptz NOT NULL DEFAULT now(),
   actualizat_la  timestamptz NOT NULL DEFAULT now(),
+  -- Prețul de listă al abonamentului la deschidere (2026-10-08): față de el se
+  -- citește reducerea — `pret_total` e ce s-a convenit. NULL = deschis înainte
+  -- de reducere, necunoscut. Ultima coloană dinadins: `t.*` din vedere iese la
+  -- fel pe o bază nouă și pe una migrată.
+  pret_lista     numeric(10,2),
 
+  CONSTRAINT tratament_pret_lista_ck CHECK (pret_lista IS NULL OR pret_lista >= 0),
   CONSTRAINT tratament_articol_fk
     FOREIGN KEY (articol_id, articol_tip) REFERENCES articol (id, tip)
     ON DELETE RESTRICT

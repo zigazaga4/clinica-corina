@@ -8,11 +8,13 @@ import {
 } from '@/app/queries'
 import { SelectorArticol, SelectorClient } from '@/components/selectoare'
 import { GrilaFormular, PeToataLatimea } from '@/components/Pagina'
+import { pretListaPentru } from '@/domain/reducere'
 import type { TratamentDetaliu, Uuid } from '@/domain/types'
 import { useEroriFormular } from '@/lib/formular'
 import { formateazaBani, parseNumar } from '@/lib/money'
 import { plural } from '@/lib/text'
 import { Buton, Input, Modala, Textarea, useNotificari } from '@/ui'
+import { ReducereAbonament } from './ReducereAbonament'
 
 type CampFormular = 'client_id' | 'articol_id' | 'numar_sedinte' | 'pret_total'
 
@@ -78,6 +80,28 @@ export function FormularTratament({
   // 409, dar e mai bine spus înainte, cu drumul corect.
   const dejaInCurs = !tratament && sugestie?.tratament?.id != null
 
+  /*
+    Totalul abonamentului — prețul de listă față de care se citește reducerea
+    (cerința clinicii, 8 oct. 2026). Cel ținut minte pe tratament; la unul
+    deschis înainte de reducere (NULL), cel din nomenclator. La alt număr de
+    ședințe, partea lui. 0 = nu se știe (serviciu scos din nomenclator).
+  */
+  const sedinteScrise = parseNumar(numarSedinte)
+  const sedinteAbonament =
+    sedinteScrise !== null && Number.isInteger(sedinteScrise) && sedinteScrise >= 1
+      ? sedinteScrise
+      : (tratament?.numar_sedinte ?? 1)
+  const serviciul = servicii?.find((s) => s.id === (tratament?.articol_id ?? articolId))
+  const lista =
+    tratament?.pret_lista != null
+      ? pretListaPentru(
+          { pret_lista: tratament.pret_lista, numar_sedinte: tratament.numar_sedinte },
+          sedinteAbonament,
+        )
+      : serviciul
+        ? pretListaPentru(serviciul, sedinteAbonament)
+        : 0
+
   const trimite = async (e: FormEvent) => {
     e.preventDefault()
     erori.goleste()
@@ -110,7 +134,13 @@ export function FormularTratament({
       if (tratament) {
         await modifica.mutateAsync({
           id: tratament.id,
-          date: { numar_sedinte: sedinte, pret_total: pret, nota: notaCurata },
+          date: {
+            numar_sedinte: sedinte,
+            pret_total: pret,
+            // Ținut minte de acum, ca reducerea să rămână cea de azi.
+            ...(lista > 0 ? { pret_lista: lista } : {}),
+            nota: notaCurata,
+          },
         })
         notificari.succes('Tratament modificat', `${sedinte} ${plural(sedinte, 'ședință', 'ședințe')}, ${formateazaBani(pret)} în total.`)
       } else {
@@ -119,6 +149,7 @@ export function FormularTratament({
           articol_id: articolId!,
           numar_sedinte: sedinte,
           pret_total: pret,
+          ...(lista > 0 ? { pret_lista: lista } : {}),
           nota: notaCurata,
         })
         notificari.succes('Tratament deschis', 'Programează ședințele din lista de tratamente.')
@@ -213,26 +244,29 @@ export function FormularTratament({
                 : undefined
             }
           />
-          <Input
-            eticheta="Preț total"
-            inputMode="decimal"
-            obligatoriu
-            value={pretTotal}
-            onChange={(e) => {
-              setPretAtins(true)
-              setPretTotal(e.target.value)
-            }}
-            eroare={erori.peCamp.pret_total ?? null}
-            sufix="RON"
-            className="pr-13 text-right tabular-nums"
-            ajutor={
-              tratament
-                ? `Împărțit deja pe ședințe: ${formateazaBani(tratament.alocat)}. Restul se împarte la cele rămase.`
-                : sugestie?.din_istoric
-                  ? `Prețul convenit data trecută cu acest client. Preț de listă: ${formateazaBani(sugestie.pret_lista)}`
-                  : 'Pentru toate ședințele împreună. Se împarte pe ședințe la programarea fiecăreia.'
-            }
-          />
+          {/* Totalul abonamentului, reducerea și totalul de plată. */}
+          <PeToataLatimea>
+            <ReducereAbonament
+              lista={lista}
+              total={pretTotal}
+              onTotal={(text) => {
+                setPretAtins(true)
+                setPretTotal(text)
+              }}
+              numarSedinte={sedinteAbonament}
+              disabled={seTrimite}
+              eroare={erori.peCamp.pret_total ?? null}
+              ajutor={
+                tratament
+                  ? tratament.sedinte_programate > 0
+                    ? 'Ședințele programate primesc noua parte; cele făcute rămân cum au fost.'
+                    : 'Ședințele făcute rămân cum au fost; restul se împarte la cele rămase.'
+                  : sugestie?.din_istoric
+                    ? `Prețul convenit data trecută cu acest client. Preț de listă: ${formateazaBani(sugestie.pret_lista)}`
+                    : 'Se împarte pe ședințe la programarea fiecăreia.'
+              }
+            />
+          </PeToataLatimea>
 
           <PeToataLatimea>
             <Textarea

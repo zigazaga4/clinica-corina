@@ -150,6 +150,8 @@ export interface Tratament {
   creat_de: string | null
   creat_la: string
   actualizat_la: string
+  /** Prețul de listă la deschidere; reducerea = 1 − pret_total / pret_lista. NULL = necunoscut. */
+  pret_lista: number | null
 }
 
 export interface Vanzare {

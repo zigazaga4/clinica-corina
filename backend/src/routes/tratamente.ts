@@ -19,6 +19,7 @@ import { adresaCererii, diferenta, instantaneu, scrieJurnal } from '../lib/jurna
 import {
   DIN_TRATAMENTE,
   deschideTratament,
+  reimparteSedintelePlanificate,
   tratamentDetaliu,
   tratamentInCurs,
 } from '../lib/tratamente.js'
@@ -106,6 +107,7 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
       articol,
       numar_sedinte: corp['numar_sedinte'],
       pret_total: corp['pret_total'],
+      pret_lista: corp['pret_lista'],
       nota: corp['nota'],
       autor_id: autor.id,
       adresa_ip: adresaCererii(req),
@@ -121,9 +123,12 @@ router.post('/', ruta(async (req: AuthRequest, res: Response) => {
 // ---------------------------------------------------------------------------
 
 /**
- * Corectează înțelegerea: mai multe (sau mai puține) ședințe, alt preț total,
- * o notă. Numărul nu poate coborî sub ședințele deja programate sau făcute —
- * acelea există și ocupă locul lor.
+ * Corectează înțelegerea: mai multe (sau mai puține) ședințe, alt preț total
+ * (o reducere, față de `pret_lista`), o notă. Numărul nu poate coborî sub
+ * ședințele deja programate sau făcute — acelea există și ocupă locul lor.
+ *
+ * Alt preț sau alt număr de ședințe împarte din nou banii pe ședințele încă
+ * programate (`reimparteSedintelePlanificate`); cele făcute nu se ating.
  */
 router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
   const autor = cont(req)
@@ -151,6 +156,11 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
     if (corp['pret_total'] !== undefined) {
       date['pret_total'] = verificaPret(Number(corp['pret_total']), 'pret_total')
     }
+    if (corp['pret_lista'] !== undefined) {
+      date['pret_lista'] = corp['pret_lista'] === null
+        ? null
+        : verificaPret(Number(corp['pret_lista']), 'pret_lista')
+    }
     if (corp['nota'] !== undefined) date['nota'] = textOptional(corp['nota'], 'nota', 'Nota')
 
     if (Object.keys(date).length === 0) return detaliu
@@ -175,6 +185,13 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
         ...dif,
         adresa_ip: adresaCererii(req),
       })
+    }
+
+    if (
+      Number(dupa.pret_total) !== Number(inainte.pret_total)
+      || dupa.numar_sedinte !== inainte.numar_sedinte
+    ) {
+      await reimparteSedintelePlanificate(ex, id, autor.id, adresaCererii(req))
     }
 
     return tratamentDetaliu(ex, id)

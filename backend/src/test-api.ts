@@ -1052,7 +1052,7 @@ async function ruleaza(): Promise<void> {
     JSON.stringify(t1.corp))
   verifica('tratamentul are toate coloanele din tip',
     ['id', 'client_id', 'articol_id', 'numar_sedinte', 'pret_total', 'nota', 'incheiat_la', 'creat_de',
-      'creat_la', 'actualizat_la', 'client_nume', 'articol_denumire', 'sedinte_programate', 'sedinte_onorate',
+      'creat_la', 'actualizat_la', 'pret_lista', 'client_nume', 'articol_denumire', 'sedinte_programate', 'sedinte_onorate',
       'sedinte_ramase', 'alocat', 'incasat', 'de_incasat', 'pret_urmatoarea', 'urmatoarea_la', 'ultima_la']
       .every((c) => c in (t1.corp ?? {})),
     JSON.stringify(Object.keys(t1.corp ?? {})))
@@ -1122,11 +1122,71 @@ async function ruleaza(): Promise<void> {
   const maiMulte = await cere('PATCH', `/tratamente/${tratament_id}`, {
     token: admin, corp: { numar_sedinte: 4, pret_total: 400, nota: 'Încă o ședință, cadou.' },
   })
-  verifica('PATCH /tratamente -> 4 ședințe, 400 lei; următoarea = (400 - 215) / 2 = 92,5',
+  // Din 2026-10-08, alt preț împarte din nou banii pe ședințele încă programate:
+  // s1 (făcută, 130) rămâne; din 270 rămași pe 3 locuri, s2 (programată) ia 90.
+  verifica('PATCH /tratamente -> 4 ședințe, 400 lei; ședința programată ia noua parte (270 / 3 = 90)',
     maiMulte.status === 200 && maiMulte.corp?.numar_sedinte === 4 && maiMulte.corp?.pret_total === 400
-      && maiMulte.corp?.sedinte_ramase === 2 && maiMulte.corp?.pret_urmatoarea === 92.5
-      && maiMulte.corp?.nota === 'Încă o ședință, cadou.',
+      && maiMulte.corp?.sedinte_ramase === 2 && maiMulte.corp?.pret_urmatoarea === 90
+      && maiMulte.corp?.alocat === 220 && maiMulte.corp?.nota === 'Încă o ședință, cadou.',
     JSON.stringify(maiMulte.corp))
+  const s2Dupa = await cere('GET', `/programari/${s2.corp.id}`, { token: admin })
+  verifica('ședința programată are acum 90 (era 85); cea făcută și încasată rămâne 130',
+    s2Dupa.corp?.pret === 90 && (await cere('GET', `/programari/${s1.corp.id}`, { token: admin })).corp?.pret === 130,
+    JSON.stringify(s2Dupa.corp?.pret))
+
+  // -------------------------------------------------------------------------
+  console.log('\nReducere la abonamente — cerința clinicii, 8 oct. 2026')
+
+  const cuReducere = (await cere('POST', '/clienti', {
+    token: admin, corp: { nume: `Client Reducere ${marcajT}` },
+  })).corp
+  const deschisCuReducere = await cere('POST', '/programari', {
+    token: admin,
+    corp: {
+      client_id: cuReducere.id, executant_id: executant.id, ...interval(44, 9, 30),
+      servicii: [{ articol_id: cura_id, tratament_pret_total: 150 }],
+    },
+  })
+  const tReducere = await cere('GET', `/tratamente/${deschisCuReducere.corp?.tratament_id}`, { token: admin })
+  verifica('abonamentul deschis cu tratament_pret_total: listă 300, de plată 150, ședința 50',
+    deschisCuReducere.status === 201 && deschisCuReducere.corp?.pret === 50
+      && tReducere.corp?.pret_lista === 300 && tReducere.corp?.pret_total === 150
+      && tReducere.corp?.pret_urmatoarea === 50,
+    JSON.stringify({ sedinta: deschisCuReducere.corp?.pret, tratament: tReducere.corp }))
+
+  const totalNegativ = await cere('POST', '/programari', {
+    token: admin,
+    corp: {
+      client_id: cuReducere.id, executant_id: executant.id, ...interval(45, 9, 30),
+      servicii: [{ articol_id: cura_id, tratament_pret_total: -1 }],
+    },
+  })
+  // A doua ședință intră în tratamentul în curs: totalul trimis nu mai are efect.
+  verifica('tratament_pret_total într-un tratament în curs nu schimbă nimic',
+    totalNegativ.status === 201 && totalNegativ.corp?.tratament_id === deschisCuReducere.corp?.tratament_id
+      && (await cere('GET', `/tratamente/${deschisCuReducere.corp?.tratament_id}`, { token: admin })).corp?.pret_total === 150,
+    JSON.stringify(totalNegativ.corp))
+
+  const altClientReducere = (await cere('POST', '/clienti', {
+    token: admin, corp: { nume: `Client Reducere Greșită ${marcajT}` },
+  })).corp
+  const reducereGresita = await cere('POST', '/programari', {
+    token: admin,
+    corp: {
+      client_id: altClientReducere.id, executant_id: executant.id, ...interval(46, 9, 30),
+      servicii: [{ articol_id: cura_id, tratament_pret_total: -5 }],
+    },
+  })
+  verifica('tratament_pret_total negativ la deschidere -> 400 pe servicii.0.pret_total',
+    reducereGresita.status === 400 && /pret_total/.test(reducereGresita.corp?.camp ?? ''),
+    JSON.stringify(reducereGresita.corp))
+
+  const tratamentFaraLista = await cere('PATCH', `/tratamente/${deschisCuReducere.corp?.tratament_id}`, {
+    token: admin, corp: { pret_lista: null },
+  })
+  verifica('PATCH pret_lista: null -> lista uitată (reducere necunoscută)',
+    tratamentFaraLista.status === 200 && tratamentFaraLista.corp?.pret_lista === null,
+    JSON.stringify(tratamentFaraLista.corp))
 
   const listaInCurs = await cere('GET', `/tratamente?client_id=${pacient.id}&in_curs=true`, { token: admin })
   verifica('GET /tratamente?in_curs=true -> anvelopă paginată cu tratamentul',

@@ -264,6 +264,12 @@ export interface Tratament {
   creat_de: Uuid | null
   creat_la: Timestamptz
   actualizat_la: Timestamptz
+  /**
+   * CHECK (pret_lista >= 0). Prețul de listă al abonamentului la deschidere;
+   * reducerea = 1 − pret_total / pret_lista. NULL = deschis înainte de
+   * reducere (2026-10-08), necunoscut.
+   */
+  pret_lista: number | null
 }
 
 /**

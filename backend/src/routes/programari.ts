@@ -55,7 +55,12 @@ const CAMPURI_SERVICIU = ['articol_id', 'pret'] as const
 /** Peste atâtea servicii, lista e o greșeală de trimitere, nu o venire la clinică. */
 const SERVICII_MAXIME = 20
 
-/** Un serviciu așa cum vine în `servicii`: `{ id?, articol_id, pret?, tratament_id? }`. */
+/**
+ * Un serviciu așa cum vine în `servicii`:
+ * `{ id?, articol_id, pret?, tratament_id?, tratament_pret_total? }`.
+ * `tratament_pret_total` = prețul convenit (după reducere) al abonamentului pe
+ * care îl deschide serviciul; fără efect când ședința intră într-unul în curs.
+ */
 type ServiciuCerut = Record<string, unknown>
 
 /** Un rând al programării, cu răspunsul la „s-a încasat?”. */
@@ -266,7 +271,9 @@ async function adaugaServiciu(
   serviciu: ServiciuCerut,
 ): Promise<Programare> {
   const inTratament = await tratamentulSedintei(ex, {
-    client_id: vizita.client_id, articol, tratament_id: serviciu['tratament_id'], autor_id, req,
+    client_id: vizita.client_id, articol, tratament_id: serviciu['tratament_id'],
+    // Abonamentul deschis acum, cu reducerea pusă în formular (2026-10-08).
+    pret_total: serviciu['tratament_pret_total'], autor_id, req,
   })
 
   // Prețul lipsă se completează din memoria clientului, nu direct din

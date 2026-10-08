@@ -408,6 +408,8 @@ export function populeaza(): void {
         creat_de: alege(rnd, utilizatori).id,
         creat_la,
         actualizat_la: creat_la,
+        // Cele sub listă arată o reducere; nu se trage niciun număr în plus.
+        pret_lista: serviciu.pret_lista,
       }
       intrare = { rand, contate: 0 }
       tratamente.set(cheie, intrare)

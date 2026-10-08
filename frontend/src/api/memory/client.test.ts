@@ -1018,6 +1018,37 @@ describe('tratamente — servicii în mai multe ședințe (tabela tratament)', (
     expect(esteEroareApi(eroare) && eroare.cod).toBe('validare')
   })
 
+  it('reducere: abonamentul deschis din programare ține minte lista și totalul de plată', async () => {
+    // Cerința clinicii (8 oct. 2026): 50% la abonament — 150 de plată din 300.
+    const p = await api.programari.create({
+      ...cand(0),
+      client_id,
+      executant_id,
+      servicii: [{ articol_id: cura_id, tratament_pret_total: 150 }],
+    })
+    const t = await api.tratamente.get(p.tratament_id!)
+    expect(t).toMatchObject({ pret_lista: 300, pret_total: 150, pret_urmatoarea: 50 })
+    // Fără preț trimis, ședința își ia partea din totalul de după reducere.
+    expect(p.pret).toBe(50)
+  })
+
+  it('reducere pusă după programare: ședințele programate primesc noua parte, cele făcute nu', async () => {
+    const prima = await api.programari.create(sedinta(0))
+    const aDoua = await api.programari.create(sedinta(1))
+    expect([prima.pret, aDoua.pret]).toEqual([100, 100])
+    await api.programari.schimbaStarea(prima.id, 'onorat')
+
+    // 50%: 150 în total; prima, făcută, rămâne 100; restul de 50 pe 2 locuri.
+    const t = await api.tratamente.update(prima.tratament_id!, { pret_total: 150, pret_lista: 300 })
+    expect(magazin.programare.get(prima.id)?.pret).toBe(100)
+    expect(magazin.programare.get(aDoua.id)?.pret).toBe(25)
+    expect(t).toMatchObject({ pret_lista: 300, alocat: 125, pret_urmatoarea: 25 })
+    const urma = magazin.jurnal_operatiuni.find(
+      (j) => j.entitate === 'programare' && j.entitate_id === aDoua.id && j.date_noi?.['pret'] === 25,
+    )
+    expect(urma?.date_vechi).toMatchObject({ pret: 100 })
+  })
+
   it('propune a treia parte din preț și anunță că ședința ar deschide un tratament', async () => {
     const sugestie = await api.programari.pretSugerat(client_id, cura_id)
     expect(sugestie.pret).toBe(100)

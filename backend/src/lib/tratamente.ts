@@ -11,6 +11,7 @@
  * din programări la fiecare citire.
  */
 
+import { rotunjeste } from './bani.js'
 import { multe, unu, unuSauNimic, type Executor } from './db.js'
 import { eroareConflict, eroareValidare } from './erori.js'
 import { adresaCererii, instantaneu, scrieJurnal } from './jurnal.js'
@@ -87,11 +88,24 @@ export async function pretTotalPentru(
   return { pret_total: Number(precedent.pret_total), din_istoric: true }
 }
 
+/**
+ * Prețul de listă al unui abonament de `numar_sedinte` ședințe — față de el se
+ * citește reducerea. La numărul din nomenclator, chiar prețul de acolo; la alt
+ * număr, partea lui (900 de lei pentru 8 => 1125 pentru 10).
+ */
+export function pretListaPentru(articol: Articol, numar_sedinte: number): number {
+  const pret_lista = Number(articol.pret_lista)
+  if (numar_sedinte === articol.numar_sedinte) return pret_lista
+  return rotunjeste((pret_lista / articol.numar_sedinte) * numar_sedinte)
+}
+
 export interface DateTratamentNou {
   client_id: string
   articol: Articol
   numar_sedinte?: unknown
   pret_total?: unknown
+  /** Lipsă = `pretListaPentru` (nomenclatorul de azi). */
+  pret_lista?: unknown
   nota?: unknown
   autor_id: string
   adresa_ip: string | null
@@ -136,11 +150,18 @@ export async function deschideTratament(ex: Executor, date: DateTratamentNou): P
   const pret_total = date.pret_total == null
     ? (await pretTotalPentru(ex, date.client_id, articol)).pret_total
     : verificaPret(Number(date.pret_total), 'pret_total')
+  // Copiat, ca prețul total: o scumpire de mâine nu schimbă reducerea de azi.
+  const pret_lista = date.pret_lista == null
+    ? pretListaPentru(articol, numar_sedinte)
+    : verificaPret(Number(date.pret_lista), 'pret_lista')
 
   const { rows } = await ex.query<Tratament>(
-    `INSERT INTO tratament (client_id, articol_id, articol_tip, numar_sedinte, pret_total, nota, creat_de)
-     VALUES ($1, $2, 'serviciu', $3, $4, $5, $6) RETURNING *`,
-    [date.client_id, articol.id, numar_sedinte, pret_total, textOptional(date.nota, 'nota', 'Nota'), date.autor_id],
+    `INSERT INTO tratament (client_id, articol_id, articol_tip, numar_sedinte, pret_total, nota, creat_de, pret_lista)
+     VALUES ($1, $2, 'serviciu', $3, $4, $5, $6, $7) RETURNING *`,
+    [
+      date.client_id, articol.id, numar_sedinte, pret_total,
+      textOptional(date.nota, 'nota', 'Nota'), date.autor_id, pret_lista,
+    ],
   )
   const rand = rows[0]!
 
@@ -179,6 +200,12 @@ export async function tratamentulSedintei(
     client_id: string
     articol: Articol
     tratament_id: unknown
+    /**
+     * Prețul convenit, după reducere, pentru tratamentul pe care îl DESCHIDE
+     * ședința (`tratament_pret_total` din `servicii`). Într-unul deja în curs
+     * nu schimbă nimic: acela se corectează din fișa tratamentului.
+     */
+    pret_total?: unknown
     autor_id: string
     req: Request
   },
@@ -206,7 +233,8 @@ export async function tratamentulSedintei(
     tratament = await tratamentInCurs(ex, client_id, articol.id, true)
     if (!tratament && articol.numar_sedinte > 1) {
       tratament = await deschideTratament(ex, {
-        client_id, articol, autor_id: cerere.autor_id, adresa_ip: adresaCererii(cerere.req),
+        client_id, articol, pret_total: cerere.pret_total,
+        autor_id: cerere.autor_id, adresa_ip: adresaCererii(cerere.req),
       })
     }
   }
@@ -258,4 +286,61 @@ export async function incheieDacaEComplet(
     date_noi: { incheiat_la: rows[0]!.incheiat_la, motiv: 'toate ședințele onorate' },
     adresa_ip,
   })
+}
+
+/**
+ * Împarte din nou prețul tratamentului pe ședințele PROGRAMATE (încă nefăcute).
+ *
+ * Se cheamă când se schimbă prețul total sau numărul de ședințe — de pildă
+ * reducerea de 50% pusă după ce prima ședință era deja în calendar, cu partea
+ * ei de la prețul întreg (cerința clinicii, 8 oct. 2026). Ședințele făcute sau
+ * încasate rămân cum sunt; din ce a rămas, fiecare programată primește partea
+ * egală, iar cele încă neprogramate își iau partea lor la programare
+ * (`pret_urmatoarea`). Când toate locurile rămase sunt programate, ultima ia
+ * restul de bani din rotunjire, ca suma să iasă exact.
+ */
+export async function reimparteSedintelePlanificate(
+  ex: Executor,
+  tratament_id: string,
+  autor_id: string,
+  adresa_ip: string | null,
+): Promise<void> {
+  const tratament = await unu<Tratament>(
+    ex, `SELECT * FROM tratament WHERE id = $1`, [tratament_id], 'Tratamentul',
+  )
+  const sedinte = await multe<{ id: string; stare: string; pret: number; incasata: boolean }>(
+    ex,
+    `SELECT p.id, p.stare, p.pret,
+            EXISTS (SELECT 1 FROM vanzare_linie vl WHERE vl.programare_id = p.id) AS incasata
+     FROM programare p
+     WHERE p.tratament_id = $1 AND p.stare IN ('programat', 'onorat')
+     ORDER BY p.incepe_la, p.creat_la`,
+    [tratament_id],
+  )
+  const fixe = sedinte.filter((s) => s.stare === 'onorat' || s.incasata)
+  const planificate = sedinte.filter((s) => s.stare === 'programat' && !s.incasata)
+  const locuri = tratament.numar_sedinte - fixe.length
+  if (planificate.length === 0 || locuri <= 0) return
+
+  const rest = Math.max(
+    rotunjeste(Number(tratament.pret_total) - fixe.reduce((s, f) => s + Number(f.pret), 0)),
+    0,
+  )
+  const parte = rotunjeste(rest / locuri)
+
+  for (const [i, sedinta] of planificate.entries()) {
+    const ultimaDinToate = planificate.length === locuri && i === planificate.length - 1
+    const pret = ultimaDinToate ? Math.max(rotunjeste(rest - parte * (locuri - 1)), 0) : parte
+    if (pret === Number(sedinta.pret)) continue
+    await ex.query(`UPDATE programare SET pret = $1 WHERE id = $2`, [pret, sedinta.id])
+    await scrieJurnal(ex, {
+      utilizator_id: autor_id,
+      actiune: 'modificare',
+      entitate: 'programare',
+      entitate_id: sedinta.id,
+      date_vechi: { pret: Number(sedinta.pret) },
+      date_noi: { pret, motiv: 'prețul tratamentului s-a schimbat' },
+      adresa_ip,
+    })
+  }
 }
