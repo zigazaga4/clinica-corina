@@ -20,6 +20,7 @@ import pool, { alege, dynamicUpdate, unu, tranzactie, unuSauNimic, type Executor
 import { EroareApi, eroareConflict, eroareValidare, ruta } from '../lib/erori.js'
 import { boolDin, Conditii, listaDin, textDin } from '../lib/filtre.js'
 import { adresaCererii, diferenta, instantaneu, scrieJurnal } from '../lib/jurnal.js'
+import { elibereazaAvansul, stingeDinAvans } from '../lib/avans.js'
 import { inregistreazaIncasare, metodaPlataDin } from '../lib/incasari.js'
 import { executantulCerut } from '../lib/persoane.js'
 import { programareDetaliu, programariDetaliu, punctImplicit } from '../lib/proiectii.js'
@@ -574,6 +575,16 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
       })
     }
 
+    /*
+      Un serviciu plătit din avansul abonamentului își dă banii înapoi
+      abonamentului și poate fi scos: nu există bon de corectat, banii nu au
+      plecat nicăieri. Cel plătit direct, la casă, rămâne blocat mai jos.
+    */
+    const intoarse = new Set(await elibereazaAvansul(
+      ex, deScos.filter((r) => r.achitata).map((r) => r.id), autor.id, adresaCererii(req),
+    ))
+    for (const rand of deScos) if (intoarse.has(rand.id)) rand.achitata = false
+
     // Un serviciu încasat nu se scoate: bonul ar arăta plătit ceva ce nu s-a făcut.
     if (deScos.some((r) => r.achitata)) {
       throw eroareValidare(
@@ -650,6 +661,9 @@ router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
     }
     if (dupa.stare === 'onorat') {
       for (const rand of noi) {
+        if (rand.tratament_id) {
+          await stingeDinAvans(ex, rand.tratament_id, autor.id, adresaCererii(req), [rand.id])
+        }
         await incheieDacaEComplet(ex, rand.tratament_id, autor.id, adresaCererii(req))
       }
     }
@@ -742,6 +756,18 @@ router.patch('/:id/stare', ruta(async (req: AuthRequest, res: Response) => {
       rand.pret = corectat.pret
     }
 
+    /*
+      Scoasă din „onorat”, o ședință plătită din avans își dă banii înapoi
+      abonamentului — altfel o neprezentare ar lăsa banii agățați de o ședință
+      care nu s-a făcut. Ședința plătită direct, la casă, rămâne cum a fost.
+    */
+    if (stare !== 'onorat') {
+      const intoarse = new Set(await elibereazaAvansul(
+        ex, randuri.filter((r) => r.achitata).map((r) => r.id), autor.id, adresaCererii(req),
+      ))
+      for (const rand of randuri) if (intoarse.has(rand.id)) rand.achitata = false
+    }
+
     const deSchimbat = randuri.filter((r) => r.stare !== stare)
     if (deSchimbat.length > 0) {
       /*
@@ -774,6 +800,23 @@ router.patch('/:id/stare', ruta(async (req: AuthRequest, res: Response) => {
           adresa_ip: adresaCererii(req),
         })
         rand.stare = stare
+      }
+    }
+
+    /*
+      Ședința onorată a unui abonament cu avans se plătește din avans: banii
+      au intrat deja. Doar ce nu acoperă avansul ajunge la „Achitat acum”.
+    */
+    if (stare === 'onorat') {
+      const deStins = new Map<string, string[]>()
+      for (const rand of randuri) {
+        if (rand.tratament_id && !rand.achitata) {
+          deStins.set(rand.tratament_id, [...(deStins.get(rand.tratament_id) ?? []), rand.id])
+        }
+      }
+      for (const [tratament_id, ids] of deStins) {
+        const stinse = new Set(await stingeDinAvans(ex, tratament_id, autor.id, adresaCererii(req), ids))
+        for (const rand of randuri) if (stinse.has(rand.id)) rand.achitata = true
       }
     }
 

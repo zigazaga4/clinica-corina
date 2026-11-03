@@ -386,6 +386,12 @@ export interface VanzareLinie {
    * contrazică.
    */
   programare_id: Uuid | null
+  /**
+   * Abonamentul pentru care s-a încasat linia (3 nov. 2026). Cu `programare_id`
+   * NULL este AVANS — bani luați înainte de ședințe, neconsumați încă; cu
+   * `programare_id` setat, avansul deja stins de acea ședință. NULL în rest.
+   */
+  tratament_id: Uuid | null
 }
 
 /**
@@ -478,6 +484,10 @@ export interface ProgramareDetaliu extends Programare {
    * neprezentată nu ocupă un loc și are NULL aici.
    */
   sedinta_nr: number | null
+  /** DERIVAT: ședința a fost plătită din banii luați dinainte pe abonament. */
+  achitat_din_avans: boolean
+  /** DERIVAT: cât a rămas neconsumat din avansul abonamentului ei; 0 în afara unuia. */
+  tratament_avans: number
 }
 
 /**
@@ -513,6 +523,11 @@ export interface TratamentDetaliu extends Tratament {
   ultima_la: Timestamptz | null
   /** Cine face tratamentul: numele de pe ședințele neanulate, „Anda, Irina”. */
   executanti: string | null
+  /**
+   * Banii încasați pe abonament și încă neconsumați de vreo ședință onorată
+   * (avans, 3 nov. 2026). Ce s-a încasat în total este `incasat + avans`.
+   */
+  avans: number
 }
 
 /**
@@ -684,6 +699,54 @@ export interface RaportStatistici {
   /** Programările onorate pe zilele săptămânii: luni = 1 … duminică = 7, toate șapte. */
   zile_saptamana: { zi: number; programari: number }[]
   /** Cei zece clienți care au adus cei mai mulți bani în perioadă. */
+  clienti: StatisticaClient[]
+}
+
+/**
+ * Cifrele unei singure persoane pe o perioadă — „Statisticile mele” (3 nov. 2026).
+ *
+ * Doar ce ține de ședințele FĂCUTE de ea: banii încasați din ele, ședințele,
+ * clienții. Cheltuielile, profitul și produsele sunt ale clinicii. Banii din
+ * avansul unui abonament se numără în ziua ședinței care i-a stins, nu în ziua
+ * plății (v. `backend/src/lib/raport-statistici.ts`, `LINII_PERSOANE`).
+ */
+export interface TotaluriPersoana {
+  incasat: number
+  /** Bonurile distincte din care vin banii. */
+  incasari: number
+  /** Ședințele ei onorate în perioadă și încă neplătite. */
+  neachitat: number
+  programari_onorate: number
+  programari_neprezentate: number
+  programari_anulate: number
+  programari_programate: number
+  clienti: number
+}
+
+export interface PerioadaPersoana {
+  inceput: DateOnly
+  incasat: number
+  programari_onorate: number
+}
+
+export interface StatisticaServiciuPersoana {
+  articol_id: Uuid
+  denumire: string
+  /** Ședințele onorate în perioadă. */
+  sedinte: number
+  incasat: number
+}
+
+export interface RaportPersoana {
+  de_la: DateOnly
+  pana_la: DateOnly
+  pas: PasStatistici
+  utilizator_id: Uuid
+  nume: string
+  total: TotaluriPersoana
+  comparatie: TotaluriPersoana | null
+  perioade: PerioadaPersoana[]
+  servicii: StatisticaServiciuPersoana[]
   clienti: StatisticaClient[]
 }
 

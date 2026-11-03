@@ -1,3 +1,4 @@
+import { esteAvans } from './avans'
 import type { Uuid, VanzareDetaliu, VanzareLinieDetaliu } from './types'
 
 /**
@@ -20,6 +21,7 @@ export function persoanaLiniei(
 
 /** Numele celor care au lucrat la o vânzare, fără repetări, în ordinea liniilor. */
 export function facutaDe(vanzare: VanzareDetaliu): string[] {
-  const nume = vanzare.linii.map((l) => persoanaLiniei(vanzare, l).nume)
+  // Avansul pe abonament nu e al nimănui până nu-l consumă o ședință.
+  const nume = vanzare.linii.filter((l) => !esteAvans(l)).map((l) => persoanaLiniei(vanzare, l).nume)
   return nume.length > 0 ? [...new Set(nume)] : [vanzare.operator_nume]
 }

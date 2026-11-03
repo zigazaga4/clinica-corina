@@ -1637,6 +1637,264 @@ async function ruleaza(): Promise<void> {
   verifica('parola veche nu mai deschide', veche.status === 400 && veche.corp?.camp === 'parola')
 
   // -------------------------------------------------------------------------
+  console.log('\nAvans pe abonament — cerința clinicii, 3 nov. 2026')
+
+  const acces2 = { token: admin, statistici: schimbata.corp?.jeton as string }
+  // Două zile numai ale acestei secțiuni, departe în viitor: avansul se plătește
+  // în prima, ședințele se fac în a doua — tocmai diferența pe care o verificăm.
+  const Z0 = new Date(Date.UTC(2080, 0, 1) + (1000 + Math.floor(Math.random() * 6000)) * ZI_MS)
+  const Z1 = new Date(Z0.getTime() + 3 * ZI_MS)
+  const ziPlata = ziText(Z0)
+  const ziSedinte = ziText(Z1)
+  const laZ = (z: Date, h: number) => new Date(z.getTime() + h * 3_600_000).toISOString()
+  const oraZ = (z: Date, h: number) => ({ incepe_la: laZ(z, h), se_termina_la: laZ(z, h + 0.75) })
+
+  const clientAvans = (await cere('POST', '/clienti', {
+    token: admin, corp: { nume: `Client Avans ${marcajT}` },
+  })).corp
+  const tratamentAvans = await cere('POST', '/tratamente', {
+    token: admin, corp: { client_id: clientAvans.id, articol_id: cura_id },
+  })
+  const tAvans = tratamentAvans.corp?.id as string
+  verifica('pregătire: abonament de 3 ședințe la 300, fără avans',
+    tratamentAvans.status === 201 && tratamentAvans.corp?.pret_total === 300 && tratamentAvans.corp?.avans === 0,
+    JSON.stringify(tratamentAvans.corp))
+
+  const faraMetoda = await cere('POST', `/tratamente/${tAvans}/incasare`, { token: admin, corp: { suma: 300 } })
+  verifica('încasare pe abonament fără metoda de plată -> 400 pe metoda_plata',
+    faraMetoda.status === 400 && faraMetoda.corp?.camp === 'metoda_plata', JSON.stringify(faraMetoda.corp))
+  for (const suma of [0, -5, 'abc']) {
+    const r = await cere('POST', `/tratamente/${tAvans}/incasare`, {
+      token: admin, corp: { suma, metoda_plata: 'card' },
+    })
+    verifica(`suma ${JSON.stringify(suma)} -> 400 pe „suma”`, r.status === 400 && r.corp?.camp === 'suma',
+      JSON.stringify(r.corp))
+  }
+  const preaMult = await cere('POST', `/tratamente/${tAvans}/incasare`, {
+    token: admin, corp: { suma: 300.01, metoda_plata: 'card' },
+  })
+  verifica('mai mult decât prețul abonamentului -> 400 pe „suma”',
+    preaMult.status === 400 && preaMult.corp?.camp === 'suma', JSON.stringify(preaMult.corp))
+
+  const incasatAvans = await cere('POST', `/tratamente/${tAvans}/incasare`, {
+    token: operator, corp: { suma: 300, metoda_plata: 'card', efectuat_la: laZ(Z0, 6) },
+  })
+  verifica('recepția încasează 300 pe abonament, fără nicio ședință -> 201, avans 300, nimic consumat',
+    incasatAvans.status === 201 && incasatAvans.corp?.avans === 300 && incasatAvans.corp?.incasat === 0
+      && incasatAvans.corp?.de_incasat === 0 && incasatAvans.corp?.sedinte_onorate === 0,
+    JSON.stringify(incasatAvans.corp))
+  const dejaIncasat = await cere('POST', `/tratamente/${tAvans}/incasare`, {
+    token: admin, corp: { suma: 1, metoda_plata: 'numerar' },
+  })
+  verifica('abonamentul încasat întreg nu mai primește bani -> 400',
+    dejaIncasat.status === 400 && dejaIncasat.corp?.camp === 'suma', JSON.stringify(dejaIncasat.corp))
+  const fisaAvans = await cere('GET', `/clienti/${clientAvans.id}`, { token: admin })
+  verifica('clientul nu datorează nimic: avansul nu e datorie',
+    fisaAvans.corp?.de_incasat === 0, JSON.stringify(fisaAvans.corp?.de_incasat))
+
+  const raportPlata = await cere('GET', `/statistici?de_la=${ziPlata}&pana_la=${ziPlata}`, acces2)
+  verifica('Statistici: cei 300 intră în ziua plății, ca servicii; ședință făcută încă nu e niciuna',
+    raportPlata.corp?.total?.incasat === 300 && raportPlata.corp?.total?.incasat_servicii === 300
+      && raportPlata.corp?.total?.incasat_card === 300
+      && raportPlata.corp?.servicii?.[0]?.suma === 300 && raportPlata.corp?.servicii?.[0]?.cantitate === 0,
+    JSON.stringify([raportPlata.corp?.total, raportPlata.corp?.servicii]))
+  verifica('Statistici: avansul neconsumat nu aparține niciunei persoane',
+    !raportPlata.corp?.persoane?.some((p: any) => p.utilizator_id === executant.id && p.incasat > 0),
+    JSON.stringify(raportPlata.corp?.persoane))
+
+  const programeazaAvans = async (h: number) => (await cere('POST', '/programari', {
+    token: admin,
+    corp: { client_id: clientAvans.id, articol_id: cura_id, executant_id: executant.id, ...oraZ(Z1, h) },
+  })).corp
+  const avS1 = await programeazaAvans(7)
+  const avS2 = await programeazaAvans(8)
+  const avS3 = await programeazaAvans(9)
+  const dinProgramare = async (id: string) => (await cere('GET', `/programari/${id}`, { token: admin })).corp
+  const dinTratament = async () => (await cere('GET', `/tratamente/${tAvans}`, { token: admin })).corp
+  verifica('ședința programată știe cât avans are abonamentul ei și nu e plătită încă',
+    avS1.tratament_id === tAvans && (await dinProgramare(avS1.id)).tratament_avans === 300
+      && (await dinProgramare(avS1.id)).achitat === false,
+    JSON.stringify(await dinProgramare(avS1.id)))
+
+  const onorataS1 = await cere('PATCH', `/programari/${avS1.id}/stare`, { token: admin, corp: { stare: 'onorat' } })
+  verifica('ședința onorată, fără „Achitat acum”, se plătește din avans',
+    onorataS1.status === 200 && onorataS1.corp?.achitat === true && onorataS1.corp?.achitat_din_avans === true
+      && onorataS1.corp?.tratament_avans === 200,
+    JSON.stringify(onorataS1.corp))
+  const dupaS1 = await dinTratament()
+  verifica('abonamentul: 100 încasați pe ședință, 200 rămân avans, nimic de plată',
+    dupaS1.incasat === 100 && dupaS1.avans === 200 && dupaS1.de_incasat === 0, JSON.stringify(dupaS1))
+
+  const bonAvans = await cere('GET', `/vanzari/${onorataS1.corp?.vanzare_id}`, { token: admin })
+  verifica('același bon de 300, card: o linie pe ședință, restul rămâne avans',
+    bonAvans.corp?.total === 300 && bonAvans.corp?.metoda_plata === 'card' && bonAvans.corp?.achitat === true
+      && bonAvans.corp?.linii?.length === 2
+      && bonAvans.corp.linii.some((l: any) => l.programare_id === avS1.id && l.total_linie === 100 && l.tratament_id === tAvans)
+      && bonAvans.corp.linii.some((l: any) => l.programare_id === null && l.total_linie === 200 && l.tratament_id === tAvans),
+    JSON.stringify(bonAvans.corp?.linii))
+
+  const retrimis = await cere('PATCH', `/vanzari/${bonAvans.corp?.id}`, {
+    token: admin,
+    corp: {
+      linii: bonAvans.corp?.linii?.map((l: any) => ({
+        articol_id: l.articol_id, cantitate: l.cantitate, pret_unitar: l.pret_unitar,
+        programare_id: l.programare_id, tratament_id: l.tratament_id,
+      })),
+    },
+  })
+  verifica('bonul corectat cu liniile retrimise păstrează legătura cu abonamentul',
+    retrimis.status === 200 && retrimis.corp?.linii?.every((l: any) => l.tratament_id === tAvans)
+      && (await dinTratament()).avans === 200,
+    JSON.stringify(retrimis.corp?.linii))
+  const altAbonament = await cere('POST', '/tratamente', {
+    token: admin, corp: { client_id: pacient.id, articol_id: serviciu.id, numar_sedinte: 2, pret_total: 80 },
+  })
+  const pesteAlt = await cere('PATCH', `/vanzari/${bonAvans.corp?.id}`, {
+    token: admin,
+    corp: {
+      linii: bonAvans.corp?.linii?.map((l: any) => ({
+        articol_id: l.articol_id, cantitate: l.cantitate, pret_unitar: l.pret_unitar,
+        programare_id: l.programare_id, tratament_id: altAbonament.corp?.id,
+      })),
+    },
+  })
+  verifica('linia mutată pe abonamentul altui client -> 400',
+    pesteAlt.status === 400 && pesteAlt.corp?.camp === 'linii', JSON.stringify(pesteAlt.corp))
+  const nepatat = await cere('PATCH', `/vanzari/${bonAvans.corp?.id}`, { token: admin, corp: { achitat: false } })
+  verifica('bonul unui abonament nu poate deveni datorie -> 400',
+    nepatat.status === 400 && nepatat.corp?.camp === 'achitat', JSON.stringify(nepatat.corp))
+
+  const neprezentataS1 = await cere('PATCH', `/programari/${avS1.id}/stare`, {
+    token: admin, corp: { stare: 'neprezentat' },
+  })
+  verifica('ședința scoasă din „onorat” își dă banii înapoi abonamentului',
+    neprezentataS1.status === 200 && neprezentataS1.corp?.achitat === false
+      && neprezentataS1.corp?.tratament_avans === 300 && (await dinTratament()).incasat === 0,
+    JSON.stringify(neprezentataS1.corp))
+  const onorataDinNouS1 = await cere('PATCH', `/programari/${avS1.id}/stare`, { token: admin, corp: { stare: 'onorat' } })
+  verifica('onorată din nou, se stinge iar din avans',
+    onorataDinNouS1.corp?.achitat === true && onorataDinNouS1.corp?.tratament_avans === 200,
+    JSON.stringify(onorataDinNouS1.corp))
+  const anulataPlatita = await cere('PATCH', `/programari/${avS1.id}/stare`, { token: admin, corp: { stare: 'anulat' } })
+  verifica('plătită din avans, ședința se poate anula (nu e bon de corectat); banii se întorc',
+    anulataPlatita.status === 200 && anulataPlatita.corp?.stare === 'anulat' && (await dinTratament()).avans === 300,
+    JSON.stringify(anulataPlatita.corp))
+  // Anulată, ședința nu mai ocupă loc: o înlocuiește una nouă, ca altădată.
+  const avS1bis = await programeazaAvans(10)
+  verifica('ședința anulată eliberează locul: cea nouă intră în același abonament (a treia, după dată)',
+    avS1bis.tratament_id === tAvans && avS1bis.sedinta_nr === 3, JSON.stringify(avS1bis))
+
+  const onorataCuNumerar = await cere('PATCH', `/programari/${avS2.id}/stare`, {
+    token: admin, corp: { stare: 'onorat', achitat: true, metoda_plata: 'numerar' },
+  })
+  const bonuriClient = await cere('GET', `/vanzari?client_id=${clientAvans.id}`, acces2)
+  verifica('„Achitat acum” pe o ședință acoperită de avans nu face al doilea bon: banii au intrat o dată',
+    onorataCuNumerar.status === 200 && onorataCuNumerar.corp?.achitat_din_avans === true
+      && bonuriClient.corp?.randuri?.length === 1 && bonuriClient.corp.randuri[0].metoda_plata === 'card',
+    JSON.stringify(bonuriClient.corp?.randuri?.map((b: any) => [b.total, b.metoda_plata])))
+  await cere('PATCH', `/programari/${avS3.id}/stare`, { token: admin, corp: { stare: 'onorat' } })
+  await cere('PATCH', `/programari/${avS1bis.id}/stare`, { token: admin, corp: { stare: 'onorat' } })
+  const gataAvans = await dinTratament()
+  verifica('toate ședințele făcute: avansul consumat, 300 încasați, abonamentul încheiat singur',
+    gataAvans.avans === 0 && gataAvans.incasat === 300 && gataAvans.de_incasat === 0
+      && gataAvans.sedinte_onorate === 3 && typeof gataAvans.incheiat_la === 'string',
+    JSON.stringify(gataAvans))
+
+  const personal = await cere('GET', `/statistici/mele?de_la=${ziSedinte}&pana_la=${ziSedinte}`, { token: operator })
+  verifica('Statisticile mele (fără parola statisticilor): ședințele ei, cu banii din avans în ziua ședinței',
+    personal.status === 200 && personal.corp?.utilizator_id === executant.id
+      && personal.corp?.total?.programari_onorate === 3 && personal.corp?.total?.incasat === 300
+      && personal.corp?.total?.neachitat === 0 && personal.corp?.total?.clienti === 1
+      && personal.corp?.servicii?.[0]?.sedinte === 3 && personal.corp?.servicii?.[0]?.incasat === 300
+      && personal.corp?.clienti?.[0]?.client_id === clientAvans.id,
+    JSON.stringify(personal.corp))
+  const personalPlata = await cere('GET', `/statistici/mele?de_la=${ziPlata}&pana_la=${ziPlata}`, { token: operator })
+  verifica('în ziua în care s-a plătit avansul, pe numele ei nu apare nimic: banii vin odată cu ședințele',
+    personalPlata.corp?.total?.incasat === 0 && personalPlata.corp?.total?.programari_onorate === 0,
+    JSON.stringify(personalPlata.corp?.total))
+  const raportSedinte = await cere('GET', `/statistici?de_la=${ziSedinte}&pana_la=${ziSedinte}`, acces2)
+  verifica('raportul clinicii, ziua ședințelor: pe persoane 300, dar la „încasat” nimic nou',
+    raportSedinte.corp?.total?.incasat === 0
+      && raportSedinte.corp?.persoane?.find((p: any) => p.utilizator_id === executant.id)?.incasat === 300,
+    JSON.stringify([raportSedinte.corp?.total?.incasat, raportSedinte.corp?.persoane]))
+  verifica('Statisticile mele ale altui cont: doar ale lui (administratorul n-a făcut nicio ședință)',
+    (await cere('GET', `/statistici/mele?de_la=${ziSedinte}&pana_la=${ziSedinte}`, { token: admin }))
+      .corp?.total?.programari_onorate === 0)
+  const alteleFaraParola = await cere('GET',
+    `/statistici/persoana/${executant.id}?de_la=${ziSedinte}&pana_la=${ziSedinte}`, { token: operator })
+  verifica('cifrele altei persoane cer parola statisticilor -> 403',
+    alteleFaraParola.status === 403 && alteleFaraParola.corp?.camp === 'acces_statistici',
+    JSON.stringify(alteleFaraParola.corp))
+  const alteleCuParola = await cere('GET',
+    `/statistici/persoana/${executant.id}?de_la=${ziSedinte}&pana_la=${ziSedinte}&pas=zi`, acces2)
+  verifica('cu parola, proprietarul vede cifrele ei: aceleași',
+    alteleCuParola.status === 200 && alteleCuParola.corp?.nume === executant.nume
+      && alteleCuParola.corp?.total?.incasat === 300 && alteleCuParola.corp?.perioade?.length === 1
+      && alteleCuParola.corp.perioade[0].incasat === 300 && alteleCuParola.corp.perioade[0].programari_onorate === 3,
+    JSON.stringify(alteleCuParola.corp))
+  const faraPersoana = await cere('GET',
+    `/statistici/persoana/00000000-0000-0000-0000-000000000000?de_la=${ziSedinte}&pana_la=${ziSedinte}`, acces2)
+  verifica('persoană inexistentă -> 404, nu un raport gol', faraPersoana.status === 404, `${faraPersoana.status}`)
+  const raportGresit = await cere('GET', '/statistici/mele?de_la=ieri&pana_la=azi', { token: operator })
+  verifica('perioada greșită la „mele” -> 400 pe de_la', raportGresit.status === 400 && raportGresit.corp?.camp === 'de_la')
+  const faraToken2 = await cere('GET', `/statistici/mele?de_la=${ziSedinte}&pana_la=${ziSedinte}`)
+  verifica('„mele” fără autentificare -> 401', faraToken2.status === 401)
+
+  // Avans care nu acoperă ședința: rămâne avans, ședința se încasează ca de obicei.
+  const clientPartial = (await cere('POST', '/clienti', {
+    token: admin, corp: { nume: `Client Avans Parțial ${marcajT}` },
+  })).corp
+  const tPartial = (await cere('POST', '/tratamente', {
+    token: admin, corp: { client_id: clientPartial.id, articol_id: cura_id },
+  })).corp?.id as string
+  await cere('POST', `/tratamente/${tPartial}/incasare`, {
+    token: admin, corp: { suma: 150, metoda_plata: 'numerar' },
+  })
+  const pS1 = (await cere('POST', '/programari', {
+    token: admin,
+    corp: { client_id: clientPartial.id, articol_id: cura_id, executant_id: executant.id, ...oraZ(Z1, 11) },
+  })).corp
+  const pS2 = (await cere('POST', '/programari', {
+    token: admin,
+    corp: { client_id: clientPartial.id, articol_id: cura_id, executant_id: executant.id, ...oraZ(Z1, 12) },
+  })).corp
+  const pOnorata1 = await cere('PATCH', `/programari/${pS1.id}/stare`, { token: admin, corp: { stare: 'onorat' } })
+  const pOnorata2 = await cere('PATCH', `/programari/${pS2.id}/stare`, { token: admin, corp: { stare: 'onorat' } })
+  const fisaPartial = await cere('GET', `/clienti/${clientPartial.id}`, { token: admin })
+  verifica('150 de avans acoperă o ședință de 100; a doua (restul de 50 nu ajunge) rămâne de plată',
+    pOnorata1.corp?.achitat === true && pOnorata2.corp?.achitat === false
+      && pOnorata2.corp?.tratament_avans === 50 && fisaPartial.corp?.de_incasat === 100,
+    JSON.stringify([pOnorata1.corp?.achitat, pOnorata2.corp?.achitat, pOnorata2.corp?.tratament_avans, fisaPartial.corp?.de_incasat]))
+
+  // Avansul luat DUPĂ ședință: ședința deja onorată se stinge pe loc.
+  const clientTarziu = (await cere('POST', '/clienti', {
+    token: admin, corp: { nume: `Client Avans Târziu ${marcajT}` },
+  })).corp
+  const tTarziu = (await cere('POST', '/tratamente', {
+    token: admin, corp: { client_id: clientTarziu.id, articol_id: cura_id },
+  })).corp?.id as string
+  const tS1 = (await cere('POST', '/programari', {
+    token: admin,
+    corp: { client_id: clientTarziu.id, articol_id: cura_id, executant_id: executant.id, ...oraZ(Z1, 13) },
+  })).corp
+  await cere('PATCH', `/programari/${tS1.id}/stare`, { token: admin, corp: { stare: 'onorat' } })
+  verifica('înainte de avans, ședința onorată e de plată',
+    (await dinProgramare(tS1.id)).achitat === false
+      && (await cere('GET', `/clienti/${clientTarziu.id}`, { token: admin })).corp?.de_incasat === 100)
+  const avansTarziu = await cere('POST', `/tratamente/${tTarziu}/incasare`, {
+    token: admin, corp: { suma: 300, metoda_plata: 'card' },
+  })
+  verifica('avansul luat după ședință o stinge pe loc: 100 încasați, 200 rămân avans',
+    avansTarziu.corp?.incasat === 100 && avansTarziu.corp?.avans === 200 && avansTarziu.corp?.de_incasat === 0
+      && (await dinProgramare(tS1.id)).achitat_din_avans === true,
+    JSON.stringify(avansTarziu.corp))
+  const stergeTratament = await cere('DELETE', `/tratamente/${tTarziu}`, { token: admin })
+  const bonuriDupa = await cere('GET', `/vanzari?client_id=${clientTarziu.id}`, acces2)
+  verifica('ștergerea abonamentului scoate și avansul: niciun bon rămas',
+    stergeTratament.status === 204 && bonuriDupa.corp?.randuri?.length === 0,
+    `${stergeTratament.status} ${JSON.stringify(bonuriDupa.corp)}`)
+
+  // -------------------------------------------------------------------------
   console.log('\nArhivare, ștergere, sesiuni')
 
   const arhivat = await cere('POST', `/clienti/${injectat.corp.id}/arhivare`, { token: admin })

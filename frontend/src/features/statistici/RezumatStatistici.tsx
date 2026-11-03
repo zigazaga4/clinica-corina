@@ -11,7 +11,6 @@ import {
   Users,
   Wallet,
 } from 'lucide-react'
-import type { FiltruStatistici } from '@/api/contract'
 import { mesajEroare } from '@/api/errors'
 import { useRaportStatistici } from '@/app/queries'
 import type { RaportStatistici, TotaluriStatistici } from '@/domain/types'
@@ -28,7 +27,7 @@ import {
   type RandBare,
   type SerieGrafic,
 } from '@/ui'
-import { eticheteBara, numeZiSaptamana, type PerioadaCalculata } from './perioade'
+import { eticheteBara, filtruStatistici, numeZiSaptamana, type PerioadaCalculata } from './perioade'
 import { Variatie } from './Variatie'
 
 /**
@@ -47,21 +46,8 @@ const PROGRAMARI: SerieGrafic = {
 
 const numar = (n: number) => formateazaCantitate(n)
 
-/** Fusul calculatorului — zilele se numără ca în calendarul de pe perete. */
-const FUS = Intl.DateTimeFormat().resolvedOptions().timeZone
-
 export function RezumatStatistici({ calculata }: { calculata: PerioadaCalculata }) {
-  const filtru = useMemo<FiltruStatistici>(
-    () => ({
-      de_la: calculata.perioada.de_la,
-      pana_la: calculata.perioada.pana_la,
-      pas: calculata.pas,
-      fus: FUS,
-      comparatie_de_la: calculata.comparatie.de_la,
-      comparatie_pana_la: calculata.comparatie.pana_la,
-    }),
-    [calculata],
-  )
+  const filtru = useMemo(() => filtruStatistici(calculata), [calculata])
   const raport = useRaportStatistici(filtru)
 
   if (raport.isPending) {
@@ -362,7 +348,7 @@ function GraficZile({ raport }: { raport: RaportStatistici }) {
 // Barele orizontale, în cardul lor
 // ---------------------------------------------------------------------------
 
-function CardBare({
+export function CardBare({
   titlu,
   descriere,
   randuri,
@@ -408,6 +394,6 @@ function CardBare({
   )
 }
 
-function Gol({ text }: { text: string }) {
+export function Gol({ text }: { text: string }) {
   return <p className="py-6 text-center text-[13px] text-ink-faint">{text}</p>
 }

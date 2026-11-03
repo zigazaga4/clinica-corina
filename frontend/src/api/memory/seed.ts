@@ -742,6 +742,7 @@ function adaugaLinie(
     pret_unitar,
     total_linie: totalLinie(cantitate, pret_unitar),
     programare_id,
+    tratament_id: null,
   }
   magazin.vanzare_linie.set(linie.id, linie)
 }

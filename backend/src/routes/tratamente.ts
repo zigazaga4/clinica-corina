@@ -15,6 +15,7 @@ import { Router, Response } from 'express'
 import pool, { multe, unu, tranzactie, type Executor } from '../lib/db.js'
 import { eroareConflict, eroareValidare, ruta } from '../lib/erori.js'
 import { boolDin, Conditii, impacheteaza, paginareDin, textDin, tiparLike } from '../lib/filtre.js'
+import { incaseazaAvans } from '../lib/avans.js'
 import { adresaCererii, diferenta, instantaneu, scrieJurnal } from '../lib/jurnal.js'
 import {
   DIN_TRATAMENTE,
@@ -23,7 +24,7 @@ import {
   tratamentDetaliu,
   tratamentInCurs,
 } from '../lib/tratamente.js'
-import { textOptional, verificaNumarSedinte, verificaPret } from '../lib/validare.js'
+import { momentCerut, textOptional, verificaNumarSedinte, verificaPret } from '../lib/validare.js'
 import { requireAuth, requireRole, AuthRequest, cont } from '../middleware/auth.js'
 import type { Articol, Tratament, TratamentDetaliu } from '../types/database.js'
 
@@ -258,6 +259,49 @@ router.post('/:id/incheiere', comutaIncheierea(true))
 router.post('/:id/redeschidere', comutaIncheierea(false))
 
 // ---------------------------------------------------------------------------
+// POST /tratamente/:id/incasare — orice rol
+// ---------------------------------------------------------------------------
+
+/**
+ * Încasează pe abonament, fără ca vreo ședință să fi avut loc (avans).
+ *
+ * Cerința clinicii (3 nov. 2026): pacienta plătește abonamentul de 1.000 de lei
+ * la început, iar recepția trebuie să poată trece banii fără să programeze și să
+ * „închidă” o ședință, ceea ce ar fi consumat-o din abonament. Banii rămân pe
+ * abonament, iar fiecare ședință onorată îi stinge singură — vezi `lib/avans.ts`.
+ *
+ * Corp: `{ suma, metoda_plata, efectuat_la?, nota? }`. Metoda se alege mereu,
+ * ca la orice încasare. Întoarce abonamentul, cu `avans` la zi.
+ */
+router.post('/:id/incasare', ruta(async (req: AuthRequest, res: Response) => {
+  const autor = cont(req)
+  const id = req.params['id']!
+  const corp = (req.body ?? {}) as {
+    suma?: unknown
+    metoda_plata?: unknown
+    efectuat_la?: unknown
+    nota?: unknown
+  }
+
+  const tratament = await tranzactie(async (ex: Executor) => {
+    await incaseazaAvans(ex, {
+      tratament_id: id,
+      suma: corp.suma,
+      metoda_plata: corp.metoda_plata,
+      efectuat_la: corp.efectuat_la
+        ? momentCerut(corp.efectuat_la, 'efectuat_la', 'Data încasării')
+        : new Date().toISOString(),
+      nota: corp.nota,
+      autor_id: autor.id,
+      adresa_ip: adresaCererii(req),
+    })
+    return tratamentDetaliu(ex, id)
+  })
+
+  res.status(201).json(tratament)
+}))
+
+// ---------------------------------------------------------------------------
 // DELETE /tratamente/:id — administrator
 // ---------------------------------------------------------------------------
 
@@ -267,7 +311,8 @@ router.post('/:id/redeschidere', comutaIncheierea(false))
  * calendar, nici în Statistici.
  *
  * Ordinea contează, din cauza cheilor străine:
- *   1. liniile de bon care plăteau ședințele (`vanzare_linie` → RESTRICT);
+ *   1. liniile de bon care plăteau ședințele sau erau avans pe abonament
+ *      (`vanzare_linie` → RESTRICT);
  *   2. bonurile rămase fără nicio linie — un bon gol ar fi o încasare de 0 lei;
  *      un bon care mai are produse sau ședințe din altă parte rămâne, cu
  *      totalul scăzut (totalul se adună din linii);
@@ -290,10 +335,12 @@ router.delete('/:id', requireRole('administrator'), ruta(async (req: AuthRequest
     )
     const ids = sedinte.map((s) => s.id)
 
+    // Și avansul abonamentului (`tratament_id`, fără ședință): banii luați pe
+    // un tratament șters ies din Statistici odată cu el.
     const { rows: linii } = await ex.query<{ vanzare_id: string; total_linie: string }>(
-      `DELETE FROM vanzare_linie WHERE programare_id = ANY($1::uuid[])
+      `DELETE FROM vanzare_linie WHERE programare_id = ANY($1::uuid[]) OR tratament_id = $2
        RETURNING vanzare_id, total_linie`,
-      [ids],
+      [ids, id],
     )
     const { rows: bonuriSterse } = await ex.query<{ id: string }>(
       `DELETE FROM vanzare v

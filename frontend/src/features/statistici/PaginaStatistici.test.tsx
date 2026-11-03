@@ -184,6 +184,28 @@ describe('înăuntru', () => {
     await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBeGreaterThan(1), ASTEPTARE)
   })
 
+  it('proprietarul alege o persoană: vede doar ce ține de ea, nu cheltuielile clinicii', async () => {
+    await parolaAleasaDeja()
+    randeaza(<PaginaStatistici />)
+    await scrieParola(PAROLA_STATISTICI_TEST)
+    await screen.findByText('Încasări și cheltuieli', {}, ASTEPTARE)
+
+    // „Toată clinica” pe deplin: cheltuielile și profitul sunt aici.
+    expect(screen.getByText('Profit')).toBeInTheDocument()
+
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Persoana' }, ASTEPTARE))
+    fireEvent.change(await screen.findByLabelText('Caută în listă', {}, ASTEPTARE), {
+      target: { value: 'Andreea' },
+    })
+    fireEvent.click(await screen.findByRole('option', { name: /Andreea Popescu/ }, ASTEPTARE))
+
+    expect(await screen.findByText('Încasat pe ședințele mele', {}, ASTEPTARE)).toBeInTheDocument()
+    expect(await screen.findByText('Încasat din ședințele mele', {}, ASTEPTARE)).toBeInTheDocument()
+    // Profitul și cheltuielile sunt ale clinicii, nu ale unei persoane.
+    expect(screen.queryByText('Profit')).toBeNull()
+    expect(screen.queryByText('Încasări și cheltuieli')).toBeNull()
+  })
+
   it('se încuie singur când expiră deblocarea', async () => {
     await parolaAleasaDeja()
     vi.useFakeTimers({ shouldAdvanceTime: true })

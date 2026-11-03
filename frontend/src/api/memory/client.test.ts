@@ -1049,6 +1049,148 @@ describe('tratamente — servicii în mai multe ședințe (tabela tratament)', (
     expect(urma?.date_vechi).toMatchObject({ pret: 100 })
   })
 
+  describe('avans — încasare pe abonament înainte de ședințe (3 nov. 2026)', () => {
+    /** Abonamentul deschis, fără nicio ședință încă. */
+    const deschis = async () => (await api.tratamente.create({ client_id, articol_id: cura_id })).id
+    // `de_incasat` stă pe rândul din lista de clienți, nu pe clientul simplu.
+    const deIncasat = async () => {
+      const lista = await api.clienti.list({ q: 'Client Tratament', pe_pagina: 50 })
+      return lista.randuri.find((c) => c.id === client_id)?.de_incasat ?? Number.NaN
+    }
+
+    it('încasează 300 pe abonament fără nicio ședință: avans 300, nimic consumat, nimic de plată', async () => {
+      const id = await deschis()
+      const t = await api.tratamente.incaseaza(id, { suma: 300, metoda_plata: 'card' })
+      expect(t).toMatchObject({ avans: 300, incasat: 0, de_incasat: 0, sedinte_onorate: 0 })
+      // Avansul nu e datorie, și nici o ședință ținută pe loc.
+      expect(await deIncasat()).toBe(0)
+    })
+
+    it('cere metoda de plată, o sumă pozitivă și nu trece peste prețul abonamentului', async () => {
+      const id = await deschis()
+      const camp = async (date: Parameters<typeof api.tratamente.incaseaza>[1]) =>
+        campVinovat(await api.tratamente.incaseaza(id, date).catch((e) => e))
+      expect(await camp({ suma: 100 } as never)).toBe('metoda_plata')
+      expect(await camp({ suma: 0, metoda_plata: 'card' })).toBe('suma')
+      expect(await camp({ suma: -5, metoda_plata: 'card' })).toBe('suma')
+      expect(await camp({ suma: 300.01, metoda_plata: 'card' })).toBe('suma')
+      await api.tratamente.incaseaza(id, { suma: 300, metoda_plata: 'numerar' })
+      expect(await camp({ suma: 1, metoda_plata: 'numerar' })).toBe('suma')
+    })
+
+    it('ședința onorată se plătește din avans, în același bon: 100 încasați, 200 rămân avans', async () => {
+      const id = await deschis()
+      await api.tratamente.incaseaza(id, { suma: 300, metoda_plata: 'card' })
+      const p = await api.programari.create(sedinta(0))
+      expect(p).toMatchObject({ tratament_avans: 300, achitat: false })
+
+      const onorata = await api.programari.schimbaStarea(p.id, 'onorat')
+      expect(onorata).toMatchObject({ achitat: true, achitat_din_avans: true, tratament_avans: 200 })
+      expect(await api.tratamente.get(id)).toMatchObject({ incasat: 100, avans: 200, de_incasat: 0 })
+
+      const bon = await api.vanzari.get(onorata.vanzare_id!)
+      expect(bon).toMatchObject({ total: 300, metoda_plata: 'card', achitat: true })
+      expect(bon.linii).toHaveLength(2)
+      expect(bon.linii.find((l) => l.programare_id === p.id)).toMatchObject({ total_linie: 100, tratament_id: id })
+      expect(bon.linii.find((l) => l.programare_id === null)).toMatchObject({ total_linie: 200, tratament_id: id })
+    })
+
+    it('„Achitat acum” pe o ședință acoperită de avans nu scrie al doilea bon', async () => {
+      const id = await deschis()
+      await api.tratamente.incaseaza(id, { suma: 300, metoda_plata: 'card' })
+      const bonuriInainte = magazin.vanzare.size
+      const p = await api.programari.create(sedinta(0))
+      await api.programari.schimbaStarea(p.id, 'onorat', { achitat: true, metoda_plata: 'numerar' })
+      expect(magazin.vanzare.size).toBe(bonuriInainte)
+    })
+
+    it('scoasă din „onorat”, ședința își dă banii înapoi abonamentului — și poate fi anulată', async () => {
+      const id = await deschis()
+      await api.tratamente.incaseaza(id, { suma: 300, metoda_plata: 'card' })
+      const p = await api.programari.create(sedinta(0))
+      await api.programari.schimbaStarea(p.id, 'onorat')
+
+      const neprezentata = await api.programari.schimbaStarea(p.id, 'neprezentat')
+      expect(neprezentata).toMatchObject({ achitat: false, tratament_avans: 300 })
+      expect(await api.tratamente.get(id)).toMatchObject({ avans: 300, incasat: 0 })
+
+      await api.programari.schimbaStarea(p.id, 'onorat')
+      // Plătită direct, anularea ar fi refuzat-o; din avans, banii doar se întorc.
+      const anulata = await api.programari.schimbaStarea(p.id, 'anulat')
+      expect(anulata.stare).toBe('anulat')
+      expect((await api.tratamente.get(id)).avans).toBe(300)
+    })
+
+    it('un avans care nu acoperă ședința rămâne avans; ședința se încasează ca de obicei', async () => {
+      const id = await deschis()
+      await api.tratamente.incaseaza(id, { suma: 150, metoda_plata: 'numerar' })
+      const prima = await api.programari.create(sedinta(0))
+      const aDoua = await api.programari.create(sedinta(1))
+      expect((await api.programari.schimbaStarea(prima.id, 'onorat')).achitat).toBe(true)
+      const nestinsa = await api.programari.schimbaStarea(aDoua.id, 'onorat')
+      expect(nestinsa).toMatchObject({ achitat: false, tratament_avans: 50 })
+      expect(await deIncasat()).toBe(100)
+    })
+
+    it('avansul luat după ședința onorată o stinge pe loc', async () => {
+      const id = await deschis()
+      const p = await api.programari.create(sedinta(0))
+      await api.programari.schimbaStarea(p.id, 'onorat')
+      expect((await api.programari.get(p.id)).achitat).toBe(false)
+
+      const t = await api.tratamente.incaseaza(id, { suma: 300, metoda_plata: 'card' })
+      expect(t).toMatchObject({ incasat: 100, avans: 200, de_incasat: 0 })
+      expect((await api.programari.get(p.id)).achitat_din_avans).toBe(true)
+    })
+
+    it('bonul corectat păstrează legătura cu abonamentul; pe alt client, refuzat', async () => {
+      const id = await deschis()
+      const t = await api.tratamente.incaseaza(id, { suma: 300, metoda_plata: 'card' })
+      const p = await api.programari.create(sedinta(0))
+      const onorata = await api.programari.schimbaStarea(p.id, 'onorat')
+      const bon = await api.vanzari.get(onorata.vanzare_id!)
+      const linii = bon.linii.map((l) => ({
+        articol_id: l.articol_id,
+        cantitate: l.cantitate,
+        pret_unitar: l.pret_unitar,
+        programare_id: l.programare_id,
+        tratament_id: l.tratament_id,
+      }))
+      await api.vanzari.update(bon.id, { linii })
+      expect((await api.tratamente.get(t.id)).avans).toBe(200)
+
+      const altul = (await api.clienti.create({ nume: 'Alt Client' })).id
+      const cuAltClient = await api.vanzari.update(bon.id, { client_id: altul, linii }).catch((e) => e)
+      expect(campVinovat(cuAltClient)).toBe('linii')
+      // Un bon de abonament nu poate deveni datorie.
+      const datorie = await api.vanzari.update(bon.id, { achitat: false }).catch((e) => e)
+      expect(campVinovat(datorie)).toBe('achitat')
+    })
+
+    it('ștergerea abonamentului scoate și avansul: niciun bon rămas', async () => {
+      await autentificaCa(ADMIN)
+      const id = await deschis()
+      const bonuriInainte = magazin.vanzare.size
+      await api.tratamente.incaseaza(id, { suma: 300, metoda_plata: 'card' })
+      expect(magazin.vanzare.size).toBe(bonuriInainte + 1)
+      await api.tratamente.remove(id)
+      expect(magazin.vanzare.size).toBe(bonuriInainte)
+    })
+
+    it('avansul nu e al nimănui: filtrul „Făcută de” îl lasă deoparte, ședința consumată e a executantului', async () => {
+      const id = await deschis()
+      await api.tratamente.incaseaza(id, { suma: 300, metoda_plata: 'card' })
+      // Lista întreagă a încasărilor cere statisticile deblocate.
+      await api.statistici.seteazaParola({ parola_noua: 'statistici-test' })
+      const filtru = { client_id, persoana_id: executant_id, pe_pagina: 50 }
+      expect((await api.vanzari.list(filtru)).randuri).toHaveLength(0)
+
+      const p = await api.programari.create(sedinta(0))
+      await api.programari.schimbaStarea(p.id, 'onorat')
+      expect((await api.vanzari.list(filtru)).randuri).toHaveLength(1)
+    })
+  })
+
   it('propune a treia parte din preț și anunță că ședința ar deschide un tratament', async () => {
     const sugestie = await api.programari.pretSugerat(client_id, cura_id)
     expect(sugestie.pret).toBe(100)

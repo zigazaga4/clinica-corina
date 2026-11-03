@@ -63,6 +63,21 @@ export function incasareaProgramarii(programare_id: Uuid): Vanzare | null {
   return null
 }
 
+/**
+ * Cât a rămas neconsumat din banii luați pe un abonament (avans): liniile cu
+ * `tratament_id` și fără ședință, de pe bonuri achitate. Ca LATERAL-ul `av`
+ * din `v_tratament_detaliu`.
+ */
+export function avansulTratamentului(tratament_id: Uuid): number {
+  const sume: number[] = []
+  for (const l of magazin.vanzare_linie.values()) {
+    if (l.tratament_id !== tratament_id || l.programare_id !== null) continue
+    if (magazin.vanzare.get(l.vanzare_id)?.achitat_la == null) continue
+    sume.push(l.total_linie)
+  }
+  return sumaTotal(sume)
+}
+
 /** Ședința ocupă un loc în tratament — și ia bani — doar programată sau onorată. */
 const conteaza = (p: Programare): boolean => p.stare === 'programat' || p.stare === 'onorat'
 
@@ -111,7 +126,17 @@ export function hidrateazaProgramare(p: Programare): ProgramareDetaliu {
     achitat_la: incasare?.efectuat_la ?? null,
     tratament_numar_sedinte: tratament?.numar_sedinte ?? null,
     sedinta_nr,
+    achitat_din_avans: liniaSedintei(p.id)?.tratament_id != null,
+    tratament_avans: tratament ? avansulTratamentului(tratament.id) : 0,
   }
+}
+
+/** Linia de vânzare care stinge o ședință, dacă există. */
+export function liniaSedintei(programare_id: Uuid) {
+  for (const l of magazin.vanzare_linie.values()) {
+    if (l.programare_id === programare_id) return l
+  }
+  return null
 }
 
 /**
@@ -174,6 +199,7 @@ export function hidrateazaTratament(t: Tratament): TratamentDetaliu {
     ultima_la,
     // Ca `string_agg(DISTINCT … ORDER BY nume)` din vedere.
     executanti: executanti.size ? [...executanti].sort((a, b) => a.localeCompare(b)).join(', ') : null,
+    avans: avansulTratamentului(t.id),
   }
 }
 

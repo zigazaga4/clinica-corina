@@ -25,6 +25,7 @@ import {
 } from '@/app/queries'
 import { AntetPagina, Pagina } from '@/components/Pagina'
 import { InsemnInactiv, InsemnPlata, InsemnStareProgramare } from '@/components/insemne'
+import { esteAvans, esteProdus } from '@/domain/avans'
 import type {
   IstoricIntrare,
   NotaClientDetaliu,
@@ -476,6 +477,8 @@ function PanouIstoric({ clientId }: { clientId: Uuid }) {
             <div className={cn('min-w-0 flex-1', indice < intrari.length - 1 && 'pb-5')}>
               {intrare.fel === 'programare' ? (
                 <IntrareProgramare programare={intrare.programare} />
+              ) : intrare.fel === 'avans' ? (
+                <IntrareAvans vanzare={intrare.vanzare} avansuri={intrare.avansuri} />
               ) : (
                 <IntrareProduse vanzare={intrare.vanzare} produse={intrare.produse} />
               )}
@@ -491,6 +494,9 @@ function PanouIstoric({ clientId }: { clientId: Uuid }) {
 type IntrareFisa =
   | { cheie: string; fel: 'programare'; programare: ProgramareDetaliu }
   | { cheie: string; fel: 'produse'; vanzare: VanzareDetaliu; produse: VanzareLinieDetaliu[] }
+  // Bani luați pe un abonament, înainte de ședințe (3 nov. 2026): nu au o ședință
+  // sub care să se vadă, deci apar ei înșiși, până îi consumă ședințele.
+  | { cheie: string; fel: 'avans'; vanzare: VanzareDetaliu; avansuri: VanzareLinieDetaliu[] }
 
 /*
   Aceeași ședință, o singură dată.
@@ -524,7 +530,17 @@ function cronologiaFisei(istoric: IstoricIntrare[]): IntrareFisa[] {
       continue
     }
 
-    const produse = intrare.vanzare.linii.filter((linie) => linie.programare_id === null)
+    const avansuri = intrare.vanzare.linii.filter(esteAvans)
+    if (avansuri.length > 0) {
+      intrari.push({
+        cheie: `avans-${intrare.vanzare.id}`,
+        fel: 'avans',
+        vanzare: intrare.vanzare,
+        avansuri,
+      })
+    }
+
+    const produse = intrare.vanzare.linii.filter(esteProdus)
     if (produse.length === 0) continue
 
     intrari.push({
@@ -655,6 +671,50 @@ function IntrareProduse({
       <p className="mt-1 text-[12px] text-ink-faint">Operator: {vanzare.operator_nume}</p>
 
       {/* „Achitat” / „Neachitat” chiar pe rând: se bifează când clienta plătește. */}
+      <PlataVanzarii vanzare={vanzare} compact className="mt-2 items-start" />
+    </>
+  )
+}
+
+/*
+  Avansul pe abonament, cât n-a fost consumat de nicio ședință.
+
+  Suma de aici este doar ce a RĂMAS din bon: ședințele stinse deja din el își au
+  prețul pe rândurile lor, mai sus în cronologie, ca și la ședințele plătite
+  direct — deci coloana din dreapta se poate aduna de sus până jos.
+*/
+function IntrareAvans({
+  vanzare,
+  avansuri,
+}: {
+  vanzare: VanzareDetaliu
+  avansuri: VanzareLinieDetaliu[]
+}) {
+  return (
+    <>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+        <span className="text-sm font-medium text-ink">Avans abonament</span>
+        <span className="text-sm font-semibold text-ink tabular-nums">
+          {formateazaBani(sumaTotal(avansuri.map((linie) => linie.total_linie)))}
+        </span>
+      </div>
+
+      <p className="mt-0.5 text-[13px] text-ink-soft tabular-nums">
+        {formateazaData(vanzare.efectuat_la)}
+      </p>
+
+      <ul className="mt-1.5 flex flex-col gap-0.5">
+        {avansuri.map((linie) => (
+          <li key={linie.id} className="flex items-baseline justify-between gap-3 text-[13px]">
+            <span className="min-w-0 flex-1 truncate text-ink-soft">
+              {linie.articol_denumire}
+              <span className="text-ink-faint"> · pentru ședințele rămase</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <p className="mt-1 text-[12px] text-ink-faint">Operator: {vanzare.operator_nume}</p>
       <PlataVanzarii vanzare={vanzare} compact className="mt-2 items-start" />
     </>
   )

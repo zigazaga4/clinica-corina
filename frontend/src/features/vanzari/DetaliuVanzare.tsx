@@ -1,6 +1,7 @@
 import { CalendarClock, Pencil, Trash2 } from 'lucide-react'
 import { useVanzare } from '@/app/queries'
 import { InsemnTipArticol } from '@/components/insemne'
+import { esteAvans } from '@/domain/avans'
 import type { VanzareDetaliu, VanzareLinieDetaliu } from '@/domain/types'
 import { formateazaData, formateazaDataOra } from '@/lib/dates'
 import { formateazaBani, formateazaCantitate } from '@/lib/money'
@@ -51,7 +52,12 @@ export function DetaliuVanzare({
             <p className="mt-0.5 text-[12px] text-ink-faint">
               Ședința din {formateazaData(l.programare_incepe_la)}
               {l.executant_nume && ` · făcută de ${l.executant_nume}`}
+              {l.tratament_id && ' · din avansul abonamentului'}
             </p>
+          )}
+          {/* Bani luați pe abonament, înainte de ședințe: încă neconsumați. */}
+          {esteAvans(l) && (
+            <p className="mt-0.5 text-[12px] text-ink-faint">Avans abonament · încă neconsumat de ședințe</p>
           )}
         </div>
       ),
@@ -125,6 +131,8 @@ export function DetaliuVanzare({
                 <CalendarClock className="size-3.5" aria-hidden />
                 Din programare
               </Badge>
+            ) : vanzare.linii.some(esteAvans) ? (
+              <Badge ton="info">Avans abonament</Badge>
             ) : (
               <Badge ton="neutral">Produse la recepție</Badge>
             )}

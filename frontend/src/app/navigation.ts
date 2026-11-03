@@ -1,6 +1,7 @@
 import {
   CalendarDays,
   ChartColumnBig,
+  ChartLine,
   Layers,
   ScrollText,
   Tags,
@@ -63,6 +64,17 @@ export const NAVIGARE: ElementNavigare[] = [
     principal: true,
     descriere: 'Încasări, cheltuieli și profit — cu parola statisticilor',
   },
+  /*
+    Cifrele fiecăruia, fără parolă: ședințele făcute și banii intrați pe ele,
+    doar ale contului autentificat (cerința clinicii, 3 nov. 2026).
+  */
+  {
+    cale: '/statisticile-mele',
+    eticheta: 'Statisticile mele',
+    etichetaScurta: 'Ale mele',
+    pictograma: ChartLine,
+    descriere: 'Ședințele tale și banii intrați pe ele, pe luni — fără parolă',
+  },
   {
     cale: '/nomenclator',
     eticheta: 'Nomenclator',
@@ -85,6 +97,14 @@ export const NAVIGARE: ElementNavigare[] = [
     descriere: 'Operațiunile efectuate asupra datelor',
   },
 ]
+
+/**
+ * Calea curentă este a elementului? Pe SEGMENTE, nu pe prefix de text:
+ * „/statisticile-mele” începe cu „/statistici”, dar nu este în ea.
+ */
+export function esteInElement(pathname: string, element: Pick<ElementNavigare, 'cale'>): boolean {
+  return pathname === element.cale || pathname.startsWith(`${element.cale}/`)
+}
 
 /** Elementele vizibile pentru rolul dat. */
 export function navigarePentru(esteAdministrator: boolean): ElementNavigare[] {

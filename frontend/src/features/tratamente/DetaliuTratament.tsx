@@ -1,15 +1,17 @@
 import { useState } from 'react'
-import { CalendarPlus, CheckCircle2, PencilLine, RotateCcw, Trash2 } from 'lucide-react'
+import { Banknote, CalendarPlus, CheckCircle2, PencilLine, RotateCcw, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { mesajEroare } from '@/api/errors'
 import { useAutentificare } from '@/app/auth'
 import { useIncheieTratament, useProgramari, useStergeTratament } from '@/app/queries'
 import { InsemnPlata, InsemnStareProgramare } from '@/components/insemne'
+import { incasatPeAbonament, maiDeIncasatPeAbonament } from '@/domain/avans'
 import type { ProgramareDetaliu, TratamentDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { formateazaData, formateazaDataOra, formateazaOra } from '@/lib/dates'
 import { formateazaBani } from '@/lib/money'
 import { Buton, Modala, ModalaConfirmare, Pereche, Schelet, StareEroare, useNotificari } from '@/ui'
+import { ModalaAvans } from './ModalaAvans'
 import { BaniTratament, InsemnTratament, ProgresSedinte, stareaTratamentului } from './ProgresTratament'
 
 /**
@@ -37,6 +39,7 @@ export function DetaliuTratament({
   const incheie = useIncheieTratament()
   const notificari = useNotificari()
   const [confirmaIncheierea, setConfirmaIncheierea] = useState(false)
+  const [incaseaza, setIncaseaza] = useState(false)
   const { esteAdministrator } = useAutentificare()
   const sterge = useStergeTratament()
   const [confirmaStergerea, setConfirmaStergerea] = useState(false)
@@ -98,6 +101,13 @@ export function DetaliuTratament({
               <PencilLine className="size-4" />
               Modifică
             </Buton>
+            {/* Banii abonamentului se pot lua și înainte de prima ședință (avans). */}
+            {inCurs && maiDeIncasatPeAbonament(tratament) > 0 && (
+              <Buton onClick={() => setIncaseaza(true)} plin className="sm:w-auto">
+                <Banknote className="size-4" />
+                Încasează
+              </Buton>
+            )}
             {inCurs && tratament.sedinte_ramase > 0 && (
               <Buton
                 varianta="primar"
@@ -207,6 +217,8 @@ export function DetaliuTratament({
         </div>
       </Modala>
 
+      <ModalaAvans deschisa={incaseaza} onInchide={() => setIncaseaza(false)} tratament={tratament} />
+
       <ModalaConfirmare
         deschisa={confirmaIncheierea}
         onInchide={() => setConfirmaIncheierea(false)}
@@ -229,7 +241,7 @@ export function DetaliuTratament({
         titlu="Ștergi tratamentul?"
         etichetaConfirmare="Șterge tot"
         periculoasa
-        mesaj={`${tratament.client_nume}, ${tratament.articol_denumire}. Se șterg și toate ședințele lui din calendar, iar banii încasați pe ele (${formateazaBani(tratament.incasat)}) ies din Statistici. Nu se poate anula; ștergerea rămâne în jurnal.`}
+        mesaj={`${tratament.client_nume}, ${tratament.articol_denumire}. Se șterg și toate ședințele lui din calendar, iar banii încasați pe el (${formateazaBani(incasatPeAbonament(tratament))}) ies din Statistici. Nu se poate anula; ștergerea rămâne în jurnal.`}
       />
     </>
   )

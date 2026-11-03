@@ -4,6 +4,8 @@ import type { AccesStatistici } from '@/api/contract'
 import { useAutentificare } from '@/app/auth'
 import { useBlocheazaStatistici, useLaStatisticiIncuiate } from '@/app/queries'
 import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
+import { SelectorUtilizator } from '@/components/selectoare'
+import type { Uuid } from '@/domain/types'
 import { ListaIncasari } from '@/features/vanzari/ListaIncasari'
 import { Buton, File } from '@/ui'
 import { AlegerePerioadei } from './AlegerePerioadei'
@@ -11,6 +13,7 @@ import { ListaCheltuieli } from './ListaCheltuieli'
 import { ModalaParolaStatistici } from './ModalaParolaStatistici'
 import { alegereImplicita, calculeazaPerioada } from './perioade'
 import { PoartaStatistici } from './PoartaStatistici'
+import { RezumatPersoana } from './RaportulPersoanei'
 import { RezumatStatistici } from './RezumatStatistici'
 
 type FilaStatistici = 'rezumat' | 'incasari' | 'cheltuieli'
@@ -38,6 +41,8 @@ export function PaginaStatistici() {
   const [motiv, setMotiv] = useState<string | null>(null)
   const [fila, setFila] = useState<FilaStatistici>('rezumat')
   const [alegere, setAlegere] = useState(() => alegereImplicita())
+  // null = toată clinica; altfel doar cifrele persoanei alese.
+  const [persoana, setPersoana] = useState<Uuid | null>(null)
   const [schimbaParola, setSchimbaParola] = useState(false)
   const uita = useBlocheazaStatistici()
 
@@ -141,8 +146,21 @@ export function PaginaStatistici() {
             <>
               <BaraFiltre>
                 <AlegerePerioadei alegere={alegere} onSchimba={setAlegere} />
+                {/* Cifrele unei singure persoane, pe lângă cele ale clinicii (3 nov. 2026). */}
+                <SelectorUtilizator
+                  valoare={persoana}
+                  onSchimba={setPersoana}
+                  eticheta="Persoana"
+                  cuGolire
+                  placeholder="Toată clinica"
+                  className="w-48"
+                />
               </BaraFiltre>
-              <RezumatStatistici calculata={calculata} />
+              {persoana ? (
+                <RezumatPersoana id={persoana} calculata={calculata} />
+              ) : (
+                <RezumatStatistici calculata={calculata} />
+              )}
             </>
           )}
           {fila === 'incasari' && <ListaIncasari />}

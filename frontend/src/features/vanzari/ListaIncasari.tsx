@@ -5,6 +5,7 @@ import { mesajEroare } from '@/api/errors'
 import { useStergeVanzare, useVanzari } from '@/app/queries'
 import { BaraFiltre } from '@/components/Pagina'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
+import { esteAvans } from '@/domain/avans'
 import { facutaDe, persoanaLiniei } from '@/domain/facutaDe'
 import type { Uuid, VanzareDetaliu } from '@/domain/types'
 import {
@@ -197,6 +198,8 @@ export function ListaIncasari() {
     let produse = 0
     for (const v of randuriRezumat) {
       for (const l of v.linii) {
+        // Avansul pe abonament nu e al nimănui până nu-l consumă o ședință.
+        if (esteAvans(l)) continue
         const p = persoanaLiniei(v, l)
         if (p.id !== id) continue
         nume = p.nume
@@ -502,10 +505,12 @@ export function ListaIncasari() {
  */
 function descrieLinii(vanzare: VanzareDetaliu): string {
   const sedinte = vanzare.linii.filter((l) => l.programare_id !== null).length
-  const produse = vanzare.linii.length - sedinte
+  const avansuri = vanzare.linii.filter(esteAvans).length
+  const produse = vanzare.linii.length - sedinte - avansuri
 
   const parti: string[] = []
   if (sedinte > 0) parti.push(`${sedinte} ${plural(sedinte, 'ședință', 'ședințe')}`)
+  if (avansuri > 0) parti.push('avans abonament')
   if (produse > 0) parti.push(`${produse} ${plural(produse, 'produs', 'produse')}`)
 
   return parti.length > 0 ? parti.join(' și ') : '—'

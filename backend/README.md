@@ -167,6 +167,7 @@ GET    /tratamente/:id
 PATCH  /tratamente/:id          { numar_sedinte?, pret_total?, nota? }
 POST   /tratamente/:id/incheiere
 POST   /tratamente/:id/redeschidere
+POST   /tratamente/:id/incasare { suma, metoda_plata, efectuat_la?, nota? }   avans: banii luați înainte de ședințe; fiecare ședință onorată îi stinge singură (lib/avans.ts)
 
 GET    /vanzari                 ?client_id= &operator_id= &articol_id= &de_la= &pana_la= &achitat=   (+ deblocare statistici)
 POST   /vanzari                 { ..., achitat? }   false = produse pe datorie
@@ -178,6 +179,8 @@ GET    /statistici/acces        { parola_setata }
 POST   /statistici/acces        { parola }  ->  { jeton, expira_la }   parola statisticilor, NU a contului
 PUT    /statistici/parola       administrator — { parola_noua, parola_curenta? }  ->  { jeton, expira_la }
 GET    /statistici              ?de_la= &pana_la= &pas=zi|saptamana|luna &fus= &comparatie_de_la= &comparatie_pana_la=
+GET    /statistici/mele         aceiași parametri — FĂRĂ parola statisticilor; doar ședințele și banii contului autentificat
+GET    /statistici/persoana/:id aceiași parametri — cere parola statisticilor; cifrele oricărei persoane
 GET    /cheltuieli              ?de_la= &pana_la= &categorie= &q= &pagina= &pe_pagina=   ->  paginat + suma
 GET    /cheltuieli/categorii
 POST   /cheltuieli              { data, categorie, suma, descriere? }

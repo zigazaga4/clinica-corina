@@ -9,6 +9,7 @@ import {
 } from '@/app/queries'
 import { ModalaAcordGdpr } from '@/features/consimtamant/ModalaAcordGdpr'
 import { BaniTratament, etichetaSedinta, ProgresSedinte } from '@/features/tratamente/ProgresTratament'
+import { seStingeDinAvans } from '@/domain/avans'
 import type { MetodaPlata, ProgramareDetaliu, Uuid } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { formateazaBani, numarInCamp, parseNumar, sumaTotal } from '@/lib/money'
@@ -92,7 +93,13 @@ export function ModalaOnorare({
   }, [deschisa, cheiePreturi])
 
   const sumaDe = (s: ProgramareDetaliu) => parseNumar(sume[s.id] ?? numarInCamp(s.pret))
-  const deIncasat = servicii.filter((s) => !s.achitat)
+  /*
+    Ședința unui abonament cu avans se plătește singură din avans: banii au
+    intrat deja, când s-a încasat abonamentul. Ea nu mai întreabă „s-a plătit?”
+    și nu are sumă de corectat — doar ce NU acoperă avansul ajunge la plată.
+  */
+  const dinAvans = servicii.filter(seStingeDinAvans)
+  const deIncasat = servicii.filter((s) => !s.achitat && !seStingeDinAvans(s))
   const totalDeIncasat = sumaTotal(deIncasat.map((s) => sumaDe(s) ?? 0))
 
   const seVerifica = acorduri.isPending || clientul.isPending
@@ -150,7 +157,9 @@ export function ModalaOnorare({
       notificari.succes(
         maiMulte ? 'Programare marcată ca onorată' : 'Ședință marcată ca onorată',
         deIncasat.length === 0
-          ? undefined
+          ? dinAvans.length > 0
+            ? 'Plătită din avansul abonamentului.'
+            : undefined
           : achitat
             ? `Încasare ${formateazaBani(totalDeIncasat)} · ${metoda === 'card' ? 'card' : 'numerar'}.`
             : `${formateazaBani(totalDeIncasat)} rămân de plată.`,
@@ -315,6 +324,12 @@ export function ModalaOnorare({
           ) : null}
 
           <p className="text-[13px] leading-relaxed text-ink-faint">
+            {dinAvans.length > 0 && (
+              <>
+                {deIncasat.length > 0 ? 'O parte din ședințe' : 'Ședința'} se plătește din avansul
+                abonamentului, deja încasat — nu se cere încă o dată.{' '}
+              </>
+            )}
             {deIncasat.length > 0 && (
               <>
                 A plătit acum? Apasă <strong className="font-medium text-ink-soft">Numerar</strong> sau{' '}
@@ -371,10 +386,14 @@ function SumaServiciului({
   className?: string
   clasaAchitat?: string
 }) {
-  if (serviciu.achitat) {
+  if (serviciu.achitat || seStingeDinAvans(serviciu)) {
     return (
       <p className={cn('font-semibold text-ink tabular-nums', clasaAchitat)}>
         {formateazaBani(serviciu.pret)}
+        {/* Banii au intrat când s-a încasat abonamentul: aici doar se consumă. */}
+        {!serviciu.achitat && (
+          <span className="block text-[12px] font-normal text-success">din avansul abonamentului</span>
+        )}
       </p>
     )
   }

@@ -93,13 +93,14 @@ async function refuzaSedintePeDatorie(ex: Executor, vanzare_id: string): Promise
   const { rows } = await ex.query<{ refuzat: boolean }>(
     `SELECT EXISTS (
        SELECT 1 FROM vanzare v JOIN vanzare_linie vl ON vl.vanzare_id = v.id
-       WHERE v.id = $1 AND v.achitat_la IS NULL AND vl.programare_id IS NOT NULL
+       WHERE v.id = $1 AND v.achitat_la IS NULL
+         AND (vl.programare_id IS NOT NULL OR vl.tratament_id IS NOT NULL)
      ) AS refuzat`,
     [vanzare_id],
   )
   if (rows[0]?.refuzat) {
     throw eroareValidare(
-      'O încasare de ședințe nu poate rămâne neachitată. Doar vânzările de produse se pot lăsa pe datorie.',
+      'O încasare de ședințe sau de abonament nu poate rămâne neachitată. Doar vânzările de produse se pot lăsa pe datorie.',
       'achitat',
     )
   }
@@ -128,9 +129,9 @@ async function scrieLinii(
 
   for (const l of pregatite) {
     await ex.query(
-      `INSERT INTO vanzare_linie (vanzare_id, articol_id, cantitate, pret_unitar, programare_id)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [vanzare_id, l.articol_id, l.cantitate, l.pret_unitar, l.programare_id],
+      `INSERT INTO vanzare_linie (vanzare_id, articol_id, cantitate, pret_unitar, programare_id, tratament_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [vanzare_id, l.articol_id, l.cantitate, l.pret_unitar, l.programare_id, l.tratament_id],
     )
     if (l.programare_id) await potrivestePretulSedintei(ex, l.programare_id, autor)
   }
@@ -262,13 +263,16 @@ router.get('/', accesListaVanzari, ruta(async (req: AuthRequest, res: Response) 
 
   // „Făcută de”: cine a câștigat linia — executantul ședinței, iar la produse
   // cine le-a vândut (operatorul). După asta se socotește salariul, nu după
-  // cine a introdus plata la recepție.
+  // cine a introdus plata la recepție. Avansul pe abonament (linie cu
+  // `tratament_id`, fără ședință) nu este al nimănui până nu-l consumă o
+  // ședință: nu intră pe numele operatorului care a luat banii.
   const persoana_id = textDin(req.query['persoana_id'])
   if (persoana_id) {
     unde.brut(
       `EXISTS (SELECT 1 FROM vanzare_linie vl
                LEFT JOIN programare pr ON pr.id = vl.programare_id
                WHERE vl.vanzare_id = v_vanzare_detaliu.id
+                 AND NOT (vl.tratament_id IS NOT NULL AND vl.programare_id IS NULL)
                  AND COALESCE(pr.executant_id, v_vanzare_detaliu.operator_id) = ${unde.marcaj(persoana_id)})`,
     )
   }

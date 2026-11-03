@@ -33,6 +33,11 @@ const PaginaStatistici = lazy(() =>
     default: m.PaginaStatistici,
   })),
 )
+const PaginaStatisticileMele = lazy(() =>
+  import('@/features/statistici/PaginaStatisticileMele').then((m) => ({
+    default: m.PaginaStatisticileMele,
+  })),
+)
 const PaginaNomenclator = lazy(() =>
   import('@/features/nomenclator/PaginaNomenclator').then((m) => ({
     default: m.PaginaNomenclator,
@@ -65,6 +70,7 @@ export function Rute() {
         <Route path="/clienti/:id" element={<CuIncarcare><PaginaFisaClient /></CuIncarcare>} />
         <Route path="/tratamente" element={<CuIncarcare><PaginaTratamente /></CuIncarcare>} />
         <Route path="/statistici" element={<CuIncarcare><PaginaStatistici /></CuIncarcare>} />
+        <Route path="/statisticile-mele" element={<CuIncarcare><PaginaStatisticileMele /></CuIncarcare>} />
         {/* Fostul ecran „Încasări” — un semn de carte vechi ajunge la ușa Statisticilor. */}
         <Route path="/incasari" element={<Navigate to="/statistici" replace />} />
         <Route path="/nomenclator" element={<CuIncarcare><PaginaNomenclator /></CuIncarcare>} />

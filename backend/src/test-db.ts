@@ -78,6 +78,8 @@ async function ruleaza(): Promise<void> {
     'articol_categorie_ck',
     // Semnul migrației 2026-10-08: fără ea, abonamentele nu țin minte reducerea.
     'tratament_pret_lista_ck',
+    // Semnul migrației 2026-11-03: fără el, abonamentele nu pot primi avans.
+    'vanzare_linie_tratament_idx',
   ]
   const gasite = await multe<{ conname: string }>(
     pool,

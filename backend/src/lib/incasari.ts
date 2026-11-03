@@ -48,6 +48,8 @@ interface LiniePregatita {
   cantitate: number
   pret_unitar: number
   programare_id: string | null
+  /** Abonamentul pe care s-a plătit linia (avans), dacă e cazul. */
+  tratament_id: string | null
 }
 
 /**
@@ -105,6 +107,7 @@ export async function pregatesteLinie(
     cantitate,
     pret_unitar,
     programare_id: linie.programare_id ?? null,
+    tratament_id: linie.tratament_id ?? null,
   }
 }
 
@@ -166,13 +169,17 @@ export async function inregistreazaIncasare(
     // Prețul convenit la programare, nu cel din nomenclatorul de azi.
     pret_unitar: Number(p.pret),
     programare_id: p.id,
+    tratament_id: null,
   }))
 
   for (const linie of [...liniiSedinte, ...liniiProduse]) {
     await ex.query(
-      `INSERT INTO vanzare_linie (vanzare_id, articol_id, cantitate, pret_unitar, programare_id)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [vanzare_id, linie.articol_id, linie.cantitate, linie.pret_unitar, linie.programare_id],
+      `INSERT INTO vanzare_linie (vanzare_id, articol_id, cantitate, pret_unitar, programare_id, tratament_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        vanzare_id, linie.articol_id, linie.cantitate, linie.pret_unitar,
+        linie.programare_id, linie.tratament_id,
+      ],
     )
   }
 
@@ -274,6 +281,8 @@ export async function verificaSedinteleLiniilor(
   linii: readonly DateLinieVanzare[],
   vanzareCurenta: string | null = null,
 ): Promise<void> {
+  await verificaAbonamenteleLiniilor(ex, client_id, linii)
+
   const ids = linii
     .map((l) => l.programare_id)
     .filter((id): id is string => typeof id === 'string' && id.length > 0)
@@ -309,6 +318,44 @@ export async function verificaSedinteleLiniilor(
         camp: 'linii',
         detalii: { programare_id: p.id },
       })
+    }
+  }
+}
+
+/**
+ * Liniile plătite pe un abonament (avans, sau ședință stinsă din avans) trebuie
+ * să indice un abonament al ACELUIAȘI client, pentru același serviciu.
+ *
+ * Pe drumul acesta o linie ajunge doar retrimisă de un bon corectat — avansurile
+ * noi se scriu prin `incaseazaAvans`. Verificarea există ca un `tratament_id`
+ * greșit să nu poată muta banii unui client pe abonamentul altuia, unde ar
+ * apărea ca „încasat” fără ca nimeni să-i fi luat.
+ */
+async function verificaAbonamenteleLiniilor(
+  ex: Executor,
+  client_id: string,
+  linii: readonly DateLinieVanzare[],
+): Promise<void> {
+  const ale = linii.filter(
+    (l): l is DateLinieVanzare & { tratament_id: string } =>
+      typeof l.tratament_id === 'string' && l.tratament_id.length > 0,
+  )
+  if (ale.length === 0) return
+
+  const ids = [...new Set(ale.map((l) => l.tratament_id))]
+  const { rows } = await ex.query<{ id: string; client_id: string; articol_id: string }>(
+    `SELECT id, client_id, articol_id FROM tratament WHERE id = ANY($1::uuid[])`,
+    [ids],
+  )
+  const dupaId = new Map(rows.map((r) => [r.id, r]))
+  for (const linie of ale) {
+    const tratament = dupaId.get(linie.tratament_id)
+    if (!tratament) throw eroareValidare('Un abonament de pe bon nu mai există.', 'linii')
+    if (tratament.client_id !== client_id) {
+      throw eroareValidare('Un abonament de pe bon aparține altui client.', 'linii')
+    }
+    if (tratament.articol_id !== linie.articol_id) {
+      throw eroareValidare('Linia de abonament trebuie să rămână la serviciul abonamentului.', 'linii')
     }
   }
 }

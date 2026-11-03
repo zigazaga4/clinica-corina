@@ -29,6 +29,7 @@ import type {
   DatePunctLucruNou,
   DateProgramareModificata,
   DateProgramareNoua,
+  DateAvans,
   DateTratamentModificat,
   DateTratamentNou,
   DateUtilizatorModificat,
@@ -82,6 +83,7 @@ import type {
   Programare,
   ProgramareDetaliu,
   PunctLucru,
+  RaportPersoana,
   RaportStatistici,
   StareProgramare,
   Timestamptz,
@@ -94,6 +96,7 @@ import type {
   VanzareDetaliu,
   VanzareLinie,
 } from '@/domain/types'
+import { esteAvans } from '@/domain/avans'
 import { persoanaLiniei } from '@/domain/facutaDe'
 import { METODE_PLATA } from '@/domain/labels'
 import { pretListaPentru } from '@/domain/reducere'
@@ -120,6 +123,7 @@ import {
   verificaStergereClient,
   verificaSumaPozitiva,
 } from './constraints'
+import { elibereazaAvansul, stingeDinAvans } from './avans'
 import {
   hidrateazaCheltuiala,
   hidrateazaClient,
@@ -135,7 +139,7 @@ import {
 } from './hydrate'
 import { diferenta, instantaneu, scrieJurnal } from './journal'
 import { populeaza } from './seed'
-import { calculeazaRaport } from './statistici'
+import { calculeazaRaport, calculeazaRaportPersoana } from './statistici'
 import {
   inTranzactie,
   magazin,
@@ -1025,6 +1029,13 @@ export function creeazaApiInMemorie(): ApiClient {
             })
           }
 
+          // Un serviciu plătit din avansul abonamentului își dă banii înapoi și
+          // poate fi scos; cel plătit direct, la casă, rămâne blocat mai jos.
+          elibereazaAvansul(
+            deScos.filter((r) => incasareaProgramarii(r.id) !== null).map((r) => r.id),
+            autor.id,
+          )
+
           // Un serviciu încasat nu se scoate: bonul ar arăta plătit ceva ce nu s-a făcut.
           if (deScos.some((r) => incasareaProgramarii(r.id) !== null)) {
             throw eroareValidare(
@@ -1097,7 +1108,10 @@ export function creeazaApiInMemorie(): ApiClient {
           const noi = deAdaugat.map(({ index, serviciu }, k) =>
             peServiciu(index, () => adaugaServiciu(autor.id, dupa, articoleNoi[k]!, serviciu)))
           if (dupa.stare === 'onorat') {
-            for (const rand of noi) incheieDacaEComplet(rand.tratament_id, autor.id)
+            for (const rand of noi) {
+              if (rand.tratament_id) stingeDinAvans(rand.tratament_id, autor.id, [rand.id])
+              incheieDacaEComplet(rand.tratament_id, autor.id)
+            }
           }
 
           // Rândul cerut, dacă a rămas în programare; altfel primul care a rămas.
@@ -1154,6 +1168,15 @@ export function creeazaApiInMemorie(): ApiClient {
             })
           }
 
+          // Scoasă din „onorat”, o ședință plătită din avans își dă banii înapoi
+          // abonamentului; cea plătită direct, la casă, rămâne cum a fost.
+          if (stare !== 'onorat') {
+            elibereazaAvansul(
+              randuri.filter((r) => incasareaProgramarii(r.id) !== null).map((r) => r.id),
+              autor.id,
+            )
+          }
+
           const deSchimbat = randuri.filter((r) => r.stare !== stare)
           if (deSchimbat.length > 0) {
             // O ședință încasată nu se anulează: banii ar rămâne agățați de un
@@ -1179,6 +1202,18 @@ export function creeazaApiInMemorie(): ApiClient {
                 date_noi: { stare },
               })
             }
+          }
+
+          // Ședința onorată a unui abonament cu avans se plătește din avans: banii
+          // au intrat deja. Doar ce nu acoperă avansul ajunge la „Achitat acum”.
+          if (stare === 'onorat') {
+            const deStins = new Map<Uuid, Uuid[]>()
+            for (const rand of randuri) {
+              if (rand.tratament_id && incasareaProgramarii(rand.id) === null) {
+                deStins.set(rand.tratament_id, [...(deStins.get(rand.tratament_id) ?? []), rand.id])
+              }
+            }
+            for (const [tratament_id, ids] of deStins) stingeDinAvans(tratament_id, autor.id, ids)
           }
 
           // Plata se înregistrează doar la onorare, pe toate serviciile încă
@@ -1335,6 +1370,88 @@ export function creeazaApiInMemorie(): ApiClient {
         return comutaIncheierea(id, false, cereUtilizator().id)
       },
 
+      /**
+       * POST /tratamente/:id/incasare — orice rol. Ca pe server
+       * (backend/src/lib/avans.ts `incaseazaAvans`): banii rămân pe abonament,
+       * iar ședințele onorate îi sting.
+       */
+      async incaseaza(id, date: DateAvans): Promise<TratamentDetaliu> {
+        await intarziere()
+        const autor = cereUtilizator()
+
+        return inTranzactie(() => {
+          const tratament = ceruta(magazin.tratament, id, 'Tratamentul')
+          if (tratament.incheiat_la !== null) {
+            throw eroareValidare('Abonamentul este încheiat; redeschide-l înainte de a încasa pe el.', 'suma')
+          }
+          if (ceruta(magazin.client, tratament.client_id, 'Clientul').arhivat_la !== null) {
+            throw eroareValidare(
+              'Clientul este arhivat; dezarhivează-l înainte de a-i scrie o încasare.',
+              'suma',
+            )
+          }
+          const suma = verificaSumaPozitiva(date.suma, 'suma', 'Suma încasată')
+          const metoda_plata = metodaPlataDin(date.metoda_plata)
+          if (metoda_plata === null) throw eroareValidare('Alege cum s-a plătit: numerar sau card.', 'metoda_plata')
+
+          // Ce a mai rămas de încasat din preț: totalul, minus ședințele plătite și avansul.
+          const stare = hidrateazaTratament(tratament)
+          const deIncasat = rotunjeste(stare.pret_total - stare.incasat - stare.avans)
+          if (suma > deIncasat) {
+            throw eroareValidare(
+              deIncasat > 0
+                ? `Din abonament au mai rămas de încasat ${deIncasat} lei; suma trece peste.`
+                : 'Abonamentul este deja încasat în întregime.',
+              'suma',
+            )
+          }
+
+          const efectuat_la = date.efectuat_la ?? acum()
+          const vanzare: Vanzare = {
+            id: uuid(),
+            client_id: tratament.client_id,
+            punct_lucru_id: punctImplicit(),
+            operator_id: autor.id,
+            programare_id: null,
+            efectuat_la,
+            nota: textOptional(date.nota),
+            creat_la: acum(),
+            actualizat_la: acum(),
+            achitat_la: efectuat_la,
+            metoda_plata,
+          }
+          magazin.vanzare.set(vanzare.id, vanzare)
+          const linie: VanzareLinie = {
+            id: uuid(),
+            vanzare_id: vanzare.id,
+            articol_id: tratament.articol_id,
+            cantitate: 1,
+            pret_unitar: suma,
+            total_linie: totalLinie(1, suma),
+            programare_id: null,
+            tratament_id: tratament.id,
+          }
+          magazin.vanzare_linie.set(linie.id, linie)
+
+          scrieJurnal({
+            utilizator_id: autor.id,
+            actiune: 'creare',
+            entitate: 'vanzare',
+            entitate_id: vanzare.id,
+            date_noi: {
+              client_id: vanzare.client_id,
+              efectuat_la,
+              metoda_plata,
+              avans_pe_tratament: tratament.id,
+              total: suma,
+            },
+          })
+
+          stingeDinAvans(tratament.id, autor.id)
+          return hidrateazaTratament(tratament)
+        })
+      },
+
       /** DELETE /tratamente/:id — administrator; ca pe server, cu ședințe și bani. */
       async remove(id): Promise<void> {
         await intarziere()
@@ -1348,7 +1465,8 @@ export function creeazaApiInMemorie(): ApiClient {
         const bonuri = new Set<Uuid>()
         let incasat = 0
         for (const [linieId, linie] of magazin.vanzare_linie) {
-          if (linie.programare_id && sedinte.has(linie.programare_id)) {
+          // Și avansul abonamentului (`tratament_id`, fără ședință), ca pe server.
+          if (linie.tratament_id === id || (linie.programare_id && sedinte.has(linie.programare_id))) {
             bonuri.add(linie.vanzare_id)
             incasat += totalLinie(linie.cantitate, linie.pret_unitar)
             magazin.vanzare_linie.delete(linieId)
@@ -1619,7 +1737,7 @@ export function creeazaApiInMemorie(): ApiClient {
           if (filtru.articol_id && !detaliu.linii.some((l) => l.articol_id === filtru.articol_id)) {
             continue
           }
-          if (filtru.persoana_id && !detaliu.linii.some((l) => persoanaLiniei(detaliu, l).id === filtru.persoana_id)) {
+          if (filtru.persoana_id && !detaliu.linii.some((l) => !esteAvans(l) && persoanaLiniei(detaliu, l).id === filtru.persoana_id)) {
             continue
           }
           randuri.push(detaliu)
@@ -1654,6 +1772,7 @@ export function creeazaApiInMemorie(): ApiClient {
         // Liniile se validează ÎNAINTE de a scrie antetul: pe server totul este
         // o tranzacție, deci nu poate rămâne o vânzare fără linii.
         const pregatite = date.linii.map((linie) => pregatesteLinie(linie))
+        verificaAbonamenteleLiniilor(date.client_id, pregatite)
         // Lipsă = achitată pe loc, ca înainte să existe alegerea.
         const achitat = achitatDin(date.achitat) ?? true
         refuzaSedintePeDatorie(achitat, pregatite)
@@ -1749,6 +1868,7 @@ export function creeazaApiInMemorie(): ApiClient {
             throw eroareValidare('Vânzarea trebuie să aibă cel puțin o linie.', 'linii')
           }
           const pregatite = date.linii.map((linie) => pregatesteLinie(linie))
+          verificaAbonamenteleLiniilor(rand.client_id, pregatite)
           // Validate întâi, șterse abia apoi — o linie invalidă nu trebuie să
           // lase vânzarea fără cele vechi.
           for (const [linieId, linie] of magazin.vanzare_linie) {
@@ -2001,6 +2121,22 @@ export function creeazaApiInMemorie(): ApiClient {
         await intarziere()
         cereAccesStatistici()
         return calculeazaRaport(filtru)
+      },
+
+      /**
+       * GET /statistici/mele — orice rol, FĂRĂ parola statisticilor. Persoana
+       * este contul autentificat, nu un parametru: nu se pot cere cifrele alteia.
+       */
+      async mele(filtru): Promise<RaportPersoana> {
+        await intarziere()
+        return calculeazaRaportPersoana(filtru, cereUtilizator().id)
+      },
+
+      /** GET /statistici/persoana/:id — cu statisticile deblocate */
+      async persoana(id, filtru): Promise<RaportPersoana> {
+        await intarziere()
+        cereAccesStatistici()
+        return calculeazaRaportPersoana(filtru, id)
       },
     },
 
@@ -2569,6 +2705,28 @@ function pregatesteLinie(linie: DateLinieVanzare): Omit<VanzareLinie, 'id' | 'va
     pret_unitar,
     total_linie: totalLinie(linie.cantitate, pret_unitar),
     programare_id: linie.programare_id ?? null,
+    tratament_id: linie.tratament_id ?? null,
+  }
+}
+
+/**
+ * Liniile plătite pe un abonament trebuie să indice un abonament al ACELUIAȘI
+ * client, pentru același serviciu — ca pe server (`verificaAbonamenteleLiniilor`).
+ */
+function verificaAbonamenteleLiniilor(
+  client_id: Uuid,
+  linii: readonly { articol_id: Uuid; tratament_id?: Uuid | null }[],
+): void {
+  for (const linie of linii) {
+    if (!linie.tratament_id) continue
+    const tratament = magazin.tratament.get(linie.tratament_id)
+    if (!tratament) throw eroareValidare('Un abonament de pe bon nu mai există.', 'linii')
+    if (tratament.client_id !== client_id) {
+      throw eroareValidare('Un abonament de pe bon aparține altui client.', 'linii')
+    }
+    if (tratament.articol_id !== linie.articol_id) {
+      throw eroareValidare('Linia de abonament trebuie să rămână la serviciul abonamentului.', 'linii')
+    }
   }
 }
 
@@ -2601,11 +2759,11 @@ function metodaPlataDin(valoare: unknown): MetodaPlata | null {
  */
 function refuzaSedintePeDatorie(
   achitata: boolean,
-  linii: readonly { programare_id?: Uuid | null }[],
+  linii: readonly { programare_id?: Uuid | null; tratament_id?: Uuid | null }[],
 ): void {
-  if (achitata || !linii.some((l) => l.programare_id)) return
+  if (achitata || !linii.some((l) => l.programare_id || l.tratament_id)) return
   throw eroareValidare(
-    'O încasare de ședințe nu poate rămâne neachitată. Doar vânzările de produse se pot lăsa pe datorie.',
+    'O încasare de ședințe sau de abonament nu poate rămâne neachitată. Doar vânzările de produse se pot lăsa pe datorie.',
     'achitat',
   )
 }
@@ -3067,6 +3225,7 @@ function inregistreazaIncasare(
       pret_unitar: p.pret,
       total_linie: totalLinie(1, p.pret),
       programare_id: p.id,
+      tratament_id: null,
     }
     magazin.vanzare_linie.set(linie.id, linie)
   }

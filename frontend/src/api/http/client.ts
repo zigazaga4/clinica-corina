@@ -55,6 +55,7 @@ import type {
   ProgramLucru,
   ProgramareDetaliu,
   PunctLucru,
+  RaportPersoana,
   RaportStatistici,
   TratamentDetaliu,
   Utilizator,
@@ -341,6 +342,7 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
       update: (id, date) => cerere<TratamentDetaliu>('PATCH', `/tratamente/${id}`, { corp: date }),
       incheie: (id) => cerere<TratamentDetaliu>('POST', `/tratamente/${id}/incheiere`),
       redeschide: (id) => cerere<TratamentDetaliu>('POST', `/tratamente/${id}/redeschidere`),
+      incaseaza: (id, date) => cerere<TratamentDetaliu>('POST', `/tratamente/${id}/incasare`, { corp: date }),
       remove: (id) => cerere<void>('DELETE', `/tratamente/${id}`),
     },
 
@@ -391,6 +393,10 @@ export function creeazaApiHttp(baseUrl: string): ApiClient {
       },
       raport: (filtru) =>
         cerere<RaportStatistici>('GET', '/statistici', { parametri: filtru, statistici: true }),
+      // Fără `statistici: true`: cifrele proprii nu cer parola statisticilor.
+      mele: (filtru) => cerere<RaportPersoana>('GET', '/statistici/mele', { parametri: filtru }),
+      persoana: (id, filtru) =>
+        cerere<RaportPersoana>('GET', `/statistici/persoana/${id}`, { parametri: filtru, statistici: true }),
     },
 
     cheltuieli: {

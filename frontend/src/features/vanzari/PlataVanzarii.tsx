@@ -126,7 +126,8 @@ export function PlataVanzarii({
       : actuala
 
   // Un bon de ședințe este chiar plata lor: nu poate deveni datorie.
-  const stingeSedinte = vanzare.linii.some((l) => l.programare_id !== null)
+  // Nici avansul pe abonament, nici ședințele nu pot deveni datorie.
+  const stingeSedinte = vanzare.linii.some((l) => l.programare_id !== null || l.tratament_id != null)
 
   const schimba = async (noua: StarePlata) => {
     if (noua === actuala || modifica.isPending) return

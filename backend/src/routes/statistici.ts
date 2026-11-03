@@ -6,6 +6,8 @@
  *   POST /statistici/acces   — orice rol. Parola bună -> deblocarea.
  *   PUT  /statistici/parola  — administrator. Alege sau schimbă parola.
  *   GET  /statistici         — cere deblocarea. Raportul pe o perioadă.
+ *   GET  /statistici/mele    — orice rol, FĂRĂ parolă. Doar cifrele persoanei autentificate.
+ *   GET  /statistici/persoana/:id — cere deblocarea. Cifrele oricărei persoane.
  *
  * Despre parolă și deblocare: `middleware/acces-statistici.ts`. Despre ce
  * înseamnă fiecare cifră: `lib/raport-statistici.ts`.
@@ -17,6 +19,7 @@ import pool, { tranzactie, unu, type Executor } from '../lib/db.js'
 import { eroareConflict, eroareValidare, ruta } from '../lib/erori.js'
 import { adresaCererii, scrieJurnal } from '../lib/jurnal.js'
 import { cheieAdresa, LIMITA_ADRESA, LIMITA_CONT, limitator } from '../lib/limitare.js'
+import { construiesteRaportPersoana } from '../lib/raport-persoana.js'
 import { construiesteRaport, filtruRaportDin } from '../lib/raport-statistici.js'
 import {
   cereAccesStatistici,
@@ -199,6 +202,37 @@ router.put(
 
 router.get('/', cereAccesStatistici, ruta(async (req: AuthRequest, res: Response) => {
   res.json(await construiesteRaport(filtruRaportDin(req.query as Record<string, unknown>)))
+}))
+
+// ---------------------------------------------------------------------------
+// GET /statistici/mele — orice rol, FĂRĂ parola statisticilor
+// ---------------------------------------------------------------------------
+
+/**
+ * „Statisticile mele”: ședințele și banii persoanei care întreabă, și numai ai
+ * ei (cerința clinicii, 3 nov. 2026 — Anda își vede doar încasările ei).
+ *
+ * Nu cere parola statisticilor, iar persoana NU vine din cerere: este contul
+ * autentificat. Nu există un parametru prin care cineva să ceară cifrele alteia
+ * — pentru asta există ruta de mai jos, în spatele parolei.
+ */
+router.get('/mele', ruta(async (req: AuthRequest, res: Response) => {
+  res.json(await construiesteRaportPersoana(
+    filtruRaportDin(req.query as Record<string, unknown>),
+    cont(req).id,
+  ))
+}))
+
+// ---------------------------------------------------------------------------
+// GET /statistici/persoana/:id — cere deblocarea
+// ---------------------------------------------------------------------------
+
+/** Aceleași cifre, pentru oricare persoană: proprietarul le vede pe toate, pe rând. */
+router.get('/persoana/:id', cereAccesStatistici, ruta(async (req: AuthRequest, res: Response) => {
+  res.json(await construiesteRaportPersoana(
+    filtruRaportDin(req.query as Record<string, unknown>),
+    req.params['id']!,
+  ))
 }))
 
 export default router

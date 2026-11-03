@@ -23,13 +23,18 @@ import { eroareValidare } from '@/api/errors'
 import type {
   DateOnly,
   PasStatistici,
+  PerioadaPersoana,
   PerioadaStatistici,
+  Programare,
+  RaportPersoana,
   RaportStatistici,
   StatisticaArticol,
   StatisticaCategorie,
   StatisticaClient,
   StatisticaPersoana,
+  StatisticaServiciuPersoana,
   Timestamptz,
+  TotaluriPersoana,
   TotaluriStatistici,
   Uuid,
   Vanzare,
@@ -37,7 +42,7 @@ import type {
 } from '@/domain/types'
 import { PAS_STATISTICI } from '@/domain/types'
 import { rotunjeste, sumaTotal } from '@/lib/money'
-import { dataCeruta } from './constraints'
+import { ceruta, dataCeruta } from './constraints'
 import { magazin } from './store'
 
 /** Câte bare încap într-un grafic — un an zi cu zi. Ca pe server. */
@@ -222,19 +227,50 @@ function articole(linii: LinieIncasata[], tip: 'serviciu' | 'produs'): Statistic
       suma: 0,
     }),
     (g, l) => {
+      g.suma = rotunjeste(g.suma + l.linie.total_linie)
+      // Avansul neconsumat aduce bani, nu o ședință făcută: nu se numără ca bucată.
+      if (l.linie.tratament_id != null && l.linie.programare_id === null) return
       // Trei zecimale, ca `numeric(10,3)`: altfel 0,1 + 0,2 ar ieși 0,30000000000000004.
       g.cantitate = Math.round((g.cantitate + l.linie.cantitate) * 1000) / 1000
-      g.suma = rotunjeste(g.suma + l.linie.total_linie)
     },
   ).sort((a, b) => dupaSumaApoiNume(a, b, (x) => x.suma))
 }
 
-function persoane(linii: LinieIncasata[], de_la: DateOnly, pana_la: DateOnly): StatisticaPersoana[] {
+interface LiniePersoana {
+  vanzare: Vanzare
+  linie: VanzareLinie
+  programare: Programare
+  /** Ziua după care se numără linia pentru persoană. */
+  zi: DateOnly
+}
+
+/**
+ * Liniile de ședință ale PERSOANELOR, cu ziua după care se numără — gemenul lui
+ * `LINII_PERSOANE` din `backend/src/lib/raport-statistici.ts`.
+ *
+ * Ziua este a plății, ca peste tot în raport, cu o excepție: ședința stinsă din
+ * avansul unui abonament (`tratament_id` pe linie) se numără în ziua ȘEDINȚEI.
+ * Banii au intrat la început, dar abia ședința făcută îi atribuie cuiva.
+ */
+function liniiPersoane(de_la: DateOnly, pana_la: DateOnly): LiniePersoana[] {
+  const rezultat: LiniePersoana[] = []
+  for (const linie of magazin.vanzare_linie.values()) {
+    if (linie.programare_id === null) continue
+    const vanzare = magazin.vanzare.get(linie.vanzare_id)
+    const programare = magazin.programare.get(linie.programare_id)
+    if (!vanzare || vanzare.achitat_la === null || !programare) continue
+    const zi = ziua(linie.tratament_id != null ? programare.incepe_la : vanzare.achitat_la)
+    if (zi < de_la || zi > pana_la) continue
+    rezultat.push({ vanzare, linie, programare, zi })
+  }
+  return rezultat
+}
+
+function persoane(de_la: DateOnly, pana_la: DateOnly): StatisticaPersoana[] {
   const incasat = new Map<Uuid, number>()
-  for (const l of linii) {
-    const programare = l.linie.programare_id ? magazin.programare.get(l.linie.programare_id) : undefined
-    if (!programare) continue
-    incasat.set(programare.executant_id, rotunjeste((incasat.get(programare.executant_id) ?? 0) + l.linie.total_linie))
+  for (const l of liniiPersoane(de_la, pana_la)) {
+    const executant = l.programare.executant_id
+    incasat.set(executant, rotunjeste((incasat.get(executant) ?? 0) + l.linie.total_linie))
   }
 
   const onorate = new Map<Uuid, Set<Uuid>>()
@@ -345,9 +381,150 @@ export function calculeazaRaport(filtru: FiltruStatistici): RaportStatistici {
     perioade: perioade(linii, f),
     servicii: articole(linii, 'serviciu'),
     produse: articole(linii, 'produs'),
-    persoane: persoane(linii, f.de_la, f.pana_la),
+    persoane: persoane(f.de_la, f.pana_la),
     cheltuieli: categorii(f.de_la, f.pana_la),
     zile_saptamana: zileSaptamana(f.de_la, f.pana_la),
     clienti: clienti(linii),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// „Statisticile mele” — raportul unei singure persoane
+// ---------------------------------------------------------------------------
+
+/**
+ * Cifrele unei persoane pe o perioadă — gemenul lui `construiesteRaportPersoana`
+ * din `backend/src/lib/raport-persoana.ts`. Persoana este cea care a FĂCUT
+ * ședința (`executant_id`), nu cea care a introdus plata; fără cheltuieli,
+ * profit sau produse, care sunt ale clinicii.
+ */
+function totaluriPersoana(de_la: DateOnly, pana_la: DateOnly, persoana: Uuid): TotaluriPersoana {
+  const ale = liniiPersoane(de_la, pana_la).filter((l) => l.programare.executant_id === persoana)
+  const sedinte = [...magazin.programare.values()].filter(
+    (p) => p.executant_id === persoana && inPerioada(p.incepe_la, de_la, pana_la),
+  )
+  const sedinteIncasate = new Set(
+    [...magazin.vanzare_linie.values()].map((l) => l.programare_id).filter((id) => id !== null),
+  )
+  const vizite = (stare: string) =>
+    new Set(sedinte.filter((p) => p.stare === stare).map((p) => p.vizita_id)).size
+
+  return {
+    incasat: sumaTotal(ale.map((l) => l.linie.total_linie)),
+    incasari: new Set(ale.map((l) => l.vanzare.id)).size,
+    neachitat: sumaTotal(
+      sedinte.filter((p) => p.stare === 'onorat' && !sedinteIncasate.has(p.id)).map((p) => p.pret),
+    ),
+    programari_onorate: vizite('onorat'),
+    programari_neprezentate: vizite('neprezentat'),
+    programari_anulate: vizite('anulat'),
+    programari_programate: vizite('programat'),
+    clienti: new Set(sedinte.filter((p) => p.stare === 'onorat').map((p) => p.client_id)).size,
+  }
+}
+
+function perioadePersoana(f: FiltruStatistici, persoana: Uuid): PerioadaPersoana[] {
+  const bare = new Map<DateOnly, PerioadaPersoana>(
+    serie(f.de_la, f.pana_la, f.pas).map((inceput) => [
+      inceput,
+      { inceput, incasat: 0, programari_onorate: 0 },
+    ]),
+  )
+  for (const l of liniiPersoane(f.de_la, f.pana_la)) {
+    if (l.programare.executant_id !== persoana) continue
+    const bara = bare.get(inceputBara(l.zi, f.pas))
+    if (bara) bara.incasat = rotunjeste(bara.incasat + l.linie.total_linie)
+  }
+  const vizitePeBara = new Map<DateOnly, Set<Uuid>>()
+  for (const p of magazin.programare.values()) {
+    if (p.executant_id !== persoana || p.stare !== 'onorat' || !inPerioada(p.incepe_la, f.de_la, f.pana_la)) {
+      continue
+    }
+    const inceput = inceputBara(ziua(p.incepe_la), f.pas)
+    const set = vizitePeBara.get(inceput) ?? new Set<Uuid>()
+    set.add(p.vizita_id)
+    vizitePeBara.set(inceput, set)
+  }
+  for (const [inceput, set] of vizitePeBara) {
+    const bara = bare.get(inceput)
+    if (bara) bara.programari_onorate = set.size
+  }
+  return [...bare.values()]
+}
+
+/** Serviciile ei: câte ședințe a făcut din fiecare și câți bani au intrat pe ele. */
+function serviciiPersoana(f: FiltruStatistici, persoana: Uuid): StatisticaServiciuPersoana[] {
+  const pe = new Map<Uuid, StatisticaServiciuPersoana>()
+  const rand = (articol_id: Uuid): StatisticaServiciuPersoana => {
+    let r = pe.get(articol_id)
+    if (!r) {
+      r = {
+        articol_id,
+        denumire: magazin.articol.get(articol_id)?.denumire ?? '—',
+        sedinte: 0,
+        incasat: 0,
+      }
+      pe.set(articol_id, r)
+    }
+    return r
+  }
+  for (const l of liniiPersoane(f.de_la, f.pana_la)) {
+    if (l.programare.executant_id !== persoana) continue
+    const r = rand(l.linie.articol_id)
+    r.incasat = rotunjeste(r.incasat + l.linie.total_linie)
+  }
+  for (const p of magazin.programare.values()) {
+    if (p.executant_id !== persoana || p.stare !== 'onorat' || !inPerioada(p.incepe_la, f.de_la, f.pana_la)) {
+      continue
+    }
+    rand(p.articol_id).sedinte += 1
+  }
+  return [...pe.values()].sort(
+    (a, b) => b.incasat - a.incasat || b.sedinte - a.sedinte || a.denumire.localeCompare(b.denumire, 'ro'),
+  )
+}
+
+/** Clienții care au adus cei mai mulți bani prin ședințele ei — primii zece. */
+function clientiPersoana(f: FiltruStatistici, persoana: Uuid): StatisticaClient[] {
+  const bonuri = new Map<Uuid, Set<Uuid>>()
+  return grupeaza(
+    liniiPersoane(f.de_la, f.pana_la).filter((l) => l.programare.executant_id === persoana),
+    (l) => l.vanzare.client_id,
+    (l): StatisticaClient => ({
+      client_id: l.vanzare.client_id,
+      nume: magazin.client.get(l.vanzare.client_id)?.nume ?? '—',
+      incasat: 0,
+      incasari: 0,
+    }),
+    (g, l) => {
+      g.incasat = rotunjeste(g.incasat + l.linie.total_linie)
+      const ale = bonuri.get(g.client_id) ?? new Set<Uuid>()
+      ale.add(l.vanzare.id)
+      bonuri.set(g.client_id, ale)
+      g.incasari = ale.size
+    },
+  )
+    .sort((a, b) => dupaSumaApoiNume(a, b, (x) => x.incasat))
+    .slice(0, 10)
+}
+
+/** Raportul unei persoane, pentru un filtru neverificat încă. Persoana inexistentă -> 404. */
+export function calculeazaRaportPersoana(filtru: FiltruStatistici, utilizator_id: Uuid): RaportPersoana {
+  const f = verificaFiltruStatistici(filtru)
+  const persoana = ceruta(magazin.utilizator, utilizator_id, 'Persoana')
+  return {
+    de_la: f.de_la,
+    pana_la: f.pana_la,
+    pas: f.pas,
+    utilizator_id: persoana.id,
+    nume: persoana.nume,
+    total: totaluriPersoana(f.de_la, f.pana_la, persoana.id),
+    comparatie:
+      f.comparatie_de_la && f.comparatie_pana_la
+        ? totaluriPersoana(f.comparatie_de_la, f.comparatie_pana_la, persoana.id)
+        : null,
+    perioade: perioadePersoana(f, persoana.id),
+    servicii: serviciiPersoana(f, persoana.id),
+    clienti: clientiPersoana(f, persoana.id),
   }
 }

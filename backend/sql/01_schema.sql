@@ -551,10 +551,28 @@ CREATE TABLE IF NOT EXISTS vanzare_linie (
   -- Aici, pe LINIE, nu pe antet: un client lasă trei ședințe neachitate și le
   -- plătește pe toate la final, cu o singură încasare. Cu legătura doar pe
   -- antet ar fi încăput una, iar restul ar fi rămas veșnic „de plată”.
-  programare_id  uuid REFERENCES programare(id) ON DELETE RESTRICT
+  programare_id  uuid REFERENCES programare(id) ON DELETE RESTRICT,
+
+  -- Abonamentul pentru care s-a încasat linia (cerința clinicii, 2026-11-03:
+  -- „vreau să pot încasa abonamentul chiar dacă pacienta n-a făcut ședința”).
+  --
+  --   tratament_id NOT NULL, programare_id NULL     = AVANS: bani luați pentru
+  --       abonament, încă neconsumați de nicio ședință;
+  --   tratament_id NOT NULL, programare_id NOT NULL = avansul stins de o ședință
+  --       onorată: linia a fost atașată ședinței, iar `tratament_id` a rămas ca să
+  --       se știe de unde au venit banii și ca ședința, scoasă din „onorat”, să
+  --       și-i poată da înapoi abonamentului.
+  --
+  -- Banii intră o singură dată, la `vanzare.achitat_la`; stingerea unei ședințe
+  -- doar mută suma de pe linia de avans pe linia ședinței, în ACELAȘI bon.
+  -- Ultima coloană dinadins, ca `vl.*` din vederi să iasă la fel pe o bază nouă
+  -- și pe una migrată.
+  tratament_id   uuid REFERENCES tratament(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX IF NOT EXISTS vanzare_linie_vanzare_idx ON vanzare_linie (vanzare_id);
+CREATE INDEX IF NOT EXISTS vanzare_linie_tratament_idx
+  ON vanzare_linie (tratament_id) WHERE tratament_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS vanzare_linie_articol_idx ON vanzare_linie (articol_id);
 
 -- Constrângerea care ține locul unei coloane `achitat` pe programare.
@@ -818,6 +836,10 @@ CREATE TRIGGER plata_contor
 -- `sedinta_nr` / `tratament_numar_sedinte` dau „ședința 3 din 8” pe ședințele
 -- unui tratament; NULL în rest. Se numără doar ședințele care CONTEAZĂ —
 -- programate sau onorate; una anulată nu ocupă un loc din cele 8.
+--
+-- `achitat_din_avans` = plătită din banii luați dinainte pe abonament;
+-- `tratament_avans` = cât a rămas din acei bani (0 în afara unui tratament).
+-- Ultimele două coloane dinadins: `CREATE OR REPLACE` le primește la coadă.
 CREATE OR REPLACE VIEW v_programare_detaliu AS
 SELECT
   p.*,
@@ -839,7 +861,9 @@ SELECT
         AND q.stare IN ('programat', 'onorat')
         AND (q.incepe_la, q.id) <= (p.incepe_la, p.id)
     )
-  END                         AS sedinta_nr
+  END                         AS sedinta_nr,
+  (i.tratament_id IS NOT NULL) AS achitat_din_avans,
+  COALESCE(av.avans, 0)       AS tratament_avans
 FROM programare p
 LEFT JOIN client      c  ON c.id  = p.client_id
 LEFT JOIN articol     a  ON a.id  = p.articol_id
@@ -847,12 +871,19 @@ LEFT JOIN utilizator  e  ON e.id  = p.executant_id
 LEFT JOIN punct_lucru pl ON pl.id = p.punct_lucru_id
 LEFT JOIN tratament   t  ON t.id  = p.tratament_id
 LEFT JOIN LATERAL (
-  SELECT vl.vanzare_id, v.efectuat_la
+  SELECT vl.vanzare_id, v.efectuat_la, vl.tratament_id
   FROM vanzare_linie vl
   JOIN vanzare v ON v.id = vl.vanzare_id
   WHERE vl.programare_id = p.id
   LIMIT 1
-) i ON true;
+) i ON true
+LEFT JOIN LATERAL (
+  SELECT round(sum(vl.total_linie), 2) AS avans
+  FROM vanzare_linie vl
+  JOIN vanzare v ON v.id = vl.vanzare_id
+  WHERE vl.tratament_id = p.tratament_id AND vl.programare_id IS NULL
+    AND v.achitat_la IS NOT NULL
+) av ON p.tratament_id IS NOT NULL;
 
 
 -- Tratamentul, cu tot ce se NUMĂRĂ din ședințele lui.
@@ -867,6 +898,10 @@ LEFT JOIN LATERAL (
 -- Se numără doar ședințele programate sau onorate. Cele anulate și
 -- neprezentările nu ocupă un loc și nu iau bani: clientul are în continuare
 -- ședința de făcut.
+--
+-- `avans` = banii încasați pe abonament și încă neconsumați de vreo ședință
+-- onorată (cerința clinicii, 2026-11-03). Ce s-a încasat în total este
+-- `incasat + avans`. Ultima coloană dinadins, ca `CREATE OR REPLACE` s-o primească.
 CREATE OR REPLACE VIEW v_tratament_detaliu AS
 SELECT
   t.*,
@@ -891,7 +926,8 @@ SELECT
   s.urmatoarea_la,
   s.ultima_la,
   -- Cine face tratamentul: persoanele de pe ședințele neanulate (2026-10-01).
-  e.executanti
+  e.executanti,
+  COALESCE(av.avans, 0)                                   AS avans
 FROM tratament t
 LEFT JOIN client  c ON c.id = t.client_id
 LEFT JOIN articol a ON a.id = t.articol_id
@@ -916,7 +952,14 @@ LEFT JOIN LATERAL (
     min(p.incepe_la) FILTER (WHERE p.stare = 'programat')               AS urmatoarea_la,
     max(p.incepe_la) FILTER (WHERE p.stare = 'onorat')                  AS ultima_la
   FROM programare p WHERE p.tratament_id = t.id
-) s ON true;
+) s ON true
+LEFT JOIN LATERAL (
+  SELECT round(sum(vl.total_linie), 2) AS avans
+  FROM vanzare_linie vl
+  JOIN vanzare v ON v.id = vl.vanzare_id
+  WHERE vl.tratament_id = t.id AND vl.programare_id IS NULL
+    AND v.achitat_la IS NOT NULL
+) av ON true;
 
 
 -- Notița, cu numele persoanei. `executant_nume` rămâne NULL pentru notițele

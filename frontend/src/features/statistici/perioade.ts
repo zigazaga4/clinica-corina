@@ -24,6 +24,7 @@ import {
   subYears,
 } from 'date-fns'
 import { ro } from 'date-fns/locale'
+import type { FiltruStatistici } from '@/api/contract'
 import type { DateOnly, PasStatistici } from '@/domain/types'
 
 export type Preset =
@@ -131,6 +132,24 @@ export function calculeazaPerioada(alegere: AlegerePerioada, azi: Date = new Dat
       const zile = differenceInCalendarDays(pana_la, de_la) + 1
       return cu(de_la, pana_la, addDays(de_la, -zile), addDays(de_la, -1))
     }
+  }
+}
+
+/** Fusul calculatorului — zilele se numără ca în calendarul de pe perete. */
+const FUS = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+/**
+ * Perioada calculată, ca filtru pentru server — la fel pentru raportul clinicii
+ * și pentru cel al unei persoane („Statisticile mele”).
+ */
+export function filtruStatistici(calculata: PerioadaCalculata): FiltruStatistici {
+  return {
+    de_la: calculata.perioada.de_la,
+    pana_la: calculata.perioada.pana_la,
+    pas: calculata.pas,
+    fus: FUS,
+    comparatie_de_la: calculata.comparatie.de_la,
+    comparatie_pana_la: calculata.comparatie.pana_la,
   }
 }
 

@@ -32,6 +32,7 @@ import type {
   ProgramLucru,
   ProgramareDetaliu,
   PunctLucru,
+  RaportPersoana,
   RaportStatistici,
   RolUtilizator,
   StareProgramare,
@@ -425,6 +426,16 @@ export interface DateTratamentModificat {
  * încheierea de mână este „clientul a renunțat”, cu ședințele și banii la
  * locul lor.
  */
+/** Încasarea pe abonament, înainte de ședințe — `POST /tratamente/:id/incasare`. */
+export interface DateAvans {
+  suma: number
+  /** Se alege mereu: numerar sau card. */
+  metoda_plata: MetodaPlata
+  /** Lipsă = acum. */
+  efectuat_la?: Timestamptz
+  nota?: string | null
+}
+
 export interface ApiTratamente {
   /** GET /tratamente — orice rol. Cele în curs întâi, apoi după următoarea ședință. */
   list(filtru?: FiltruTratamente): Promise<Paginat<TratamentDetaliu>>
@@ -444,6 +455,13 @@ export interface ApiTratamente {
    * Respins (409) dacă între timp s-a deschis alt tratament în curs la aceeași pereche.
    */
   redeschide(id: Uuid): Promise<TratamentDetaliu>
+  /**
+   * POST /tratamente/:id/incasare — orice rol. Încasează pe abonament FĂRĂ ca
+   * vreo ședință să fi avut loc (avans, 3 nov. 2026). Banii rămân pe abonament,
+   * iar fiecare ședință onorată îi stinge singură. Întoarce abonamentul, cu
+   * `avans` la zi. Respins (400 pe `suma`) peste ce a mai rămas de încasat.
+   */
+  incaseaza(id: Uuid, date: DateAvans): Promise<TratamentDetaliu>
   /**
    * DELETE /tratamente/:id — administrator. Șterge și ședințele lui, și banii
    * încasați pe ele: nu mai apar nici în calendar, nici în Statistici.
@@ -522,6 +540,11 @@ export interface DateLinieVanzare {
   pret_unitar?: number
   /** Programarea stinsă de linie. Vezi `VanzareLinie.programare_id`. */
   programare_id?: Uuid | null
+  /**
+   * Abonamentul pe care s-a plătit linia (avans, sau ședință stinsă din avans).
+   * Se retrimite neschimbat la corectarea unui bon, ca editarea să nu o piardă.
+   */
+  tratament_id?: Uuid | null
 }
 
 export interface DateVanzareNoua {
@@ -694,6 +717,16 @@ export interface ApiStatistici {
   blocheaza(): void
   /** GET /statistici — cere deblocarea. Încuiată -> 403 pe `acces_statistici`. */
   raport(filtru: FiltruStatistici): Promise<RaportStatistici>
+  /**
+   * GET /statistici/mele — orice rol, FĂRĂ parola statisticilor. Ședințele și
+   * banii persoanei autentificate, și numai ai ei (cerința clinicii, 3 nov. 2026).
+   */
+  mele(filtru: FiltruStatistici): Promise<RaportPersoana>
+  /**
+   * GET /statistici/persoana/:id — cere deblocarea. Aceleași cifre pentru
+   * oricare persoană: proprietarul le vede pe toate, pe rând.
+   */
+  persoana(id: Uuid, filtru: FiltruStatistici): Promise<RaportPersoana>
 }
 
 export interface FiltruCheltuieli extends ParametriPaginare {

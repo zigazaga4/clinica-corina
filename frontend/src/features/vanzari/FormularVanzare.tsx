@@ -11,6 +11,7 @@ import {
   CATEGORIE_CLIENTI,
   listeleDePreturi,
 } from '@/domain/categorii'
+import { esteAvans, esteProdus } from '@/domain/avans'
 import type { Articol, Uuid, VanzareDetaliu } from '@/domain/types'
 import { dinInputDatetime, formateazaData, laInputDatetime } from '@/lib/dates'
 import { useEroriFormular } from '@/lib/formular'
@@ -87,13 +88,19 @@ interface LinieFormular {
    */
   programare_id: Uuid | null
   /**
+   * Abonamentul pe care s-a plătit linia (avans sau ședință stinsă din avans).
+   * Ca `programare_id`: formularul nu-l poate alege, dar îl CARĂ mai departe —
+   * fără el, o corecție de preț ar rupe legătura cu abonamentul.
+   */
+  tratament_id: Uuid | null
+  /**
    * Denumirea și data ședinței, doar pentru afișare.
    *
    * Liniile venite dintr-o ședință se arată blocate, iar selectorul de produse
    * nu le-ar putea reprezenta: el conține numai produse, deci un serviciu ar
    * apărea ca un câmp gol, ca și cum s-ar fi pierdut ceva.
    */
-  descriere?: { denumire: string; sedintaDin: string | null }
+  descriere?: { denumire: string; sedintaDin: string | null; avans?: boolean }
 }
 
 export function FormularVanzare({
@@ -136,7 +143,8 @@ export function FormularVanzare({
   const [plata, setPlata] = useState<StarePlata | null>(vanzare ? starePlata(vanzare) : null)
   const achitat = plata !== 'neachitat'
   // Un bon care stinge ședințe este chiar plata lor: nu poate rămâne datorie.
-  const stingeSedinte = vanzare?.linii.some((l) => l.programare_id !== null) ?? false
+  const stingeSedinte =
+    vanzare?.linii.some((l) => l.programare_id !== null || l.tratament_id != null) ?? false
   const [operatorId, setOperatorId] = useState<Uuid | null>(vanzare?.operator_id ?? utilizator.id)
   // `efectuat_la` este momentul REAL al încasării, nu al introducerii ei: o
   // plată de dimineață trecută în registru seara trebuie să rămână la ora ei.
@@ -152,11 +160,13 @@ export function FormularVanzare({
           cantitate: numarInCamp(l.cantitate),
           pret_unitar: numarInCamp(l.pret_unitar),
           programare_id: l.programare_id,
-          ...(l.programare_id
+          tratament_id: l.tratament_id,
+          ...(l.programare_id || l.tratament_id
             ? {
                 descriere: {
                   denumire: l.articol_denumire,
                   sedintaDin: l.programare_incepe_la,
+                  avans: esteAvans(l),
                 },
               }
             : {}),
@@ -180,7 +190,7 @@ export function FormularVanzare({
   const listaVanzarii = useMemo(() => {
     if (listaAleasa !== undefined) return listaAleasa
     // Bonul corectat continuă din lista primului lui produs.
-    const primul = vanzare?.linii.find((l) => l.programare_id === null)
+    const primul = vanzare?.linii.find(esteProdus)
     const produs = primul && articole?.find((a) => a.id === primul.articol_id)
     if (produs) return produs.categorie
     // Altfel lista clienților — dacă există; fără ea, prima (sau toate fără categorie).
@@ -249,6 +259,7 @@ export function FormularVanzare({
           pret_unitar: pret,
           // Ședința stinsă de linie merge înapoi neatinsă; vezi `LinieFormular`.
           ...(linie.programare_id ? { programare_id: linie.programare_id } : {}),
+          ...(linie.tratament_id ? { tratament_id: linie.tratament_id } : {}),
         })
       }
     }
@@ -547,9 +558,11 @@ function RandLinie({
         <div className="min-w-0 sm:flex-1 sm:pt-1">
           <p className="truncate text-sm font-medium text-ink">{linie.descriere.denumire}</p>
           <p className="mt-0.5 text-[12px] text-ink-faint tabular-nums">
-            {linie.descriere.sedintaDin
-              ? `Ședința din ${formateazaData(linie.descriere.sedintaDin)}`
-              : 'Ședință încasată'}
+            {linie.descriere.avans
+              ? 'Avans abonament, încă neconsumat'
+              : linie.descriere.sedintaDin
+                ? `Ședința din ${formateazaData(linie.descriere.sedintaDin)}`
+                : 'Ședință încasată'}
           </p>
         </div>
         <Input
@@ -631,7 +644,14 @@ function RandLinie({
 }
 
 function linieGoala(): LinieFormular {
-  return { cheie: uuid(), articol_id: null, cantitate: '1', pret_unitar: '', programare_id: null }
+  return {
+    cheie: uuid(),
+    articol_id: null,
+    cantitate: '1',
+    pret_unitar: '',
+    programare_id: null,
+    tratament_id: null,
+  }
 }
 
 /** Primul rând deja completat: produsul apăsat, o bucată, la prețul de listă. */

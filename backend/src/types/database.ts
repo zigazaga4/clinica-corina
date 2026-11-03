@@ -192,6 +192,12 @@ export interface VanzareLinie {
    * două locuri pentru același adevăr ajung să se contrazică.
    */
   programare_id: string | null
+  /**
+   * Abonamentul pentru care s-a încasat linia (2026-11-03). Cu `programare_id`
+   * NULL este AVANS — bani luați înainte de ședințe; cu `programare_id` setat,
+   * este avansul deja stins de acea ședință. NULL pe tot ce nu e abonament.
+   */
+  tratament_id: string | null
 }
 
 export interface Abonament {
@@ -283,6 +289,10 @@ export interface ProgramareDetaliu extends Programare {
    * ședință anulată / neprezentată — aceea nu ocupă un loc.
    */
   sedinta_nr: number | null
+  /** DERIVAT: ședința a fost plătită din banii luați dinainte pe abonament. */
+  achitat_din_avans: boolean
+  /** DERIVAT: cât a rămas neconsumat din avansul abonamentului ei; 0 în afara unuia. */
+  tratament_avans: number
 }
 
 /**
@@ -313,6 +323,11 @@ export interface TratamentDetaliu extends Tratament {
   ultima_la: string | null
   /** Cine face tratamentul: numele de pe ședințele neanulate, „Anda, Irina”. */
   executanti: string | null
+  /**
+   * Banii încasați pe abonament și încă neconsumați de vreo ședință onorată
+   * (avans). Ce s-a încasat în total este `incasat + avans`.
+   */
+  avans: number
 }
 
 /** Linie hidratată: `v_vanzare_linie_detaliu`. */
@@ -460,6 +475,55 @@ export interface RaportStatistici {
 }
 
 /**
+ * Cifrele unei singure persoane pe o perioadă — „Statisticile mele” (3 nov. 2026).
+ *
+ * Doar ce ține de ședințele FĂCUTE de ea (`programare.executant_id`): banii
+ * încasați din ele, ședințele, clienții. Cheltuielile, profitul și produsele
+ * sunt ale clinicii și nu apar aici. Regulile de numărare sunt cele din
+ * `RaportStatistici`; singura deosebire este ziua avansului pe abonament, vezi
+ * `LINII_PERSOANE`.
+ */
+export interface TotaluriPersoana {
+  incasat: number
+  /** Bonurile distincte din care vin banii. */
+  incasari: number
+  /** Ședințele ei onorate în perioadă și încă neplătite. */
+  neachitat: number
+  programari_onorate: number
+  programari_neprezentate: number
+  programari_anulate: number
+  programari_programate: number
+  clienti: number
+}
+
+export interface PerioadaPersoana {
+  inceput: string
+  incasat: number
+  programari_onorate: number
+}
+
+export interface StatisticaServiciuPersoana {
+  articol_id: string
+  denumire: string
+  /** Ședințele onorate în perioadă. */
+  sedinte: number
+  incasat: number
+}
+
+export interface RaportPersoana {
+  de_la: string
+  pana_la: string
+  pas: PasStatistici
+  utilizator_id: string
+  nume: string
+  total: TotaluriPersoana
+  comparatie: TotaluriPersoana | null
+  perioade: PerioadaPersoana[]
+  servicii: StatisticaServiciuPersoana[]
+  clienti: StatisticaClient[]
+}
+
+/**
  * Datele clientului așa cum arătau în clipa semnării.
  *
  * Copiate, nu citite din fișă la afișare: omul își schimbă adresa peste un an,
@@ -577,6 +641,11 @@ export interface DateLinieVanzare {
   /** Lipsă = `articol.pret_lista` curent, copiat pe linie. */
   pret_unitar?: number
   programare_id?: string | null
+  /**
+   * Linia plătită pe un abonament (avans sau ședință stinsă din avans). Se
+   * retrimite neschimbată la corectarea unui bon, ca editarea să nu o piardă.
+   */
+  tratament_id?: string | null
 }
 
 export interface CreateVanzareRequest {

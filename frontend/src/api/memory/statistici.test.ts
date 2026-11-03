@@ -282,3 +282,104 @@ describe('raportul pe datele demo', () => {
     expect(fara.randuri[0]).toMatchObject({ actiune: 'creare', date_noi: null, date_vechi: null })
   })
 })
+
+describe('„Statisticile mele” — cifrele unei singure persoane (3 nov. 2026)', () => {
+  /*
+    Ca pe server (`backend/src/test-api.ts`, „Avans pe abonament”): avansul
+    unui abonament se plătește într-o zi, ședințele se fac în alta. Pe numele
+    persoanei, banii apar în ziua ședințelor — nu în ziua plății.
+  */
+  const ZI_PLATA = '2032-03-01'
+  const ZI_SEDINTE = '2032-03-04'
+  const laZi = (zi: number, ora: number) => new Date(2032, 2, zi, ora).toISOString()
+  const filtru = (zi: string) => ({ de_la: zi, pana_la: zi, pas: 'zi' as const })
+
+  let executantId: string
+  let clientId: string
+  let curaId: string
+
+  beforeEach(async () => {
+    // Serviciul îl scrie administratorul; ședințele le face operatorul.
+    await autentifica()
+    clientId = (await api.clienti.create({ nume: 'Clientă Avans Statistici' })).id
+    curaId = (
+      await api.articole.create({
+        tip: 'serviciu',
+        denumire: 'Cură statistici',
+        durata_minute: 30,
+        pret_lista: 300,
+        numar_sedinte: 3,
+      })
+    ).id
+    const t = await api.tratamente.create({ client_id: clientId, articol_id: curaId })
+    // Avansul intră în ziua plății, cu 300 întregi.
+    await api.tratamente.incaseaza(t.id, { suma: 300, metoda_plata: 'card', efectuat_la: laZi(1, 10) })
+    executantId = (await autentifica('andreea.popescu@clinica.ro')).id
+    for (const ora of [9, 10, 11]) {
+      const p = await api.programari.create({
+        client_id: clientId,
+        executant_id: executantId,
+        incepe_la: laZi(4, ora),
+        se_termina_la: laZi(4, ora + 1),
+        servicii: [{ articol_id: curaId }],
+      })
+      await api.programari.schimbaStarea(p.id, 'onorat')
+    }
+  })
+
+  it('fără parola statisticilor: ședințele ei, cu banii din avans în ziua ședințelor', async () => {
+    const r = await api.statistici.mele(filtru(ZI_SEDINTE))
+    expect(r).toMatchObject({ utilizator_id: executantId, nume: 'Andreea Popescu' })
+    expect(r.total).toMatchObject({
+      incasat: 300,
+      incasari: 1,
+      neachitat: 0,
+      programari_onorate: 3,
+      clienti: 1,
+    })
+    expect(r.servicii).toEqual([expect.objectContaining({ articol_id: curaId, sedinte: 3, incasat: 300 })])
+    expect(r.clienti).toEqual([expect.objectContaining({ client_id: clientId, incasat: 300, incasari: 1 })])
+    expect(r.perioade).toEqual([{ inceput: ZI_SEDINTE, incasat: 300, programari_onorate: 3 }])
+  })
+
+  it('în ziua în care s-a plătit avansul, pe numele ei nu apare nimic', async () => {
+    const r = await api.statistici.mele(filtru(ZI_PLATA))
+    expect(r.total).toMatchObject({ incasat: 0, programari_onorate: 0, clienti: 0 })
+    expect(r.servicii).toEqual([])
+  })
+
+  it('raportul clinicii numără banii la ziua plății, dar pe persoane la ziua ședințelor', async () => {
+    await autentifica()
+    await api.statistici.seteazaParola({ parola_noua: PAROLA_STATISTICI_TEST })
+    const plata = await api.statistici.raport(filtru(ZI_PLATA))
+    expect(plata.total).toMatchObject({ incasat: 300, incasat_servicii: 300, incasat_card: 300 })
+    // Avansul neconsumat nu se numără ca bucată, iar nimeni nu are încă pe nume cei 300.
+    expect(plata.servicii[0]).toMatchObject({ suma: 300, cantitate: 3 })
+    const sedinte = await api.statistici.raport(filtru(ZI_SEDINTE))
+    expect(sedinte.total.incasat).toBe(0)
+    expect(sedinte.persoane.find((p) => p.utilizator_id === executantId)).toMatchObject({ incasat: 300 })
+  })
+
+  it('cifrele altei persoane cer parola statisticilor; fără ea, 403', async () => {
+    await autentifica()
+    await api.statistici.seteazaParola({ parola_noua: PAROLA_STATISTICI_TEST })
+    // Administratorul nu a făcut nicio ședință: „mele” al lui e gol.
+    expect((await api.statistici.mele(filtru(ZI_SEDINTE))).total.programari_onorate).toBe(0)
+    const alta = await api.statistici.persoana(executantId, filtru(ZI_SEDINTE))
+    expect(alta.total).toMatchObject({ incasat: 300, programari_onorate: 3 })
+
+    api.statistici.blocheaza()
+    expect(esteStatisticiIncuiate(await eroareDin(api.statistici.persoana(executantId, filtru(ZI_SEDINTE))))).toBe(true)
+    // „Mele” nu cere parola.
+    await expect(api.statistici.mele(filtru(ZI_SEDINTE))).resolves.toBeTruthy()
+  })
+
+  it('persoana inexistentă -> eroare, nu un raport gol; perioada greșită -> câmpul ei', async () => {
+    await autentifica()
+    await api.statistici.seteazaParola({ parola_noua: PAROLA_STATISTICI_TEST })
+    const lipsa = await eroareDin(api.statistici.persoana('00000000-0000-0000-0000-000000000000', filtru(ZI_SEDINTE)))
+    expect((lipsa as { cod?: string }).cod).toBe('negasit')
+    const gresita = await eroareDin(api.statistici.mele({ de_la: ZI_SEDINTE, pana_la: ZI_PLATA, pas: 'zi' }))
+    expect(campVinovat(gresita)).toBe('pana_la')
+  })
+})

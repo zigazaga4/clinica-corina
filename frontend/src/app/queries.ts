@@ -37,6 +37,7 @@ import type {
   DateProgramareModificata,
   DateProgramareNoua,
   DateTratamentModificat,
+  DateAvans,
   DateTratamentNou,
   DateUtilizatorModificat,
   DateUtilizatorNou,
@@ -71,6 +72,7 @@ import type {
   NotitaDetaliu,
   ProgramLucru,
   ProgramareDetaliu,
+  RaportPersoana,
   RaportStatistici,
   StareProgramare,
   TratamentDetaliu,
@@ -130,6 +132,10 @@ export const chei = {
     tot: ['statistici'] as const,
     parola: ['statistici', 'parola'] as const,
     raport: (filtru: FiltruStatistici) => ['statistici', 'raport', filtru] as const,
+    /** Cifrele contului autentificat — „Statisticile mele”, fără parolă. */
+    mele: (filtru: FiltruStatistici) => ['statistici', 'mele', filtru] as const,
+    /** Cifrele unei persoane, văzute de proprietar, cu parola. */
+    persoana: (id: Uuid, filtru: FiltruStatistici) => ['statistici', 'persoana', id, filtru] as const,
   },
   cheltuieli: {
     tot: ['cheltuieli'] as const,
@@ -619,6 +625,26 @@ export function useIncheieTratament(): UseMutationResult<
   })
 }
 
+/**
+ * Încasarea pe abonament, înainte de ședințe (avans). Schimbă ce știe
+ * abonamentul, dar și fișa clientului, calendarul și Statisticile: banii au
+ * intrat, iar o ședință onorată deja în așteptare se stinge pe loc.
+ */
+export function useIncaseazaPeAbonament(): UseMutationResult<
+  TratamentDetaliu,
+  Error,
+  { id: Uuid; date: DateAvans }
+> {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, date }: { id: Uuid; date: DateAvans }) => api.tratamente.incaseaza(id, date),
+    onSuccess: (tratament) => {
+      invalideazaTratamente(qc)
+      invalideazaVanzari(qc, tratament.client_id)
+    },
+  })
+}
+
 /** Șterge tratamentul, cu ședințele și banii lui — deci și din Statistici. */
 export function useStergeTratament(): UseMutationResult<void, Error, TratamentDetaliu> {
   const qc = useQueryClient()
@@ -818,6 +844,35 @@ export function useRaportStatistici(filtru: FiltruStatistici): UseQueryResult<Ra
     placeholderData: (anterioare) => anterioare,
     // Întoarcerea la fereastră reverifică deblocarea: o parolă schimbată de pe
     // alt calculator încuie ecranul de aici atunci, nu abia peste o oră.
+    refetchOnWindowFocus: true,
+  })
+}
+
+/**
+ * „Statisticile mele”: ședințele și banii contului autentificat, fără parola
+ * statisticilor. Persoana nu se alege — o știe serverul din cont.
+ */
+export function useStatisticileMele(filtru: FiltruStatistici): UseQueryResult<RaportPersoana> {
+  return useQuery({
+    queryKey: chei.statistici.mele(filtru),
+    queryFn: () => api.statistici.mele(filtru),
+    placeholderData: (anterioare) => anterioare,
+  })
+}
+
+/**
+ * Aceleași cifre pentru oricare persoană, pentru proprietar — cere statisticile
+ * deblocate. `id` nul = nu se cere nimic (se arată raportul clinicii).
+ */
+export function useRaportPersoana(
+  id: Uuid | null,
+  filtru: FiltruStatistici,
+): UseQueryResult<RaportPersoana> {
+  return useQuery({
+    queryKey: chei.statistici.persoana(id ?? '', filtru),
+    queryFn: () => api.statistici.persoana(id as Uuid, filtru),
+    enabled: id !== null,
+    placeholderData: (anterioare) => anterioare,
     refetchOnWindowFocus: true,
   })
 }

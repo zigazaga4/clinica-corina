@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { LogOut, MonitorCog, Moon, MoreHorizontal, Sun } from 'lucide-react'
 import { esteModDemo } from '@/api'
 import { useAutentificare } from '@/app/auth'
-import { navigarePentru, type ElementNavigare } from '@/app/navigation'
+import { esteInElement, navigarePentru, type ElementNavigare } from '@/app/navigation'
 import { useTema, type Tema } from '@/app/theme'
 import { cn } from '@/lib/cn'
 import { Avatar, Buton, ElementMeniu, Meniu, SeparatorMeniu, TitluMeniu } from '@/ui'
@@ -140,9 +140,7 @@ function SiglaClinica() {
 function AntetMobil() {
   const location = useLocation()
   const { esteAdministrator } = useAutentificare()
-  const curent = navigarePentru(esteAdministrator).find((e) =>
-    location.pathname.startsWith(e.cale),
-  )
+  const curent = navigarePentru(esteAdministrator).find((e) => esteInElement(location.pathname, e))
 
   return (
     <header
@@ -177,7 +175,7 @@ function BaraJos({
 }) {
   const [meniuDeschis, setMeniuDeschis] = useState(false)
   const location = useLocation()
-  const inSecundar = secundare.some((e) => location.pathname.startsWith(e.cale))
+  const inSecundar = secundare.some((e) => esteInElement(location.pathname, e))
 
   return (
     <>

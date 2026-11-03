@@ -42,7 +42,7 @@ import type {
 } from '../types/database.js'
 
 /** Unitatea lui `date_trunc` pentru fiecare pas. */
-const UNITATE: Record<PasStatistici, 'day' | 'week' | 'month'> = {
+export const UNITATE: Record<PasStatistici, 'day' | 'week' | 'month'> = {
   zi: 'day',
   saptamana: 'week',
   luna: 'month',
@@ -139,7 +139,7 @@ export function filtruRaportDin(q: Record<string, unknown>): FiltruRaport {
 
   Parametrii fiecărei interogări încep cu $1 = de_la, $2 = pana_la, $3 = fus.
 */
-const LIMITE = `lim AS (
+export const LIMITE = `lim AS (
   SELECT ($1::date)::timestamp AT TIME ZONE $3     AS de,
          ($2::date + 1)::timestamp AT TIME ZONE $3 AS pana
 )`
@@ -147,12 +147,38 @@ const LIMITE = `lim AS (
 /** Liniile încasate în perioadă, cu tipul articolului. */
 const LINII_INCASATE = `linii AS (
   SELECT v.id AS vanzare_id, v.client_id, vl.articol_id, vl.cantitate, vl.total_linie,
-         vl.programare_id, v.achitat_la, v.metoda_plata, COALESCE(a.tip, 'produs') AS tip
+         vl.programare_id, vl.tratament_id, v.achitat_la, v.metoda_plata, COALESCE(a.tip, 'produs') AS tip
   FROM vanzare v
   JOIN vanzare_linie vl ON vl.vanzare_id = v.id
   LEFT JOIN articol a ON a.id = vl.articol_id
   CROSS JOIN lim
   WHERE v.achitat_la >= lim.de AND v.achitat_la < lim.pana
+)`
+
+/**
+ * Liniile de ședință ale PERSOANELOR, cu ziua după care se numără.
+ *
+ * Ziua este a plății (`achitat_la`), ca peste tot în raport — cu o excepție:
+ * ședința stinsă din avansul unui abonament (`tratament_id` pe linie) se
+ * numără în ziua ȘEDINȚEI. Banii au intrat la început, dar abia ședința făcută
+ * îi atribuie cuiva: altfel luna în care s-a plătit abonamentul ar crește
+ * retroactiv, ședință cu ședință, pe lângă numele celei care le face luni
+ * după aceea. Avansul neconsumat nu aparține nimănui și nu apare aici; în
+ * `incasat` al clinicii apare, la ziua plății.
+ *
+ * Cere `lim` înaintea lui (vezi `LIMITE`).
+ */
+export const LINII_PERSOANE = `linii_p AS (
+  SELECT x.* FROM (
+    SELECT v.id AS vanzare_id, v.client_id, vl.articol_id, vl.cantitate, vl.total_linie,
+           p.executant_id, p.id AS programare_id,
+           CASE WHEN vl.tratament_id IS NOT NULL THEN p.incepe_la ELSE v.achitat_la END AS data_ref
+    FROM vanzare_linie vl
+    JOIN vanzare v ON v.id = vl.vanzare_id
+    JOIN programare p ON p.id = vl.programare_id
+    WHERE v.achitat_la IS NOT NULL
+  ) x CROSS JOIN lim
+  WHERE x.data_ref >= lim.de AND x.data_ref < lim.pana
 )`
 
 async function totaluri(
@@ -249,7 +275,11 @@ function articole(ex: Executor, f: FiltruRaport, tip: 'serviciu' | 'produs'): Pr
     ex,
     `WITH ${LIMITE}, ${LINII_INCASATE}
      SELECT l.articol_id, COALESCE(a.denumire, '—') AS denumire, a.categorie,
-            sum(l.cantitate) AS cantitate, sum(l.total_linie) AS suma
+            -- Avansul neconsumat aduce bani, nu o ședință făcută: nu se numără ca bucată.
+            COALESCE(sum(l.cantitate) FILTER (
+              WHERE NOT (l.tratament_id IS NOT NULL AND l.programare_id IS NULL)
+            ), 0) AS cantitate,
+            sum(l.total_linie) AS suma
      FROM linii l LEFT JOIN articol a ON a.id = l.articol_id
      WHERE (l.tip = 'serviciu') = ($4 = 'serviciu')
      GROUP BY l.articol_id, a.denumire, a.categorie
@@ -265,11 +295,11 @@ function articole(ex: Executor, f: FiltruRaport, tip: 'serviciu' | 'produs'): Pr
 function persoane(ex: Executor, f: FiltruRaport): Promise<StatisticaPersoana[]> {
   return multe<StatisticaPersoana>(
     ex,
-    `WITH ${LIMITE}, ${LINII_INCASATE},
+    `WITH ${LIMITE}, ${LINII_PERSOANE},
      incasat AS (
-       SELECT p.executant_id AS id, sum(l.total_linie) AS incasat
-       FROM linii l JOIN programare p ON p.id = l.programare_id
-       GROUP BY p.executant_id
+       SELECT executant_id AS id, sum(total_linie) AS incasat
+       FROM linii_p
+       GROUP BY executant_id
      ),
      onorate AS (
        SELECT p.executant_id AS id, count(DISTINCT p.vizita_id) AS programari_onorate
