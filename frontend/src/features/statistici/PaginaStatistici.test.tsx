@@ -193,14 +193,16 @@ describe('înăuntru', () => {
     // „Toată clinica” pe deplin: cheltuielile și profitul sunt aici.
     expect(screen.getByText('Profit')).toBeInTheDocument()
 
-    fireEvent.click(await screen.findByRole('combobox', { name: 'Persoana' }, ASTEPTARE))
-    fireEvent.change(await screen.findByLabelText('Caută în listă', {}, ASTEPTARE), {
-      target: { value: 'Andreea' },
-    })
-    fireEvent.click(await screen.findByRole('option', { name: /Andreea Popescu/ }, ASTEPTARE))
+    // Persoanele sunt butoane la vedere, nu o listă ascunsă: „Toată clinica” + câte unul pe cont.
+    const persoane = await screen.findByRole('group', { name: 'Persoana' }, ASTEPTARE)
+    expect(within(persoane).getByRole('button', { name: 'Toată clinica' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(await within(persoane).findByRole('button', { name: /Andreea Popescu/ }, ASTEPTARE))
 
-    expect(await screen.findByText('Încasat pe ședințele mele', {}, ASTEPTARE)).toBeInTheDocument()
-    expect(await screen.findByText('Încasat din ședințele mele', {}, ASTEPTARE)).toBeInTheDocument()
+    expect(await screen.findByText('Încasat pe ședințe', {}, ASTEPTARE)).toBeInTheDocument()
+    expect(await screen.findByText('Încasat din ședințe', {}, ASTEPTARE)).toBeInTheDocument()
+    // Raportul spune al cui este, ca etichetele fără „mele” să nu lase loc de îndoială.
+    expect(await screen.findByText(/Ședințele făcute de Andreea Popescu/, {}, ASTEPTARE)).toBeInTheDocument()
+    expect(within(persoane).getByRole('button', { name: /Andreea Popescu/ })).toHaveAttribute('aria-pressed', 'true')
     // Profitul și cheltuielile sunt ale clinicii, nu ale unei persoane.
     expect(screen.queryByText('Profit')).toBeNull()
     expect(screen.queryByText('Încasări și cheltuieli')).toBeNull()

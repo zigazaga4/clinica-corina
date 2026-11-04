@@ -65,15 +65,17 @@ export const NAVIGARE: ElementNavigare[] = [
     descriere: 'Încasări, cheltuieli și profit — cu parola statisticilor',
   },
   /*
-    Cifrele fiecăruia, fără parolă: ședințele făcute și banii intrați pe ele,
-    doar ale contului autentificat (cerința clinicii, 3 nov. 2026).
+    Ședințele fiecăruia, fără parolă: cele făcute și banii intrați pe ele,
+    doar ale contului autentificat (cerința clinicii, 3 nov. 2026). Cifrele
+    altcuiva se văd la „Statistici”, pe persoane, cu parola.
   */
   {
     cale: '/statisticile-mele',
-    eticheta: 'Statisticile mele',
-    etichetaScurta: 'Ale mele',
+    // „Statisticile mele” a fost confundat cu „Statistici”, pe care proprietara
+    // îl numește „ale mele” (4 nov. 2026): aici sunt doar ședințele contului.
+    eticheta: 'Ședințele mele',
     pictograma: ChartLine,
-    descriere: 'Ședințele tale și banii intrați pe ele, pe luni — fără parolă',
+    descriere: 'Ședințele făcute de contul tău și banii intrați pe ele — fără parolă',
   },
   {
     cale: '/nomenclator',

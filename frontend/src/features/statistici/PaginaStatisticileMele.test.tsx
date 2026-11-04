@@ -7,10 +7,12 @@ import { autentifica, randeaza } from '@/test/render'
 import { PaginaStatisticileMele } from './PaginaStatisticileMele'
 
 /*
-  „Statisticile mele” (3 nov. 2026): „o statistică și pentru Anda, în care să-i
+  „Ședințele mele” (3 nov. 2026): „o statistică și pentru Anda, în care să-i
   apară doar încasările ei și ce face ea în fiecare lună, doar pe contul ei”.
   Se deschide fără parola statisticilor și arată numai cifrele contului
   autentificat; ce e al clinicii rămâne în spatele parolei, la „Statistici”.
+  (Până pe 4 nov. se numea „Statisticile mele”, nume pe care proprietara îl
+  folosește pentru „Statistici”: a deschis-o așteptând cifrele Andei.)
 */
 
 vi.setConfig({ testTimeout: 30_000 })
@@ -24,17 +26,17 @@ async function valoarea(eticheta: string): Promise<string> {
   return card.parentElement?.textContent ?? ''
 }
 
-describe('statisticile mele', () => {
+describe('ședințele mele', () => {
   it('se deschid fără parola statisticilor, cu cifrele contului și graficele lor', async () => {
     await autentifica(OPERATOR)
     randeaza(<PaginaStatisticileMele />)
 
-    expect(await screen.findByRole('heading', { name: 'Statisticile mele' }, ASTEPTARE)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Ședințele mele' }, ASTEPTARE)).toBeInTheDocument()
     // Nicio ușă: parola statisticilor nu se cere.
     expect(screen.queryByLabelText('Parola statisticilor')).toBeNull()
 
     for (const eticheta of [
-      'Încasat din ședințele mele',
+      'Încasat din ședințe',
       'Programări onorate',
       'Rămas de încasat',
       'Clienți serviți',
@@ -47,11 +49,20 @@ describe('statisticile mele', () => {
     expect(screen.queryByText('Produse')).toBeNull()
   })
 
+  it('spune al cui cont este și unde se văd cifrele celorlalți, cu parola', async () => {
+    const cont = await autentifica(OPERATOR)
+    randeaza(<PaginaStatisticileMele />)
+
+    expect(await screen.findByText(cont.nume, { selector: 'strong' }, ASTEPTARE)).toBeInTheDocument()
+    expect(await screen.findByText(`Ședințele făcute de ${cont.nume}`, { exact: false }, ASTEPTARE)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Statistici' })).toHaveAttribute('href', '/statistici')
+  })
+
   it('graficul „pe zile” are tabelul lui: încasat și programări, pe fiecare zi a lunii', async () => {
     await autentifica(OPERATOR)
     randeaza(<PaginaStatisticileMele />)
 
-    const titlu = await screen.findByText('Încasat pe ședințele mele', {}, ASTEPTARE)
+    const titlu = await screen.findByText('Încasat pe ședințe', {}, ASTEPTARE)
     const card = titlu.closest('.rounded-xl') as HTMLElement
     fireEvent.click(within(card).getByRole('button', { name: 'Tabel' }))
     const tabel = within(card).getByRole('table')
@@ -93,7 +104,7 @@ describe('statisticile mele', () => {
     expect(dupa.total).toEqual(inainte.total)
 
     randeaza(<PaginaStatisticileMele />)
-    const text = await valoarea('Încasat din ședințele mele')
+    const text = await valoarea('Încasat din ședințe')
     expect(text).toContain(formateazaBani(dupa.total.incasat))
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull(), ASTEPTARE)
   })

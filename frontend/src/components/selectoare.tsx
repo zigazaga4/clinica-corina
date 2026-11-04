@@ -9,7 +9,7 @@ import {
 import { useAutentificare } from '@/app/auth'
 import { aceeasiCategorie, comparaCategorii, FARA_CATEGORIE } from '@/domain/categorii'
 import { etichetaTipArticol, tonTipArticol } from '@/domain/labels'
-import type { TipArticol, Uuid } from '@/domain/types'
+import type { TipArticol, Utilizator, Uuid } from '@/domain/types'
 import { useIntarziat } from '@/lib/hooks'
 import { formateazaDurata } from '@/lib/dates'
 import { formateazaBani } from '@/lib/money'
@@ -329,6 +329,33 @@ function descriereArticol(tip: TipArticol, durata_minute: number | null, pret_li
 // Utilizator (executant / operator)
 // ---------------------------------------------------------------------------
 
+/**
+ * Conturile active pe care persoana autentificată le poate alege.
+ *
+ * GET /utilizatori este rută de administrator (§7). Pentru ceilalți nu o
+ * pornim: ar întoarce 403 și ar umple ecranul cu o eroare inutilă. Numele
+ * executanților le au oricum din programările hidratate.
+ *
+ * Un operator obișnuit se vede pe sine, și numai pe sine: nu poate cere lista
+ * conturilor, dar își cunoaște propriul cont — și e singurul pe care are de ce
+ * să-l aleagă (programările și le face lui, iar o notiță o pune fie pe numele
+ * lui, fie pe toată clinica). Fără rândul acesta, câmpul afișa substituentul
+ * chiar și când valoarea era el însuși.
+ *
+ * Folosit de selectorul de mai jos și de butoanele „pe persoană” din Statistici.
+ */
+export function useConturiAlese(): { conturi: Utilizator[]; incarca: boolean } {
+  const { esteAdministrator, utilizator } = useAutentificare()
+  const { data, isPending } = useUtilizatori({ activ: true }, esteAdministrator)
+  const conturi = esteAdministrator ? (data ?? []) : utilizator ? [utilizator] : []
+  return {
+    conturi,
+    // O interogare oprită rămâne „pending” la nesfârșit; fără condiție,
+    // operatorul ar vedea un indicator de încărcare care nu se termină.
+    incarca: esteAdministrator && isPending,
+  }
+}
+
 export function SelectorUtilizator({
   valoare,
   onSchimba,
@@ -339,29 +366,17 @@ export function SelectorUtilizator({
   valoare: Uuid | null
   onSchimba: (id: Uuid | null) => void
 }) {
-  const { esteAdministrator, utilizator } = useAutentificare()
+  const { conturi, incarca } = useConturiAlese()
 
-  // GET /utilizatori este rută de administrator (§7). Pentru ceilalți nu o
-  // pornim: ar întoarce 403 și ar umple ecranul cu o eroare inutilă. Numele
-  // executanților le au oricum din programările hidratate.
-  const { data, isPending } = useUtilizatori({ activ: true }, esteAdministrator)
-
-  /*
-    Un operator obișnuit se vede pe sine, și numai pe sine.
-
-    Nu poate cere lista conturilor, dar își cunoaște propriul cont — și e
-    singurul pe care are de ce să-l aleagă: programările și le face lui, iar
-    o notiță o pune fie pe numele lui, fie pe toată clinica. Fără rândul
-    acesta, câmpul afișa substituentul chiar și când valoarea era el însuși.
-  */
-  const optiuni = useMemo<OptiuneCombobox<Uuid>[]>(() => {
-    const conturi = esteAdministrator ? (data ?? []) : utilizator ? [utilizator] : []
-    return conturi.map((u) => ({
-      valoare: u.id,
-      eticheta: u.nume,
-      descriere: u.email,
-    }))
-  }, [data, esteAdministrator, utilizator])
+  const optiuni = useMemo<OptiuneCombobox<Uuid>[]>(
+    () =>
+      conturi.map((u) => ({
+        valoare: u.id,
+        eticheta: u.nume,
+        descriere: u.email,
+      })),
+    [conturi],
+  )
 
   return (
     <Combobox
@@ -370,9 +385,7 @@ export function SelectorUtilizator({
       onSchimba={onSchimba}
       eticheta={eticheta}
       placeholder={placeholder}
-      // O interogare oprită rămâne „pending” la nesfârșit; fără condiție,
-      // operatorul ar vedea un indicator de încărcare care nu se termină.
-      incarca={esteAdministrator && isPending}
+      incarca={incarca}
       textFaraRezultate="Niciun cont activ"
       {...comune}
     />

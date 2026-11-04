@@ -20,7 +20,7 @@ import { CardBare, Gol } from './RezumatStatistici'
 import { Variatie } from './Variatie'
 
 /**
- * Cifrele unei singure persoane pe o perioadă — fila din „Statisticile mele” și
+ * Cifrele unei singure persoane pe o perioadă — pagina „Ședințele mele” și
  * vederea „pe persoană” a proprietarului (cerința clinicii, 3 nov. 2026: „o
  * statistică și pentru Anda, în care să-i apară doar încasările ei și ce face
  * ea în fiecare lună”).
@@ -42,7 +42,7 @@ const numar = (n: number) => formateazaCantitate(n)
 /**
  * Cifrele unei persoane alese, în fila „Rezumat” a Statisticilor — pentru
  * proprietar, care le vede pe toate pe rând („Irina cu Anda”, apoi doar Anda”).
- * Cere statisticile deblocate; ecranul „Statisticile mele” nu are nevoie de ele.
+ * Cere statisticile deblocate; ecranul „Ședințele mele” nu are nevoie de ele.
  */
 export function RezumatPersoana({ id, calculata }: { id: Uuid; calculata: PerioadaCalculata }) {
   const filtru = useMemo(() => filtruStatistici(calculata), [calculata])
@@ -66,6 +66,16 @@ export function RaportulPersoanei({ raport }: { raport: UseQueryResult<RaportPer
 function Raport({ raport, incarca }: { raport: RaportPersoana; incarca: boolean }) {
   return (
     <div className={incarca ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+      {/*
+        Numele se vede pe raport, nu doar în butonul ales: etichetele cifrelor nu
+        spun „ale mele” sau „ale ei”, iar cine privește trebuie să știe al cui e
+        fiecare număr (4 nov. 2026: proprietara se uita la cifrele ei crezându-le
+        pe ale Andei).
+      */}
+      <h2 className="mb-3 text-[15px] font-semibold text-ink">
+        Ședințele făcute de {raport.nume}
+        <span className="font-normal text-ink-soft"> și banii intrați pe ele</span>
+      </h2>
       <Cifre t={raport.total} c={raport.comparatie} />
 
       <div className="mt-4 space-y-4">
@@ -126,7 +136,7 @@ function Cifre({ t, c }: { t: TotaluriPersoana; c: TotaluriPersoana | null }) {
   return (
     <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-3">
       <Statistica
-        eticheta="Încasat din ședințele mele"
+        eticheta="Încasat din ședințe"
         valoare={formateazaBani(t.incasat)}
         pictograma={<Banknote className="size-4" />}
         detaliu={variatie(t.incasat, c?.incasat) ?? 'banii intrați pe ședințele făcute'}
@@ -191,7 +201,7 @@ function GraficTimp({ raport }: { raport: RaportPersoana }) {
   return (
     <>
       <CardGrafic
-        titlu="Încasat pe ședințele mele"
+        titlu="Încasat pe ședințe"
         descriere={`Pe ${unitate}. Banii din avansul unui abonament se numără în ziua ședinței care l-a consumat.`}
         gol={gol ? <Gol text="Nicio ședință făcută și nicio încasare în perioada aleasă." /> : undefined}
         tabel={{

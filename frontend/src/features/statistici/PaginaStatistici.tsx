@@ -4,11 +4,11 @@ import type { AccesStatistici } from '@/api/contract'
 import { useAutentificare } from '@/app/auth'
 import { useBlocheazaStatistici, useLaStatisticiIncuiate } from '@/app/queries'
 import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
-import { SelectorUtilizator } from '@/components/selectoare'
 import type { Uuid } from '@/domain/types'
 import { ListaIncasari } from '@/features/vanzari/ListaIncasari'
 import { Buton, File } from '@/ui'
 import { AlegerePerioadei } from './AlegerePerioadei'
+import { AlegerePersoana } from './AlegerePersoana'
 import { ListaCheltuieli } from './ListaCheltuieli'
 import { ModalaParolaStatistici } from './ModalaParolaStatistici'
 import { alegereImplicita, calculeazaPerioada } from './perioade'
@@ -146,15 +146,8 @@ export function PaginaStatistici() {
             <>
               <BaraFiltre>
                 <AlegerePerioadei alegere={alegere} onSchimba={setAlegere} />
-                {/* Cifrele unei singure persoane, pe lângă cele ale clinicii (3 nov. 2026). */}
-                <SelectorUtilizator
-                  valoare={persoana}
-                  onSchimba={setPersoana}
-                  eticheta="Persoana"
-                  cuGolire
-                  placeholder="Toată clinica"
-                  className="w-48"
-                />
+                {/* Cifrele unei singure persoane, pe lângă cele ale clinicii (3–4 nov. 2026). */}
+                <AlegerePersoana valoare={persoana} onSchimba={setPersoana} />
               </BaraFiltre>
               {persoana ? (
                 <RezumatPersoana id={persoana} calculata={calculata} />
