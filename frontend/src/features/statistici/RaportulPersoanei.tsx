@@ -20,8 +20,8 @@ import { CardBare, Gol } from './RezumatStatistici'
 import { Variatie } from './Variatie'
 
 /**
- * Cifrele unei singure persoane pe o perioadă — pagina „Ședințele mele” și
- * vederea „pe persoană” a proprietarului (cerința clinicii, 3 nov. 2026: „o
+ * Cifrele unei singure persoane pe o perioadă — pagina „Ședințe pe persoane” și
+ * vederea „pe persoană” din Statistici (cerința clinicii, 3 nov. 2026: „o
  * statistică și pentru Anda, în care să-i apară doar încasările ei și ce face
  * ea în fiecare lună”).
  *
@@ -40,9 +40,9 @@ const PROGRAMARI: SerieGrafic = {
 const numar = (n: number) => formateazaCantitate(n)
 
 /**
- * Cifrele unei persoane alese, în fila „Rezumat” a Statisticilor — pentru
- * proprietar, care le vede pe toate pe rând („Irina cu Anda”, apoi doar Anda”).
- * Cere statisticile deblocate; ecranul „Ședințele mele” nu are nevoie de ele.
+ * Cifrele unei persoane alese, în spatele parolei statisticilor: în fila
+ * „Rezumat” a Statisticilor și pe pagina „Ședințe pe persoane”. Cere
+ * statisticile deblocate.
  */
 export function RezumatPersoana({ id, calculata }: { id: Uuid; calculata: PerioadaCalculata }) {
   const filtru = useMemo(() => filtruStatistici(calculata), [calculata])

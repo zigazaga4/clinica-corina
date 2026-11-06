@@ -33,9 +33,9 @@ const PaginaStatistici = lazy(() =>
     default: m.PaginaStatistici,
   })),
 )
-const PaginaStatisticileMele = lazy(() =>
-  import('@/features/statistici/PaginaStatisticileMele').then((m) => ({
-    default: m.PaginaStatisticileMele,
+const PaginaSedintePersoane = lazy(() =>
+  import('@/features/statistici/PaginaSedintePersoane').then((m) => ({
+    default: m.PaginaSedintePersoane,
   })),
 )
 const PaginaNomenclator = lazy(() =>
@@ -70,7 +70,9 @@ export function Rute() {
         <Route path="/clienti/:id" element={<CuIncarcare><PaginaFisaClient /></CuIncarcare>} />
         <Route path="/tratamente" element={<CuIncarcare><PaginaTratamente /></CuIncarcare>} />
         <Route path="/statistici" element={<CuIncarcare><PaginaStatistici /></CuIncarcare>} />
-        <Route path="/statisticile-mele" element={<CuIncarcare><PaginaStatisticileMele /></CuIncarcare>} />
+        <Route path="/sedinte-pe-persoane" element={<CuIncarcare><PaginaSedintePersoane /></CuIncarcare>} />
+        {/* Fostele „Statisticile mele” / „Ședințele mele” — un semn de carte vechi ajunge pe pagina nouă. */}
+        <Route path="/statisticile-mele" element={<Navigate to="/sedinte-pe-persoane" replace />} />
         {/* Fostul ecran „Încasări” — un semn de carte vechi ajunge la ușa Statisticilor. */}
         <Route path="/incasari" element={<Navigate to="/statistici" replace />} />
         <Route path="/nomenclator" element={<CuIncarcare><PaginaNomenclator /></CuIncarcare>} />

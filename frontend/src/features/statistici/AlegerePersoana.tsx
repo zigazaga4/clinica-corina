@@ -19,8 +19,8 @@ export function AlegerePersoana({
   valoare: Uuid | null
   onSchimba: (id: Uuid | null) => void
   eticheta?: string
-  /** Textul butonului care înseamnă „nimeni anume”. */
-  toti?: string
+  /** Textul butonului care înseamnă „nimeni anume”; `null` = ecranul nu are așa ceva, doar persoane. */
+  toti?: string | null
 }) {
   const { conturi } = useConturiAlese()
 
@@ -30,9 +30,11 @@ export function AlegerePersoana({
     <div className="flex max-w-full flex-col gap-1">
       <span className="text-[12px] font-medium text-ink-soft">{eticheta}</span>
       <GrupButoane eticheta={eticheta} className="flex-wrap">
-        <ButonGrup activ={valoare === null} onClick={() => onSchimba(null)}>
-          {toti}
-        </ButonGrup>
+        {toti !== null && (
+          <ButonGrup activ={valoare === null} onClick={() => onSchimba(null)}>
+            {toti}
+          </ButonGrup>
+        )}
         {conturi.map((cont) => (
           <ButonGrup key={cont.id} activ={valoare === cont.id} onClick={() => onSchimba(cont.id)}>
             {cont.nume}

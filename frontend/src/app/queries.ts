@@ -132,9 +132,7 @@ export const chei = {
     tot: ['statistici'] as const,
     parola: ['statistici', 'parola'] as const,
     raport: (filtru: FiltruStatistici) => ['statistici', 'raport', filtru] as const,
-    /** Cifrele contului autentificat — „Statisticile mele”, fără parolă. */
-    mele: (filtru: FiltruStatistici) => ['statistici', 'mele', filtru] as const,
-    /** Cifrele unei persoane, văzute de proprietar, cu parola. */
+    /** Cifrele unei persoane, cu parola statisticilor. */
     persoana: (id: Uuid, filtru: FiltruStatistici) => ['statistici', 'persoana', id, filtru] as const,
   },
   cheltuieli: {
@@ -849,20 +847,9 @@ export function useRaportStatistici(filtru: FiltruStatistici): UseQueryResult<Ra
 }
 
 /**
- * „Statisticile mele”: ședințele și banii contului autentificat, fără parola
- * statisticilor. Persoana nu se alege — o știe serverul din cont.
- */
-export function useStatisticileMele(filtru: FiltruStatistici): UseQueryResult<RaportPersoana> {
-  return useQuery({
-    queryKey: chei.statistici.mele(filtru),
-    queryFn: () => api.statistici.mele(filtru),
-    placeholderData: (anterioare) => anterioare,
-  })
-}
-
-/**
- * Aceleași cifre pentru oricare persoană, pentru proprietar — cere statisticile
- * deblocate. `id` nul = nu se cere nimic (se arată raportul clinicii).
+ * Ședințele și banii oricărei persoane — cere statisticile deblocate. `id`
+ * nul = nu se cere nimic. (Ruta fără parolă, `api.statistici.mele`, nu mai are
+ * ecran: pagina „Ședințe pe persoane” stă în spatele parolei, cerere clinică.)
  */
 export function useRaportPersoana(
   id: Uuid | null,

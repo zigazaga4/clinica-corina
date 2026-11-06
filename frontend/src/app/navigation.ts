@@ -65,17 +65,16 @@ export const NAVIGARE: ElementNavigare[] = [
     descriere: 'Încasări, cheltuieli și profit — cu parola statisticilor',
   },
   /*
-    Ședințele fiecăruia, fără parolă: cele făcute și banii intrați pe ele,
-    doar ale contului autentificat (cerința clinicii, 3 nov. 2026). Cifrele
-    altcuiva se văd la „Statistici”, pe persoane, cu parola.
+    Ședințele făcute de fiecare persoană și banii intrați pe ele, cu parola
+    statisticilor, deschise pe Anda (cerința clinicii, 3 și 6 nov. 2026). Nu mai
+    e „ale mele”: proprietara a deschis „Statisticile mele” și a găsit cifrele
+    ei, nu pe ale Andei.
   */
   {
-    cale: '/statisticile-mele',
-    // „Statisticile mele” a fost confundat cu „Statistici”, pe care proprietara
-    // îl numește „ale mele” (4 nov. 2026): aici sunt doar ședințele contului.
-    eticheta: 'Ședințele mele',
+    cale: '/sedinte-pe-persoane',
+    eticheta: 'Ședințe pe persoane',
     pictograma: ChartLine,
-    descriere: 'Ședințele făcute de contul tău și banii intrați pe ele — fără parolă',
+    descriere: 'Ședințele făcute de Anda și de ceilalți, și banii intrați pe ele — cu parola statisticilor',
   },
   {
     cale: '/nomenclator',
@@ -102,7 +101,7 @@ export const NAVIGARE: ElementNavigare[] = [
 
 /**
  * Calea curentă este a elementului? Pe SEGMENTE, nu pe prefix de text:
- * „/statisticile-mele” începe cu „/statistici”, dar nu este în ea.
+ * „/statistici-vechi” ar începe cu „/statistici”, dar nu ar fi în ea.
  */
 export function esteInElement(pathname: string, element: Pick<ElementNavigare, 'cale'>): boolean {
   return pathname === element.cale || pathname.startsWith(`${element.cale}/`)
