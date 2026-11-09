@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Gestiune Clinica",
   "version": "0.1.32",
-  "identifier": "ro.tzintelligence.clinica",
+  "identifier": "ro.tzintelligence.clinicacorina",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -46,7 +46,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwMUYyRUQ2OTM5QkYzMDcKUldRSDg1dVQxaTRmTUhvdTJPZHh0cmVDTzZqSU5hNHFnUHJhZU80eHI3V2hyL0JXTkZrbmZQT2YK",
       "endpoints": [
-        "https://github.com/zigazaga4/clinica-actualizari/releases/latest/download/latest.json"
+        "https://github.com/zigazaga4/clinica-corina-actualizari/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

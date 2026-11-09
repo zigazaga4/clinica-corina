@@ -93,7 +93,11 @@ jobs:
           # pornește pe date demonstrative, ținute în memorie — arată la fel și
           # nu salvează nimic, ceea ce e mai rău decât o eroare, fiindcă nu se
           # vede.
-          VITE_API_URL: https://clinica.srv1409671.hstgr.cloud
+          #
+          # FORK (Corina Burcut): adresa NU mai e a clinicii Zian. Se pune în
+          # Settings → Variables → Actions, la variabila `VITE_API_URL`, abia
+          # când serverul acestei clinici există.
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
           # Cheia cu care se semnează pachetul de actualizare. Perechea ei
           # publică stă în `tauri.conf.json`; fără potrivirea lor, aplicația
           # instalată refuză orice actualizare.
@@ -139,7 +143,7 @@ jobs:
           set -euo pipefail
           cd frontend/src-tauri/target/release/bundle/nsis
           gh release create "v$V" \
-            --repo zigazaga4/clinica-actualizari \
+            --repo zigazaga4/clinica-corina-actualizari \
             --title "Gestiune Clinică $V" \
             --notes "${NOTE:-Îmbunătățiri și corectări.}" \
             "GestiuneClinica_${V}_x64-setup.exe" \

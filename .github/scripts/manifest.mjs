@@ -16,7 +16,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 const versiune = process.argv[2]
 const note = process.argv[3]?.trim() || 'Îmbunătățiri și corectări.'
 
-const DEPOZIT = 'zigazaga4/clinica-actualizari'
+const DEPOZIT = 'zigazaga4/clinica-corina-actualizari'
 const DOSAR = 'frontend/src-tauri/target/release/bundle/nsis'
 
 if (!/^\d+\.\d+\.\d+$/.test(versiune ?? '')) {

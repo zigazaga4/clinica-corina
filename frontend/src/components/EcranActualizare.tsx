@@ -4,7 +4,7 @@ import { useActualizare, type StareActualizare } from '@/app/actualizare'
 import { Buton, Spinner } from '@/ui'
 
 /** De unde se ia instalatorul cu mâna, dacă cel automat nu reușește. */
-const ADRESA_MANUALA = 'https://github.com/zigazaga4/clinica-actualizari/releases/latest'
+const ADRESA_MANUALA = 'https://github.com/zigazaga4/clinica-corina-actualizari/releases/latest'
 
 /**
  * Poarta de acces în aplicație.
