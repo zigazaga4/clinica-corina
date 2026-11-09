@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { useAutentificare } from '@/app/auth'
+import { functii, type Functii } from '@/config/functii'
 import { CadruAplicatie } from '@/components/AppShell'
 import { PaginaAutentificare } from '@/features/auth/PaginaAutentificare'
 import { Pagina } from '@/components/Pagina'
@@ -68,9 +69,9 @@ export function Rute() {
         <Route path="/programari" element={<CuIncarcare><PaginaProgramari /></CuIncarcare>} />
         <Route path="/clienti" element={<CuIncarcare><PaginaClienti /></CuIncarcare>} />
         <Route path="/clienti/:id" element={<CuIncarcare><PaginaFisaClient /></CuIncarcare>} />
-        <Route path="/tratamente" element={<CuIncarcare><PaginaTratamente /></CuIncarcare>} />
-        <Route path="/statistici" element={<CuIncarcare><PaginaStatistici /></CuIncarcare>} />
-        <Route path="/sedinte-pe-persoane" element={<CuIncarcare><PaginaSedintePersoane /></CuIncarcare>} />
+        <Route path="/tratamente" element={<CuFunctie functie="tratamente"><CuIncarcare><PaginaTratamente /></CuIncarcare></CuFunctie>} />
+        <Route path="/statistici" element={<CuFunctie functie="costuri"><CuIncarcare><PaginaStatistici /></CuIncarcare></CuFunctie>} />
+        <Route path="/sedinte-pe-persoane" element={<CuFunctie functie="costuri"><CuIncarcare><PaginaSedintePersoane /></CuIncarcare></CuFunctie>} />
         {/* Fostele „Statisticile mele” / „Ședințele mele” — un semn de carte vechi ajunge pe pagina nouă. */}
         <Route path="/statisticile-mele" element={<Navigate to="/sedinte-pe-persoane" replace />} />
         {/* Fostul ecran „Încasări” — un semn de carte vechi ajunge la ușa Statisticilor. */}
@@ -121,6 +122,16 @@ function RutaProtejata({ children }: { children: ReactNode }) {
     )
   }
 
+  return <>{children}</>
+}
+
+/**
+ * Ecran cu comutator (`@/config/functii`). Oprit, adresa nu duce nicăieri:
+ * un semn de carte vechi sau o adresă scrisă de mână ajunge în calendar, nu pe
+ * un ecran pe care aplicația simplă nu-l mai are.
+ */
+function CuFunctie({ functie, children }: { functie: keyof Functii; children: ReactNode }) {
+  if (!functii[functie]) return <Navigate to="/programari" replace />
   return <>{children}</>
 }
 

@@ -3,6 +3,7 @@ import { mesajEroare } from '@/api/errors'
 import { useModificaUtilizator } from '@/app/queries'
 import type { Utilizator, Uuid } from '@/domain/types'
 import { cn } from '@/lib/cn'
+import { textPeCuloare } from '@/lib/culori'
 import { useNotificari } from '@/ui'
 
 /**
@@ -136,6 +137,25 @@ export function culoareAleasa(hex: string): CuloarePersoana {
       '--persoana-text': `color-mix(in oklab, ${hex} 65%, var(--color-ink))`,
     } as React.CSSProperties,
     hex,
+  }
+}
+
+/**
+ * Culoarea unei proceduri: chipul se umple PLIN, ca în softul vechi al clinicii
+ * (blocuri pline, cu text alb deasupra), nu cu o pată palidă.
+ *
+ * Plinul ține de procedură, nu de persoană: culoarea procedurii e cea aleasă
+ * cu un scop („albastru = epilare”), așa că trebuie să sară în ochi de la un
+ * metru; culoarea persoanei rămâne cea blândă, de fundal. Textul se alege după
+ * culoare (`textPeCuloare`): alb pe albastru, dar cerneală pe galben, unde albul
+ * nu s-ar citi deloc.
+ */
+export function culoarePlina(hex: string): CuloarePersoana {
+  const aleasa = culoareAleasa(hex)
+  return {
+    ...aleasa,
+    chip: 'bg-(--persoana) border-(--persoana) text-(--text-pe-plin)',
+    stil: { ...aleasa.stil, '--text-pe-plin': textPeCuloare(hex) } as React.CSSProperties,
   }
 }
 

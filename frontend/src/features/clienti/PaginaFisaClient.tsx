@@ -34,6 +34,7 @@ import type {
   VanzareDetaliu,
   VanzareLinieDetaliu,
 } from '@/domain/types'
+import { functii } from '@/config/functii'
 import { cn } from '@/lib/cn'
 import {
   formateazaData,
@@ -233,7 +234,7 @@ export function PaginaFisaClient() {
         actiuni={
           <>
             {/* Arhivată, fișa nu mai primește vânzări noi — serverul le refuză. */}
-            {!arhivat && (
+            {functii.costuri && !arhivat && (
               <Buton onClick={() => setVanzareNoua(true)} className="tinta-atingere">
                 <ShoppingBag className="size-4" />
                 Vinde produse
@@ -324,16 +325,18 @@ export function PaginaFisaClient() {
           </CorpCard>
         </Card>
 
-        <TratamenteleClientului
-          clientId={client.id}
-          onProgrameaza={(t) =>
-            setProgramareDinTratament({
-              client_id: t.client_id,
-              articol_id: t.articol_id,
-              tratament_id: t.id,
-            })
-          }
-        />
+        {functii.tratamente && (
+          <TratamenteleClientului
+            clientId={client.id}
+            onProgrameaza={(t) =>
+              setProgramareDinTratament({
+                client_id: t.client_id,
+                articol_id: t.articol_id,
+                tratament_id: t.id,
+              })
+            }
+          />
+        )}
 
         {/*
           Banda de plată.
@@ -343,7 +346,7 @@ export function PaginaFisaClient() {
           așteaptă, nu s-a stricat nimic. Stă deasupra filelor pentru că este
           singurul lucru de pe fișă care cere o acțiune acum, în fața clientului.
         */}
-        {(sedinteNeachitate.length > 0 || vanzariNeachitate.length > 0) && (
+        {functii.costuri && (sedinteNeachitate.length > 0 || vanzariNeachitate.length > 0) && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-warning-soft px-4 py-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-warning tabular-nums">
@@ -388,14 +391,16 @@ export function PaginaFisaClient() {
         client={client}
       />
 
-      <ModalaIncasare
-        deschisa={incasareDeschisa}
-        onInchide={() => setIncasareDeschisa(false)}
-        clientId={client.id}
-        clientNume={client.nume}
-        sedinte={sedinteNeachitate}
-        vanzari={vanzariNeachitate}
-      />
+      {functii.costuri && (
+        <ModalaIncasare
+          deschisa={incasareDeschisa}
+          onInchide={() => setIncasareDeschisa(false)}
+          clientId={client.id}
+          clientNume={client.nume}
+          sedinte={sedinteNeachitate}
+          vanzari={vanzariNeachitate}
+        />
+      )}
 
       {vanzareNoua && (
         <FormularVanzare clientInitial={client.id} onInchide={() => setVanzareNoua(false)} />
@@ -449,7 +454,11 @@ function PanouIstoric({ clientId }: { clientId: Uuid }) {
     return (
       <StareGoala
         titlu="Fără activitate înregistrată"
-        descriere="Ședințele și produsele cumpărate apar aici, cele mai recente primele."
+        descriere={
+          functii.costuri
+            ? 'Ședințele și produsele cumpărate apar aici, cele mai recente primele.'
+            : 'Ședințele apar aici, cele mai recente primele.'
+        }
       />
     )
   }
@@ -530,6 +539,10 @@ function cronologiaFisei(istoric: IstoricIntrare[]): IntrareFisa[] {
       continue
     }
 
+    // Fără costuri (fork-ul simplu) fișa arată doar ședințele: bonurile, produsele
+    // și avansurile sunt bani.
+    if (!functii.costuri) continue
+
     const avansuri = intrare.vanzare.linii.filter(esteAvans)
     if (avansuri.length > 0) {
       intrari.push({
@@ -566,12 +579,14 @@ function IntrareProgramare({ programare }: { programare: ProgramareDetaliu }) {
             joia viitoare nu este „de plată”, este neîntâmplată încă. La fel
             pentru cele anulate sau neprezentate — nu se încasează nimic.
           */}
-          {programare.stare === 'onorat' && <InsemnPlata achitat={programare.achitat} />}
+          {functii.costuri && programare.stare === 'onorat' && <InsemnPlata achitat={programare.achitat} />}
         </span>
         {/* Prețul ședinței, chiar pe rândul ei: fișa arată singură cât costă. */}
-        <span className="text-sm font-semibold text-ink tabular-nums">
-          {formateazaBani(programare.pret)}
-        </span>
+        {functii.costuri && (
+          <span className="text-sm font-semibold text-ink tabular-nums">
+            {formateazaBani(programare.pret)}
+          </span>
+        )}
       </div>
 
       <p className="mt-0.5 text-[13px] text-ink-soft tabular-nums">
@@ -587,7 +602,7 @@ function IntrareProgramare({ programare }: { programare: ProgramareDetaliu }) {
         întrebări la sfârșit de lună, așa că acolo scriem când. Este și
         singurul lucru pe care îl pierdeam scoțând bonul din cronologie.
       */}
-      {platitAltaZi(programare) && (
+      {functii.costuri && platitAltaZi(programare) && (
         <p className="mt-0.5 text-[12px] text-ink-faint tabular-nums">
           Achitat pe {formateazaData(programare.achitat_la)}
         </p>

@@ -10,6 +10,7 @@ import { useAutentificare } from '@/app/auth'
 import type { PretSugerat, ServiciuProgramare, SugestieTratament } from '@/api/contract'
 import { SelectorArticol, SelectorClient, SelectorUtilizator } from '@/components/selectoare'
 import { GrilaFormular, PeToataLatimea } from '@/components/Pagina'
+import { functii } from '@/config/functii'
 import {
   formateazaProcent,
   parteaSedintei,
@@ -147,6 +148,8 @@ export function FormularProgramare({
    * pusă în aceeași programare, intră în abonamentul deschis de prima.
    */
   const abonamentNou = (rand: RandServiciu, i: number) => {
+    // Abonamentele au preț și reducere: fără costuri sau fără tratamente nu există.
+    if (!functii.costuri || !functii.tratamente) return null
     const sugestie = sugestii[i]
     const tratament = sugestie?.tratament
     if (rand.existent || rand.tratamentId || !sugestie || !tratament) return null
@@ -322,7 +325,9 @@ export function FormularProgramare({
       if (!rand.articolId) return erori.setCamp(`servicii.${i}.articol_id`, 'Alege serviciul.')
       // Zero este o valoare validă: o ședință oferită gratuit rămâne o ședință
       // efectuată, care trebuie să apară în calendar și în istoric.
-      const pret = parseNumar(pretAfisat(rand, i))
+      // Fără costuri (fork-ul simplu) formularul nu are preț: o ședință nouă
+      // pleacă cu 0, una existentă își păstrează prețul din bază.
+      const pret = functii.costuri ? parseNumar(pretAfisat(rand, i)) : (rand.existent?.pret ?? 0)
       if (pret === null) return erori.setCamp(`servicii.${i}.pret`, 'Completează prețul.')
       if (pret < 0) return erori.setCamp(`servicii.${i}.pret`, 'Prețul nu poate fi negativ.')
       // Abonamentul început acum pleacă cu totalul lui de plată (reducerea).
@@ -405,7 +410,9 @@ export function FormularProgramare({
       descriere={
         esteModificare
           ? 'Mutarea intervalului reprogramează clientul.'
-          : 'Doar serviciile pot fi programate; produsele se înregistrează la vânzări.'
+          : functii.costuri
+            ? 'Doar serviciile pot fi programate; produsele se înregistrează la vânzări.'
+            : 'Alege clientul, procedura și intervalul din calendar.'
       }
       subsol={
         <>
@@ -541,7 +548,7 @@ export function FormularProgramare({
                   <Plus className="size-4" />
                   Adaugă încă un serviciu
                 </Buton>
-                {maiMulte && (
+                {functii.costuri && maiMulte && (
                   <span className="text-[13px] text-ink-soft">
                     Total{' '}
                     <strong className="font-semibold text-ink tabular-nums">{formateazaBani(total)}</strong>
@@ -683,17 +690,19 @@ function RandServiciuFormular({
           className="min-w-0 sm:flex-1"
         />
         <div className="flex items-start gap-2.5">
-          <Input
-            eticheta={index === null ? 'Preț' : `Prețul${nr}`}
-            inputMode="decimal"
-            obligatoriu
-            value={pret}
-            onChange={(e) => onPret(e.target.value)}
-            disabled={achitat}
-            eroare={eroarePret}
-            className="text-right tabular-nums"
-            containerClassName="flex-1 sm:w-32 sm:flex-none"
-          />
+          {functii.costuri && (
+            <Input
+              eticheta={index === null ? 'Preț' : `Prețul${nr}`}
+              inputMode="decimal"
+              obligatoriu
+              value={pret}
+              onChange={(e) => onPret(e.target.value)}
+              disabled={achitat}
+              eroare={eroarePret}
+              className="text-right tabular-nums"
+              containerClassName="flex-1 sm:w-32 sm:flex-none"
+            />
+          )}
           {index !== null && (
             <Buton
               varianta="discret"
@@ -710,7 +719,7 @@ function RandServiciuFormular({
         </div>
       </div>
 
-      {achitat ? (
+      {!functii.costuri ? null : achitat ? (
         <p className="text-[13px] text-ink-faint">Încasat — serviciul și prețul nu se mai schimbă.</p>
       ) : abonament ? (
         // Partea ședinței o spune chiar blocul abonamentului: „8 ședințe × 56,25”.
@@ -718,7 +727,7 @@ function RandServiciuFormular({
       ) : (
         ajutorPret(sugestie) && <p className="text-[13px] text-ink-faint">{ajutorPret(sugestie)}</p>
       )}
-      {tratament && <NotaTratament sugestie={tratament} />}
+      {functii.tratamente && tratament && <NotaTratament sugestie={tratament} />}
       {eroareTratament && (
         <p role="alert" className="text-[13px] text-danger">
           {eroareTratament}

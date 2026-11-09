@@ -173,4 +173,50 @@ describe('culoarea procedurii în calendar', () => {
     // Textul rămâne întreg, cu ambele denumiri: punctele sunt doar decor.
     expect(randul).toHaveTextContent(`${albastru.denumire} + ${fara.denumire}`)
   })
+
+  it('chipul unei proceduri e plin, cu text citibil: alb pe albastru, cerneală pe galben', async () => {
+    const albastru = await serviciuNou(ALBASTRU)
+    const galben = await serviciuNou(GALBEN)
+    const pe = async (serviciu: Articol) => {
+      const { rand, persoana } = await programare([serviciu])
+      const { unmount } = render(
+        <Cadru persoana={persoana} nomenclator={[serviciu]}>
+          <ChipProgramare programare={rand[0]!} servicii={rand} onClick={() => undefined} />
+        </Cadru>,
+      )
+      const chip = screen.getByRole('button', { name: /Clientă culori/ })
+      const rezultat = { clase: chip.className, text: chip.style.getPropertyValue('--text-pe-plin') }
+      unmount()
+      return rezultat
+    }
+
+    const peAlbastru = await pe(albastru)
+    // Fundal plin (nu `/30`), ca blocurile din softul vechi.
+    expect(peAlbastru.clase).toContain('bg-(--persoana)')
+    expect(peAlbastru.clase).not.toContain('bg-(--persoana)/')
+    expect(peAlbastru.text).toBe('#ffffff')
+    expect((await pe(galben)).text).not.toBe('#ffffff')
+  })
+
+  it('chipul înalt arată intervalul întreg pe primul rând, ca softul vechi; cel scund, doar ora de început', async () => {
+    const albastru = await serviciuNou(ALBASTRU)
+    const { rand, persoana } = await programare([albastru])
+
+    const { rerender } = render(
+      <Cadru persoana={persoana} nomenclator={[albastru]}>
+        <ChipProgramare programare={rand[0]!} servicii={rand} onClick={() => undefined} ampla />
+      </Cadru>,
+    )
+    const chip = screen.getByRole('button', { name: /Clientă culori/ })
+    // Intervalul și clientul pe rânduri separate: într-o coloană îngustă, numele nu se taie.
+    expect(chip).toHaveTextContent(/^09:00–09:30\s*Clientă culori/)
+    expect(chip.children[0]).toHaveTextContent(/^09:00–09:30$/)
+
+    rerender(
+      <Cadru persoana={persoana} nomenclator={[albastru]}>
+        <ChipProgramare programare={rand[0]!} servicii={rand} onClick={() => undefined} />
+      </Cadru>,
+    )
+    expect(screen.getByRole('button', { name: /Clientă culori/ })).toHaveTextContent(/^09:00 Clientă culori/)
+  })
 })

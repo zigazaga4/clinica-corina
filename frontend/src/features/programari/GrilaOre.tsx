@@ -195,6 +195,7 @@ function ColoanaElemente({
         const latime = latimeElemente / total
         const asezare = {
           compact: inaltimeInterval(inceput, sfarsit) < 38,
+          ampla: inaltimeInterval(inceput, sfarsit) >= 52,
           /*
             Programări suprapuse: fiecare primește o felie îngustă. Sub cursor,
             felia se lățește pe toată zona programărilor și vine deasupra

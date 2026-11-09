@@ -2,6 +2,7 @@ import { useId, useMemo, useState, type FormEvent } from 'react'
 import { Trash2 } from 'lucide-react'
 import type { DateArticolNou } from '@/api/contract'
 import { esteEroareApi, mesajEroare } from '@/api/errors'
+import { functii } from '@/config/functii'
 import {
   useArticole,
   useCreeazaArticol,
@@ -136,7 +137,9 @@ export function FormularArticol({
     erori.goleste()
 
     const denumireCurata = denumire.trim()
-    const pretNumar = parseNumar(pret)
+    // Fără costuri (fork-ul simplu) formularul nu are preț: unul nou pornește de
+    // la 0, unul existent își păstrează prețul din bază.
+    const pretNumar = functii.costuri ? parseNumar(pret) : (articol?.pret_lista ?? 0)
     const durataNumar = parseNumar(durata)
 
     // Toate verificările deodată: utilizatorul vede din prima tot ce are de
@@ -241,7 +244,9 @@ export function FormularArticol({
         descriere={
           articol
             ? articol.denumire
-            : 'Serviciile au durată și se pot programa; produsele se vând la bucată.'
+            : functii.costuri
+              ? 'Serviciile au durată și se pot programa; produsele se vând la bucată.'
+              : 'Procedura are o durată și se poate programa în calendar, în culoarea aleasă.'
         }
         subsol={
           <>
@@ -278,30 +283,33 @@ export function FormularArticol({
       >
         <form id={idFormular} onSubmit={trimite} noValidate>
           <GrilaFormular>
-            <PeToataLatimea>
-              {/*
-                Grupul își poartă singur eticheta prin `aria-label`: legarea
-                etichetei „Tip” de primul buton i-ar înlocui numele accesibil, iar
-                cititorul de ecran ar anunța „Tip” în loc de „Serviciu”.
-              */}
-              <Camp eticheta="Tip" ajutor="Doar serviciile pot fi programate în calendar.">
-                {() => (
-                  <GrupButoane eticheta="Tipul articolului" className="w-full">
-                    {TIP_ARTICOL.map((valoare) => (
-                      <ButonGrup
-                        key={valoare}
-                        activ={tip === valoare}
-                        disabled={seTrimite}
-                        onClick={() => schimbaTip(valoare)}
-                        className="h-11 flex-1 sm:h-9"
-                      >
-                        {etichetaTipArticol[valoare]}
-                      </ButonGrup>
-                    ))}
-                  </GrupButoane>
-                )}
-              </Camp>
-            </PeToataLatimea>
+            {/* Fără costuri nu există produse: tot ce se adaugă e o procedură. */}
+            {functii.costuri && (
+              <PeToataLatimea>
+                {/*
+                  Grupul își poartă singur eticheta prin `aria-label`: legarea
+                  etichetei „Tip” de primul buton i-ar înlocui numele accesibil, iar
+                  cititorul de ecran ar anunța „Tip” în loc de „Serviciu”.
+                */}
+                <Camp eticheta="Tip" ajutor="Doar serviciile pot fi programate în calendar.">
+                  {() => (
+                    <GrupButoane eticheta="Tipul articolului" className="w-full">
+                      {TIP_ARTICOL.map((valoare) => (
+                        <ButonGrup
+                          key={valoare}
+                          activ={tip === valoare}
+                          disabled={seTrimite}
+                          onClick={() => schimbaTip(valoare)}
+                          className="h-11 flex-1 sm:h-9"
+                        >
+                          {etichetaTipArticol[valoare]}
+                        </ButonGrup>
+                      ))}
+                    </GrupButoane>
+                  )}
+                </Camp>
+              </PeToataLatimea>
+            )}
 
             <PeToataLatimea>
               <Input
@@ -335,29 +343,31 @@ export function FormularArticol({
               />
             )}
 
-            <Input
-              eticheta="Preț listă"
-              obligatoriu
-              type="text"
-              inputMode="decimal"
-              value={pret}
-              onChange={(e) => setPret(e.target.value)}
-              eroare={erori.peCamp.pret_lista}
-              sufix="RON"
-              className="pr-13"
-              ajutor={
-                esteTratament
-                  ? `Pentru toate cele ${sedinteNumar} ședințe împreună; fiecare programare primește o parte.`
-                  : 'Separatorul zecimal poate fi virgulă sau punct.'
-              }
-              placeholder="150"
-            />
+            {functii.costuri && (
+              <Input
+                eticheta="Preț listă"
+                obligatoriu
+                type="text"
+                inputMode="decimal"
+                value={pret}
+                onChange={(e) => setPret(e.target.value)}
+                eroare={erori.peCamp.pret_lista}
+                sufix="RON"
+                className="pr-13"
+                ajutor={
+                  esteTratament
+                    ? `Pentru toate cele ${sedinteNumar} ședințe împreună; fiecare programare primește o parte.`
+                    : 'Separatorul zecimal poate fi virgulă sau punct.'
+                }
+                placeholder="150"
+              />
+            )}
 
             {/*
               Peste 1, serviciul devine tratament: prima programare a lui deschide
               un tratament pe fișa clientului, iar următoarele intră în el.
             */}
-            {tip === 'serviciu' && (
+            {functii.tratamente && tip === 'serviciu' && (
               <Input
                 eticheta="Număr de ședințe"
                 obligatoriu

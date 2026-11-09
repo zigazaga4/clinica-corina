@@ -6,6 +6,7 @@ import { mesajEroare } from '@/api/errors'
 import { useClienti } from '@/app/queries'
 import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
 import { InsemnInactiv } from '@/components/insemne'
+import { functii } from '@/config/functii'
 import type { ClientListItem } from '@/domain/types'
 import { formateazaData } from '@/lib/dates'
 import { useIntarziat } from '@/lib/hooks'
@@ -139,6 +140,9 @@ const coloane: Coloana<ClientListItem>[] = [
   },
 ]
 
+/** Coloanele care vorbesc despre bani — ascunse în fork-ul simplu (`@/config/functii`). */
+const COLOANE_CU_BANI: ReadonlySet<string> = new Set(['vanzari', 'de_incasat'])
+
 /** Zero se afișează estompat: coloana rămâne scanabilă, fără să atragă privirea. */
 function NumarActivitate({ valoare }: { valoare: number }) {
   return <span className={valoare === 0 ? 'text-ink-faint' : undefined}>{valoare}</span>
@@ -164,16 +168,18 @@ function randMobil(rand: ClientListItem) {
           <span className="tabular-nums">
             {rand.numar_programari} {plural(rand.numar_programari, 'programare', 'programări')}
           </span>
-          <span className="tabular-nums">
-            {rand.numar_vanzari} {plural(rand.numar_vanzari, 'vânzare', 'vânzări')}
-          </span>
+          {functii.costuri && (
+            <span className="tabular-nums">
+              {rand.numar_vanzari} {plural(rand.numar_vanzari, 'vânzare', 'vânzări')}
+            </span>
+          )}
         </div>
         {/*
           Pe telefon suma stă pe rândul ei, nu amestecată printre contoare:
           coloana „De plată” este ascunsă sub `md`, iar recepția lucrează de pe
           telefon tocmai când clientul e în fața ei și trebuie să încaseze.
         */}
-        {rand.de_incasat > 0 && (
+        {functii.costuri && rand.de_incasat > 0 && (
           <div className="mt-1 text-[12px] font-medium text-warning tabular-nums">
             De plată: {formateazaBani(rand.de_incasat)}
           </div>
@@ -308,7 +314,7 @@ export function PaginaClienti() {
 
       <Card className="overflow-hidden">
         <Tabel
-          coloane={coloane}
+          coloane={functii.costuri ? coloane : coloane.filter((c) => !COLOANE_CU_BANI.has(c.cheie))}
           randuri={data?.randuri ?? []}
           cheieRand={(rand) => rand.id}
           randMobil={randMobil}

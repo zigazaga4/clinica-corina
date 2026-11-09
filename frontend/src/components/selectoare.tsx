@@ -7,6 +7,7 @@ import {
   useUtilizatori,
 } from '@/app/queries'
 import { useAutentificare } from '@/app/auth'
+import { functii } from '@/config/functii'
 import { aceeasiCategorie, comparaCategorii, FARA_CATEGORIE } from '@/domain/categorii'
 import { etichetaTipArticol, tonTipArticol } from '@/domain/labels'
 import type { TipArticol, Utilizator, Uuid } from '@/domain/types'
@@ -251,9 +252,11 @@ export function SelectorArticol({
       onSchimba(articol.id)
       notificari.succes(
         `${etichetaTipArticol[tip]} adăugat`,
-        tip === 'serviciu'
-          ? `Cu ${formateazaDurata(DURATA_SERVICIU_IMPLICITA)} și preț de listă ${formateazaBani(0)} — se corectează în Nomenclator.`
-          : `Cu preț de listă ${formateazaBani(0)} — se corectează în Nomenclator.`,
+        !functii.costuri
+          ? `Cu durata de ${formateazaDurata(DURATA_SERVICIU_IMPLICITA)} — se corectează în Nomenclator.`
+          : tip === 'serviciu'
+            ? `Cu ${formateazaDurata(DURATA_SERVICIU_IMPLICITA)} și preț de listă ${formateazaBani(0)} — se corectează în Nomenclator.`
+            : `Cu preț de listă ${formateazaBani(0)} — se corectează în Nomenclator.`,
       )
     } catch (err) {
       notificari.eroare(
@@ -320,6 +323,8 @@ export function SelectorArticol({
 
 /** Al doilea rând al unui articol în listă: durata și prețul, sau doar prețul. */
 function descriereArticol(tip: TipArticol, durata_minute: number | null, pret_lista: number) {
+  // Fără costuri (fork-ul simplu) lista nu arată prețuri, doar durata.
+  if (!functii.costuri) return tip === 'serviciu' ? formateazaDurata(durata_minute) : ''
   return tip === 'serviciu'
     ? `${formateazaDurata(durata_minute)} · ${formateazaBani(pret_lista)}`
     : formateazaBani(pret_lista)

@@ -98,6 +98,13 @@ jobs:
           # Settings → Variables → Actions, la variabila `VITE_API_URL`, abia
           # când serverul acestei clinici există.
           VITE_API_URL: ${{ vars.VITE_API_URL }}
+          # Ce știe aplicația să arate (v. `frontend/src/config/functii.ts`).
+          # FORK (Corina Burcut): pornește SIMPLU — calendar, clienți, proceduri
+          # cu culori —, fără bani și fără abonamente. Variabilele lipsă sau
+          # goale înseamnă „oprit”; se pornesc punând `true` în Settings →
+          # Variables → Actions, apoi o compilare nouă.
+          VITE_FUNCTIE_COSTURI: ${{ vars.VITE_FUNCTIE_COSTURI }}
+          VITE_FUNCTIE_TRATAMENTE: ${{ vars.VITE_FUNCTIE_TRATAMENTE }}
           # Cheia cu care se semnează pachetul de actualizare. Perechea ei
           # publică stă în `tauri.conf.json`; fără potrivirea lor, aplicația
           # instalată refuză orice actualizare.

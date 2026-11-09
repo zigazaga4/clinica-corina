@@ -9,6 +9,7 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react'
+import { functii, type Functii } from '@/config/functii'
 
 /**
  * Navigația, definită o singură dată.
@@ -29,6 +30,11 @@ export interface ElementNavigare {
   /** Apare în bara de jos de pe telefon; restul intră în meniul „Mai mult”. */
   principal?: boolean
   descriere: string
+  /**
+   * Ecranul există doar cât timp comutatorul din `@/config/functii` e pornit:
+   * fork-ul simplu nu arată banii și abonamentele.
+   */
+  functie?: keyof Functii
 }
 
 export const NAVIGARE: ElementNavigare[] = [
@@ -51,6 +57,7 @@ export const NAVIGARE: ElementNavigare[] = [
     eticheta: 'Tratamente',
     pictograma: Layers,
     descriere: 'Serviciile în mai multe ședințe: unde a ajuns fiecare client',
+    functie: 'tratamente',
   },
   /*
     În locul fostului ecran „Încasări”, pe același loc: lista încasărilor a
@@ -63,6 +70,7 @@ export const NAVIGARE: ElementNavigare[] = [
     pictograma: ChartColumnBig,
     principal: true,
     descriere: 'Încasări, cheltuieli și profit — cu parola statisticilor',
+    functie: 'costuri',
   },
   /*
     Ședințele făcute de fiecare persoană și banii intrați pe ele, cu parola
@@ -75,6 +83,7 @@ export const NAVIGARE: ElementNavigare[] = [
     eticheta: 'Ședințe pe persoane',
     pictograma: ChartLine,
     descriere: 'Ședințele făcute de Anda și de ceilalți, și banii intrați pe ele — cu parola statisticilor',
+    functie: 'costuri',
   },
   {
     cale: '/nomenclator',
@@ -107,7 +116,10 @@ export function esteInElement(pathname: string, element: Pick<ElementNavigare, '
   return pathname === element.cale || pathname.startsWith(`${element.cale}/`)
 }
 
-/** Elementele vizibile pentru rolul dat. */
+/** Elementele vizibile pentru rolul dat, cu comutatoarele din `@/config/functii` pornite. */
 export function navigarePentru(esteAdministrator: boolean): ElementNavigare[] {
-  return NAVIGARE.filter((element) => !element.doarAdministrator || esteAdministrator)
+  return NAVIGARE.filter(
+    (element) =>
+      (!element.doarAdministrator || esteAdministrator) && (!element.functie || functii[element.functie]),
+  )
 }

@@ -3,6 +3,7 @@ import { beforeAll, beforeEach } from 'vitest'
 import { configureazaLatenta } from '@/api/memory/client'
 import { populeaza } from '@/api/memory/seed'
 import { stergeTokenuri } from '@/api/session'
+import { seteazaFunctii } from '@/config/functii'
 
 /*
   Pregătirea mediului de test.
@@ -80,4 +81,8 @@ beforeAll(() => {
 beforeEach(() => {
   populeaza()
   stergeTokenuri()
+  // Suita pornește cu aplicația COMPLETĂ: fork-ul livrat e simplu (fără bani și
+  // abonamente), dar regulile pe care le ascunde rămân și rămân testate. Un test
+  // al variantei simple își oprește comutatoarele singur, în propriul beforeEach.
+  seteazaFunctii({ costuri: true, tratamente: true })
 })

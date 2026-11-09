@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { ShoppingBag } from 'lucide-react'
 import { InsemnInactiv } from '@/components/insemne'
+import { functii } from '@/config/functii'
 import type { Articol, TipArticol } from '@/domain/types'
 import { formateazaDurata } from '@/lib/dates'
 import { formateazaBani } from '@/lib/money'
@@ -76,20 +77,25 @@ function coloaneArticol(tip: TipArticol, onVinde?: (a: Articol) => void): Coloan
           {articol.culoare && <PunctCuloare hex={articol.culoare} />}
           <span className="font-medium text-ink">{articol.denumire}</span>
           {/* Serviciul în mai multe ședințe: prețul de alături e al tuturor. */}
-          {articol.numar_sedinte > 1 && (
+          {functii.tratamente && articol.numar_sedinte > 1 && (
             <Badge ton="primary">{articol.numar_sedinte} ședințe</Badge>
           )}
         </span>
       ),
     },
     ...(tip === 'serviciu' ? [durata] : []),
-    {
-      cheie: 'pret_lista',
-      antet: 'Preț listă',
-      laDreapta: true,
-      className: 'w-36 whitespace-nowrap tabular-nums',
-      celula: (articol) => formateazaBani(articol.pret_lista),
-    },
+    // Fără costuri (fork-ul simplu) lista nu are prețuri.
+    ...(functii.costuri
+      ? [
+          {
+            cheie: 'pret_lista',
+            antet: 'Preț listă',
+            laDreapta: true,
+            className: 'w-36 whitespace-nowrap tabular-nums',
+            celula: (articol: Articol) => formateazaBani(articol.pret_lista),
+          },
+        ]
+      : []),
     {
       cheie: 'activ',
       antet: 'Stare',
@@ -153,9 +159,11 @@ export function ListaArticole({
             />
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <span className="text-sm font-medium text-ink tabular-nums">
-              {formateazaBani(articol.pret_lista)}
-            </span>
+            {functii.costuri && (
+              <span className="text-sm font-medium text-ink tabular-nums">
+                {formateazaBani(articol.pret_lista)}
+              </span>
+            )}
             {!articol.activ && <InsemnInactiv />}
           </div>
         </div>

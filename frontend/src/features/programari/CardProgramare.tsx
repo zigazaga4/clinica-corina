@@ -1,6 +1,7 @@
 import { Check, Clock, Layers, User, UserX } from 'lucide-react'
 import { etichetaStareProgramare } from '@/domain/labels'
 import type { ProgramareDetaliu, StareProgramare } from '@/domain/types'
+import { functii } from '@/config/functii'
 import { cn } from '@/lib/cn'
 import { formateazaInterval, formateazaOra } from '@/lib/dates'
 import { formateazaBani } from '@/lib/money'
@@ -48,8 +49,11 @@ const fundal: Record<StareProgramare, string> = {
  * oricum tăiată.
  */
 function SemnStare({ stare }: { stare: StareProgramare }) {
-  if (stare === 'onorat') return <Check className="size-3 shrink-0 text-success" aria-hidden />
-  if (stare === 'neprezentat') return <UserX className="size-3 shrink-0 text-danger" aria-hidden />
+  // Culoarea textului chipului, nu verde/roșu: pe un chip plin verde sau roșu
+  // (culoarea unei proceduri) semnul colorat ar dispărea în fundal. Forma —
+  // bifă sau om tăiat — spune oricum starea.
+  if (stare === 'onorat') return <Check className="size-3 shrink-0" strokeWidth={3} aria-hidden />
+  if (stare === 'neprezentat') return <UserX className="size-3 shrink-0" strokeWidth={3} aria-hidden />
   return null
 }
 
@@ -62,6 +66,7 @@ export function ChipProgramare({
   servicii = [programare],
   onClick,
   compact = false,
+  ampla = false,
   className,
   style,
 }: {
@@ -71,6 +76,8 @@ export function ChipProgramare({
   onClick: (programare: ProgramareDetaliu) => void
   /** Sub 40px înălțime se afișează doar ora și clientul, pe un rând. */
   compact?: boolean
+  /** Peste ~50px înălțime (o oră sau mai mult): trei rânduri — interval, client, procedură. */
+  ampla?: boolean
   className?: string
   style?: React.CSSProperties
 }) {
@@ -107,16 +114,25 @@ export function ChipProgramare({
       >
         {culoare && <SemnStare stare={programare.stare} />}
         <span className="truncate">
-          {formateazaOra(programare.incepe_la)} {programare.client_nume}
+          {/* Ca în softul vechi, intervalul întreg: „14:30–15:30”. Pe chipul
+              scund încape doar ora de început, lângă nume. */}
+          {formateazaOra(programare.incepe_la)}
+          {ampla && `–${formateazaOra(programare.se_termina_la)}`}
+          {!ampla && ` ${programare.client_nume}`}
         </span>
       </span>
+      {/* Pe chipul înalt, numele clientului are rândul lui: într-o coloană de
+          săptămână, „14:30–15:30 Maria Popescu” pe un singur rând ar tăia numele. */}
+      {ampla && (
+        <span className="truncate text-[11px] leading-tight font-semibold">{programare.client_nume}</span>
+      )}
       {!compact && (
         <span className="truncate text-[11px] leading-tight opacity-80">
           {/* „3/8”: a câta ședință a tratamentului e — recepția vede din grilă
               cât mai are clienta de venit. Lângă serviciul ei: o programare
               poate avea ședințe din două tratamente deodată. */}
           {servicii.map((serviciu, i) => {
-            const marcaj = marcajSedinta(serviciu)
+            const marcaj = functii.tratamente ? marcajSedinta(serviciu) : null
             return (
               <span key={serviciu.id}>
                 {i > 0 && ' + '}
@@ -188,7 +204,7 @@ export function RandProgramare({
         </span>
         <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-ink-faint">
           {servicii.map((serviciu) => {
-            const eticheta = etichetaSedinta(serviciu)
+            const eticheta = functii.tratamente ? etichetaSedinta(serviciu) : null
             if (!eticheta) return null
             return (
               <span key={serviciu.id} className="inline-flex items-center gap-1 font-medium text-primary-600">
@@ -228,14 +244,16 @@ export function RandProgramare({
       */}
       <span className="flex shrink-0 flex-col items-end gap-1 self-start">
         <InsemnStareProgramare stare={programare.stare} />
-        <span
-          className={cn(
-            'text-[12px] text-ink-soft tabular-nums',
-            anulata && 'text-ink-faint line-through',
-          )}
-        >
-          {formateazaBani(pretulProgramarii(servicii))}
-        </span>
+        {functii.costuri && (
+          <span
+            className={cn(
+              'text-[12px] text-ink-soft tabular-nums',
+              anulata && 'text-ink-faint line-through',
+            )}
+          >
+            {formateazaBani(pretulProgramarii(servicii))}
+          </span>
+        )}
       </span>
     </button>
   )

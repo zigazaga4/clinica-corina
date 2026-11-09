@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import type { Articol, ProgramareDetaliu, Uuid } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { PunctCuloare } from '@/ui'
-import { culoareAleasa, useCuloarePersoana, type CuloarePersoana } from './culoriExecutanti'
+import { culoarePlina, useCuloarePersoana, type CuloarePersoana } from './culoriExecutanti'
 
 /**
  * Ce procedură este, citit din culoare (cerința clinicii, 9 nov. 2026).
@@ -36,7 +36,7 @@ export function FurnizorCuloriProceduri({
   const harta = useMemo(() => {
     const m = new Map<Uuid, CuloarePersoana>()
     for (const articol of articole ?? []) {
-      if (articol.tip === 'serviciu' && articol.culoare) m.set(articol.id, culoareAleasa(articol.culoare))
+      if (articol.tip === 'serviciu' && articol.culoare) m.set(articol.id, culoarePlina(articol.culoare))
     }
     return m
   }, [articole])

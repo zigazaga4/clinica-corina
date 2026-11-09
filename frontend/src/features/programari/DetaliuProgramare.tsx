@@ -12,6 +12,7 @@ import {
 import { Link } from 'react-router-dom'
 import { useIncaseaza, useSchimbaStareProgramare, useServiciileProgramarii } from '@/app/queries'
 import { InsemnPlata, InsemnStareProgramare } from '@/components/insemne'
+import { functii } from '@/config/functii'
 import { etichetaSedinta } from '@/features/tratamente/ProgresTratament'
 import {
   STARE_PROGRAMARE,
@@ -175,7 +176,7 @@ export function DetaliuProgramare({
                 <li key={serviciu.id} className="flex items-start justify-between gap-3 px-3 py-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-ink">{serviciu.articol_denumire}</p>
-                    {serviciu.tratament_id !== null && (
+                    {functii.tratamente && serviciu.tratament_id !== null && (
                       <Link
                         to={`/tratamente?tratament=${serviciu.tratament_id}`}
                         onClick={onInchide}
@@ -187,23 +188,25 @@ export function DetaliuProgramare({
                       </Link>
                     )}
                     {/* Când au intrat banii — plata se face adesea la altă dată. */}
-                    {serviciu.achitat_la !== null && (
+                    {functii.costuri && serviciu.achitat_la !== null && (
                       <p className="mt-0.5 text-[12px] text-ink-faint tabular-nums">
                         Încasat pe {formateazaData(serviciu.achitat_la)}
                       </p>
                     )}
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <span className="text-sm font-semibold text-ink tabular-nums">
-                      {formateazaBani(serviciu.pret)}
-                    </span>
-                    {esteOnorata && <InsemnPlata achitat={serviciu.achitat} />}
-                  </div>
+                  {functii.costuri && (
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="text-sm font-semibold text-ink tabular-nums">
+                        {formateazaBani(serviciu.pret)}
+                      </span>
+                      {esteOnorata && <InsemnPlata achitat={serviciu.achitat} />}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
 
-            {(maiMulte || (esteOnorata && neachitate.length > 0)) && (
+            {functii.costuri && (maiMulte || (esteOnorata && neachitate.length > 0)) && (
               <div className="flex items-center justify-between gap-3 border-t border-line bg-muted/60 px-3 py-2">
                 <p className="text-[13px] text-ink-soft">
                   {maiMulte && (
@@ -272,9 +275,10 @@ export function DetaliuProgramare({
                     varianta={stare === 'anulat' ? 'pericol' : 'secundar'}
                     disabled={schimbaStarea.isPending || incasare.isPending}
                     // „Onorat” înseamnă și bani, deci întreabă întâi dacă s-a
-                    // plătit; celelalte stări se aplică direct.
+                    // plătit; celelalte stări se aplică direct — și „onorat”,
+                    // când aplicația nu arată bani.
                     onClick={() => {
-                      if (stare === 'onorat') setConfirmaOnorarea(true)
+                      if (stare === 'onorat' && functii.costuri) setConfirmaOnorarea(true)
                       else void schimba(stare)
                     }}
                   >

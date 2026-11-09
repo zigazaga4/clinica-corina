@@ -6,6 +6,7 @@ import { useArticole } from '@/app/queries'
 import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
 import { ALTE_PRODUSE, categoriileProduselor } from '@/domain/categorii'
 import type { Articol } from '@/domain/types'
+import { functii } from '@/config/functii'
 import { contine } from '@/lib/text'
 import {
   Buton,
@@ -139,7 +140,9 @@ export function PaginaNomenclator() {
   // Fila unei categorii golite între timp (ultimul ei produs mutat în alta)
   // nu mai există: ecranul se întoarce la servicii, nu rămâne pe o filă fantomă.
   const filaActiva = file.some((f) => f.valoare === fila) ? fila : FILA_SERVICII
-  const peProduse = filaActiva !== FILA_SERVICII
+  // Fără costuri (fork-ul simplu) nu există produse de vândut: Nomenclatorul e
+  // doar lista procedurilor.
+  const peProduse = functii.costuri && filaActiva !== FILA_SERVICII
   const categorieActiva = peProduse ? categoriaFilei(filaActiva) : null
   const produseleFilei = useMemo(
     () => produseFiltrate.filter((a) => a.categorie === categorieActiva),
@@ -180,7 +183,11 @@ export function PaginaNomenclator() {
     <Pagina>
       <AntetPagina
         titlu="Nomenclator"
-        descriere="Serviciile și produsele din ofertă."
+        descriere={
+          functii.costuri
+            ? 'Serviciile și produsele din ofertă.'
+            : 'Procedurile din ofertă, cu durata și culoarea lor din calendar.'
+        }
         actiuni={
           esteAdministrator || peProduse ? (
             <>
@@ -207,7 +214,8 @@ export function PaginaNomenclator() {
         }
       />
 
-      <File file={file} activa={filaActiva} onSchimba={setFila} className="mb-4" />
+      {/* O singură filă („Servicii”) n-ar alege nimic: apare doar cu produse. */}
+      {functii.costuri && <File file={file} activa={filaActiva} onSchimba={setFila} className="mb-4" />}
 
       <BaraFiltre>
         <CampCautare
@@ -250,7 +258,9 @@ export function PaginaNomenclator() {
             onDeschide={esteAdministrator ? setArticolEditat : undefined}
             stareGoala={stareGoala(
               'Niciun serviciu în nomenclator',
-              'Serviciile adăugate aici pot fi programate în calendar și vândute.',
+              functii.costuri
+                ? 'Serviciile adăugate aici pot fi programate în calendar și vândute.'
+                : 'Procedurile adăugate aici pot fi programate în calendar.',
             )}
           />
         )}
