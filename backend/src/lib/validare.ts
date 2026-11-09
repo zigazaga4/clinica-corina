@@ -79,6 +79,21 @@ function pesteNumeric(valoare: number, precizie: number, scara: number): boolean
   return Math.abs(Math.round(valoare * factor) / factor) >= 10 ** (precizie - scara)
 }
 
+/**
+ * Culoarea din calendar — a unei persoane sau a unui serviciu: #rrggbb, sau
+ * null = înapoi la cea automată (la persoane) / fără culoare (la servicii).
+ * Literele mari se aduc la mici, ca aceeași culoare să nu fie două valori.
+ */
+export function verificaCuloare(valoare: unknown): string | null {
+  // Lipsă, null sau goală = fără culoare. Lipsa contează la creare; la
+  // modificare, rutele sar peste câmpul netrimis înainte să ajungă aici.
+  if (valoare === undefined || valoare === null || valoare === '') return null
+  if (typeof valoare !== 'string' || !/^#[0-9a-f]{6}$/i.test(valoare)) {
+    throw eroareValidare('Culoarea trebuie să fie de forma #a1b2c3.', 'culoare')
+  }
+  return valoare.toLowerCase()
+}
+
 /** CHECK (pret >= 0), plus limita coloanei `numeric(10,2)`. */
 export function verificaPret(pret: number, camp = 'pret_lista'): number {
   // Infinit și NaN nu sunt prețuri negative, ci deloc prețuri: cu mesajul de

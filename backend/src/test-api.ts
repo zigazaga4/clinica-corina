@@ -363,6 +363,75 @@ async function ruleaza(): Promise<void> {
     JSON.stringify(curatat.corp))
 
   // -------------------------------------------------------------------------
+  console.log('\nCuloarea serviciilor — albastru / galben / verde în calendar')
+
+  // Inactive, ca să nu umple selectoarele bazei de test la fiecare rulare.
+  const albastru = await cere('POST', '/articole', {
+    token: admin,
+    corp: { tip: 'serviciu', denumire: 'Serviciu albastru', pret_lista: 100, durata_minute: 30, activ: false, culoare: '#3B82F6' },
+  })
+  verifica('serviciu cu culoare -> 201, culoarea se întoarce cu litere mici',
+    albastru.status === 201 && albastru.corp?.culoare === '#3b82f6', JSON.stringify(albastru.corp))
+
+  const faraCuloare = await cere('POST', '/articole', {
+    token: admin,
+    corp: { tip: 'serviciu', denumire: 'Serviciu fără culoare', pret_lista: 100, durata_minute: 30, activ: false },
+  })
+  verifica('serviciu fără culoare -> culoare null', faraCuloare.status === 201 && faraCuloare.corp?.culoare === null,
+    JSON.stringify(faraCuloare.corp))
+
+  for (const gresita of ['albastru', '#fff', '#12345g', 42]) {
+    const respinsa = await cere('POST', '/articole', {
+      token: admin,
+      corp: { tip: 'serviciu', denumire: 'Serviciu culoare greșită', pret_lista: 100, durata_minute: 30, activ: false, culoare: gresita },
+    })
+    verifica(`culoare ${JSON.stringify(gresita)} -> 400 pe „culoare”`,
+      respinsa.status === 400 && respinsa.corp?.camp === 'culoare', JSON.stringify(respinsa.corp))
+  }
+
+  const peProdus = await cere('POST', '/articole', {
+    token: admin,
+    corp: { tip: 'produs', denumire: 'Produs cu culoare', pret_lista: 10, activ: false, culoare: '#22c55e' },
+  })
+  verifica('culoare pe un produs -> 400 pe „culoare”',
+    peProdus.status === 400 && peProdus.corp?.camp === 'culoare', JSON.stringify(peProdus.corp))
+
+  const galben = await cere('PATCH', `/articole/${faraCuloare.corp?.id}`, {
+    token: admin, corp: { culoare: '#eab308' },
+  })
+  verifica('culoare pusă ulterior -> 200', galben.status === 200 && galben.corp?.culoare === '#eab308',
+    JSON.stringify(galben.corp))
+
+  const neatinsa = await cere('PATCH', `/articole/${faraCuloare.corp?.id}`, {
+    token: admin, corp: { pret_lista: 120 },
+  })
+  verifica('altă modificare nu atinge culoarea', neatinsa.status === 200 && neatinsa.corp?.culoare === '#eab308',
+    JSON.stringify(neatinsa.corp))
+
+  const vazutaDeOperator = await cere('GET', '/articole?tip=serviciu&activ=false', { token: operator })
+  verifica('recepția vede culoarea fiecărui serviciu',
+    vazutaDeOperator.corp?.find((a: any) => a.id === albastru.corp?.id)?.culoare === '#3b82f6')
+
+  const golita = await cere('PATCH', `/articole/${faraCuloare.corp?.id}`, {
+    token: admin, corp: { culoare: null },
+  })
+  verifica('culoarea golită (null) -> serviciu fără culoare',
+    golita.status === 200 && golita.corp?.culoare === null, JSON.stringify(golita.corp))
+
+  const culoarePeServiciuDevenitProdus = await cere('PATCH', `/articole/${albastru.corp?.id}`, {
+    token: admin, corp: { tip: 'produs' },
+  })
+  verifica('serviciul devenit produs își pierde culoarea',
+    culoarePeServiciuDevenitProdus.status === 200 && culoarePeServiciuDevenitProdus.corp?.culoare === null,
+    JSON.stringify(culoarePeServiciuDevenitProdus.corp))
+
+  const culoareDeLaOperator = await cere('PATCH', `/articole/${faraCuloare.corp?.id}`, {
+    token: operator, corp: { culoare: '#22c55e' },
+  })
+  verifica('culoarea unui serviciu o schimbă doar administratorul (recepție -> 403)',
+    culoareDeLaOperator.status === 403)
+
+  // -------------------------------------------------------------------------
   console.log('\nClienți')
 
   const lista = await cere('GET', '/clienti?pe_pagina=3', { token: admin })

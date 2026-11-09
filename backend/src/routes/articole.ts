@@ -16,6 +16,7 @@ import {
   ceruteText,
   numarCerut,
   textOptional,
+  verificaCuloare,
   verificaDurataArticol,
   verificaNumarSedinte,
   verificaPret,
@@ -27,7 +28,22 @@ import type { Articol, TipArticol } from '../types/database.js'
 const router = Router()
 router.use(requireAuth)
 
-const CAMPURI = ['tip', 'denumire', 'durata_minute', 'pret_lista', 'activ', 'numar_sedinte', 'categorie'] as const
+const CAMPURI = [
+  'tip', 'denumire', 'durata_minute', 'pret_lista', 'activ', 'numar_sedinte', 'categorie', 'culoare',
+] as const
+
+/**
+ * CONSTRAINT articol_culoare_ck: doar serviciile au culoare — cea din calendar,
+ * #rrggbb. Lipsă sau goală = fără culoare. Ca durata și categoria, o culoare
+ * pusă pe un produs se refuză, nu se curăță în tăcere.
+ */
+function culoarePentru(tip: TipArticol, trimisa: unknown): string | null {
+  const culoare = verificaCuloare(trimisa)
+  if (culoare !== null && tip !== 'serviciu') {
+    throw eroareValidare('Doar serviciile au culoare.', 'culoare')
+  }
+  return culoare
+}
 
 /**
  * CONSTRAINT articol_categorie_ck: doar produsele au categorie — lista de
@@ -108,6 +124,7 @@ router.post('/', requireRole('administrator'), ruta(async (req: AuthRequest, res
       activ: corp['activ'] === undefined ? true : Boolean(corp['activ']),
       numar_sedinte,
       categorie: await categoriaPentru(ex, tip, corp['categorie']),
+      culoare: culoarePentru(tip, corp['culoare']),
     })
     const { rows } = await ex.query<Articol>(q.text, q.values)
     const rand = rows[0]!
@@ -167,6 +184,13 @@ router.patch('/:id', requireRole('administrator'), ruta(async (req: AuthRequest,
       date['categorie'] = await categoriaPentru(ex, tip, date['categorie'])
     } else if (tip !== 'produs') {
       date['categorie'] = null
+    }
+    // Și culoarea: un serviciu devenit produs o pierde; trimisă explicit pe un
+    // produs, se refuză.
+    if (date['culoare'] !== undefined) {
+      date['culoare'] = culoarePentru(tip, date['culoare'])
+    } else if (tip !== 'serviciu') {
+      date['culoare'] = null
     }
     if (date['denumire'] !== undefined) {
       date['denumire'] = ceruteText(date['denumire'], 'denumire', 'Denumirea')

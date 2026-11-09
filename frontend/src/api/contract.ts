@@ -791,6 +791,12 @@ export interface DateArticolNou {
    * existentă, serverul o lipește de aceea.
    */
   categorie?: string | null
+  /**
+   * Culoarea serviciului în calendar, #rrggbb. Doar la servicii; refuzată pe
+   * produse (articol_culoare_ck). Goală sau null = fără culoare. Literele mari
+   * se aduc la mici.
+   */
+  culoare?: string | null
 }
 
 export type DateArticolModificat = Partial<DateArticolNou>

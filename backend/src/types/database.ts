@@ -66,6 +66,8 @@ export interface Articol {
   numar_sedinte: number
   /** Lista de prețuri a produsului („Produse clienți”); NULL = fără. Serviciile: NULL. */
   categorie: string | null
+  /** Culoarea serviciului în calendar, #rrggbb; NULL = fără. Produsele: NULL. */
+  culoare: string | null
 }
 
 export interface Client {

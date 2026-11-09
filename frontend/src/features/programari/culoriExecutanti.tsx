@@ -125,7 +125,7 @@ const BEJ: CuloarePersoana = {
  * s-ar citi, așa că se amestecă cu cerneala temei — închis pe fundal deschis,
  * deschis pe fundal întunecat.
  */
-function culoareAleasa(hex: string): CuloarePersoana {
+export function culoareAleasa(hex: string): CuloarePersoana {
   return {
     fundal: 'bg-(--persoana)',
     text: 'text-(--persoana-text)',

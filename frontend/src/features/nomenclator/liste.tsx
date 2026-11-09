@@ -4,7 +4,7 @@ import { InsemnInactiv } from '@/components/insemne'
 import type { Articol, TipArticol } from '@/domain/types'
 import { formateazaDurata } from '@/lib/dates'
 import { formateazaBani } from '@/lib/money'
-import { Badge, ButonRand, CelulaDubla, Tabel, type Coloana } from '@/ui'
+import { Badge, ButonRand, CelulaDubla, PunctCuloare, Tabel, type Coloana } from '@/ui'
 
 /*
   Listele nomenclatorului.
@@ -73,6 +73,7 @@ function coloaneArticol(tip: TipArticol, onVinde?: (a: Articol) => void): Coloan
       antet: 'Denumire',
       celula: (articol) => (
         <span className="inline-flex flex-wrap items-center gap-2">
+          {articol.culoare && <PunctCuloare hex={articol.culoare} />}
           <span className="font-medium text-ink">{articol.denumire}</span>
           {/* Serviciul în mai multe ședințe: prețul de alături e al tuturor. */}
           {articol.numar_sedinte > 1 && (
@@ -141,13 +142,16 @@ export function ListaArticole({
       stareGoala={stareGoala}
       randMobil={(articol) => (
         <div className="tinta-atingere flex items-center justify-between gap-3">
-          <CelulaDubla
-            principal={articol.denumire}
-            // Denumirile din listele de prețuri sunt lungi și se deosebesc la
-            // capăt („… 250 ml” / „… 50 ml”): tăiate, ar arăta la fel.
-            intreg
-            secundar={tip === 'serviciu' ? formateazaDurata(articol.durata_minute) : undefined}
-          />
+          <div className="flex min-w-0 items-center gap-2">
+            {articol.culoare && <PunctCuloare hex={articol.culoare} />}
+            <CelulaDubla
+              principal={articol.denumire}
+              // Denumirile din listele de prețuri sunt lungi și se deosebesc la
+              // capăt („… 250 ml” / „… 50 ml”): tăiate, ar arăta la fel.
+              intreg
+              secundar={tip === 'serviciu' ? formateazaDurata(articol.durata_minute) : undefined}
+            />
+          </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <span className="text-sm font-medium text-ink tabular-nums">
               {formateazaBani(articol.pret_lista)}

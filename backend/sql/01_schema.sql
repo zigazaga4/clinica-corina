@@ -158,6 +158,10 @@ CREATE TABLE IF NOT EXISTS articol (
   -- serverul o lipește de una existentă care diferă doar prin majuscule.
   -- NULL = fără categorie. Serviciile nu au (articol_categorie_ck).
   categorie      text,
+  -- Culoarea serviciului în calendar (#rrggbb, litere mici), ca procedurile să
+  -- se deosebească dintr-o privire. NULL = fără culoare. Produsele nu au
+  -- (articol_culoare_ck). ULTIMA coloană, ca migrația să dea același tabel.
+  culoare        text,
 
   CONSTRAINT articol_durata_ck CHECK (
     (tip = 'serviciu' AND durata_minute IS NOT NULL AND durata_minute > 0)
@@ -171,6 +175,10 @@ CREATE TABLE IF NOT EXISTS articol (
 
   CONSTRAINT articol_categorie_ck CHECK (
     categorie IS NULL OR (tip = 'produs' AND btrim(categorie) <> '')
+  ),
+
+  CONSTRAINT articol_culoare_ck CHECK (
+    culoare IS NULL OR (tip = 'serviciu' AND culoare ~ '^#[0-9a-f]{6}$')
   ),
 
   -- Ținta cheii străine compuse din `programare`. Redundantă ca unicitate

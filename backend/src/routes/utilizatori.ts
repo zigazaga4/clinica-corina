@@ -12,7 +12,7 @@ import pool, { alege, multe, tranzactie, unu, type Executor } from '../lib/db.js
 import { eroareValidare, ruta } from '../lib/erori.js'
 import { boolDin, Conditii, textDin } from '../lib/filtre.js'
 import { adresaCererii, diferenta, scrieJurnal } from '../lib/jurnal.js'
-import { ceruteText, verificaFormatEmail, verificaParola } from '../lib/validare.js'
+import { ceruteText, verificaCuloare, verificaFormatEmail, verificaParola } from '../lib/validare.js'
 import { requireAuth, requireRole, AuthRequest, cont } from '../middleware/auth.js'
 import type { RolUtilizator, UtilizatorPublic } from '../types/database.js'
 
@@ -25,18 +25,6 @@ const COLOANE_CONT = `id, nume, email, rol, activ, ultima_autentificare, creat_l
 const SELECT_CONT = `SELECT ${COLOANE_CONT} FROM utilizator`
 
 const CAMPURI = ['nume', 'email', 'rol', 'activ', 'culoare'] as const
-
-/**
- * Culoarea din calendar: #rrggbb, sau null = înapoi la cea automată.
- * Literele mari se aduc la mici, ca aceeași culoare să nu fie două valori.
- */
-function verificaCuloare(valoare: unknown): string | null {
-  if (valoare === null || valoare === '') return null
-  if (typeof valoare !== 'string' || !/^#[0-9a-f]{6}$/i.test(valoare)) {
-    throw eroareValidare('Culoarea trebuie să fie de forma #a1b2c3.', 'culoare')
-  }
-  return valoare.toLowerCase()
-}
 
 function verificaRol(valoare: unknown): RolUtilizator {
   if (valoare !== 'administrator' && valoare !== 'utilizator') {

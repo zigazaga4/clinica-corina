@@ -259,6 +259,7 @@ export function populeaza(): void {
       actualizat_la: creat_la,
       numar_sedinte: s.sedinte ?? 1,
       categorie: null,
+      culoare: null,
     }
     magazin.articol.set(rand.id, rand)
     return rand
@@ -276,6 +277,7 @@ export function populeaza(): void {
       actualizat_la: creat_la,
       numar_sedinte: 1,
       categorie: p.categorie ?? null,
+      culoare: null,
     }
     magazin.articol.set(rand.id, rand)
     return rand

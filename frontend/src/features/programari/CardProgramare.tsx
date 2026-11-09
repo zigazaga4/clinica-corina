@@ -7,6 +7,7 @@ import { formateazaBani } from '@/lib/money'
 import { InsemnStareProgramare } from '@/components/insemne'
 import { etichetaSedinta, marcajSedinta } from '@/features/tratamente/ProgresTratament'
 import { useCuloarePersoana } from './culoriExecutanti'
+import { PunctProcedura, useCuloareProgramarii } from './culoriProceduri'
 import { denumireaServiciilor, pretulProgramarii } from './vizite'
 
 /** Primul cuvânt din nume — tot ce încape pe un chip de 30 de minute. */
@@ -74,7 +75,8 @@ export function ChipProgramare({
   style?: React.CSSProperties
 }) {
   const anulata = programare.stare === 'anulat'
-  const culoare = useCuloarePersoana(programare.executant_id)
+  // Culoarea procedurii bate culoarea persoanei (cerința clinicii, 9 nov. 2026).
+  const culoare = useCuloareProgramarii(programare, servicii)
 
   return (
     <button
@@ -118,6 +120,9 @@ export function ChipProgramare({
             return (
               <span key={serviciu.id}>
                 {i > 0 && ' + '}
+                {/* Chipul are o singură culoare; cu mai multe proceduri,
+                    fiecare își poartă punctul. */}
+                {servicii.length > 1 && <PunctProcedura articolId={serviciu.articol_id} className="mr-1" />}
                 {marcaj && <span className="font-semibold">{marcaj} · </span>}
                 {serviciu.articol_denumire}
               </span>
@@ -172,7 +177,14 @@ export function RandProgramare({
           {programare.client_nume}
         </span>
         <span className="mt-0.5 block truncate text-[12px] text-ink-soft">
-          {servicii.map((s) => s.articol_denumire).join(' + ')}
+          {/* Punctul procedurii: pe listă, culoarea nu acoperă tot rândul. */}
+          {servicii.map((s, i) => (
+            <span key={s.id}>
+              {i > 0 && ' + '}
+              <PunctProcedura articolId={s.articol_id} className="mr-1.5 align-middle" />
+              {s.articol_denumire}
+            </span>
+          ))}
         </span>
         <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-ink-faint">
           {servicii.map((serviciu) => {

@@ -416,6 +416,54 @@ describe('articol_categorie_ck — listele de prețuri ale produselor', () => {
   })
 })
 
+describe('articol_culoare_ck — culoarea serviciilor în calendar', () => {
+  beforeEach(async () => {
+    await autentificaCa(ADMIN)
+  })
+
+  const serviciuNou = (culoare?: string | null) =>
+    api.articole.create({
+      tip: 'serviciu', denumire: 'Serviciu colorat', pret_lista: 100, durata_minute: 30, culoare,
+    })
+
+  it('serviciul primește o culoare #rrggbb, adusă la litere mici; fără culoare = null', async () => {
+    expect((await serviciuNou('#3B82F6')).culoare).toBe('#3b82f6')
+    expect((await serviciuNou()).culoare).toBeNull()
+    expect((await serviciuNou('')).culoare).toBeNull()
+  })
+
+  it('refuză orice altceva decât #rrggbb, pe câmpul „culoare”', async () => {
+    for (const gresita of ['albastru', '#fff', '#12345g', 'rgb(0,0,0)']) {
+      const eroare = await serviciuNou(gresita).catch((e) => e)
+      expect(esteEroareApi(eroare) && eroare.camp, gresita).toBe('culoare')
+    }
+  })
+
+  it('refuză culoarea pe un produs, și la creare, și la modificare', async () => {
+    const laCreare = await api.articole
+      .create({ tip: 'produs', denumire: 'Cremă', pret_lista: 10, culoare: '#22c55e' })
+      .catch((e) => e)
+    expect(esteEroareApi(laCreare) && laCreare.camp).toBe('culoare')
+
+    const produs = await api.articole.create({ tip: 'produs', denumire: 'Cremă', pret_lista: 10 })
+    const laModificare = await api.articole.update(produs.id, { culoare: '#22c55e' }).catch((e) => e)
+    expect(esteEroareApi(laModificare) && laModificare.camp).toBe('culoare')
+  })
+
+  it('se schimbă, se golește, și nu se atinge la altă modificare', async () => {
+    const serviciu = await serviciuNou('#eab308')
+    expect((await api.articole.update(serviciu.id, { pret_lista: 120 })).culoare).toBe('#eab308')
+    expect((await api.articole.update(serviciu.id, { culoare: '#22C55E' })).culoare).toBe('#22c55e')
+    expect((await api.articole.update(serviciu.id, { culoare: null })).culoare).toBeNull()
+  })
+
+  it('serviciul devenit produs își pierde culoarea', async () => {
+    const serviciu = await serviciuNou('#3b82f6')
+    const dupa = await api.articole.update(serviciu.id, { tip: 'produs' })
+    expect(dupa.culoare).toBeNull()
+  })
+})
+
 describe('DELETE /articole — doar nefolosit, ca ON DELETE RESTRICT', () => {
   beforeEach(async () => {
     await autentificaCa(ADMIN)

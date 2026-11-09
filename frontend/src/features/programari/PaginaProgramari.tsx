@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react'
 import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, StickyNote } from 'lucide-react'
-import { useNotite, useProgramLucru, useProgramari, useUtilizatori } from '@/app/queries'
+import {
+  useArticole,
+  useNotite,
+  useProgramLucru,
+  useProgramari,
+  useUtilizatori,
+} from '@/app/queries'
 import { useAutentificare } from '@/app/auth'
 import { AntetPagina, BaraFiltre, Pagina } from '@/components/Pagina'
 import { SelectorClient, SelectorUtilizator } from '@/components/selectoare'
@@ -36,6 +42,7 @@ import {
 } from '@/ui'
 import { ButonCalendar, PanouCalendar } from './CalendarMic'
 import { FurnizorCulori, LegendaCulori } from './culoriExecutanti'
+import { FurnizorCuloriProceduri } from './culoriProceduri'
 import { DetaliuNotita } from './DetaliuNotita'
 import { DetaliuProgramare } from './DetaliuProgramare'
 import { dinZiua } from './elemente'
@@ -142,6 +149,10 @@ export function PaginaProgramari() {
   // exact forma cerută de contract pentru „o singură persoană”.
   const { data: utilizatori } = useUtilizatori({ activ: true }, esteAdministrator)
 
+  // Culorile procedurilor: TOATE serviciile, active sau nu — programările vechi
+  // ale unei proceduri scoase din nomenclator își păstrează culoarea.
+  const { data: serviciiNomenclator } = useArticole({ tip: 'serviciu' })
+
   const deschideFormular = (servicii?: ProgramareDetaliu[]) => {
     setDeModificat(servicii ?? null)
     setLocAles(null)
@@ -184,6 +195,7 @@ export function PaginaProgramari() {
     // Culorile persoanelor se împart o singură dată, sus, ca fiecare chip din
     // calendar și fiecare rând din agendă să citească aceeași hartă.
     <FurnizorCulori utilizatori={utilizatori}>
+    <FurnizorCuloriProceduri articole={serviciiNomenclator}>
     <Pagina className="flex h-full flex-col">
       <AntetPagina
         titlu="Programări"
@@ -391,6 +403,7 @@ export function PaginaProgramari() {
         utilizatorInitial={executantId}
       />
     </Pagina>
+    </FurnizorCuloriProceduri>
     </FurnizorCulori>
   )
 }

@@ -24,11 +24,18 @@ import {
   Input,
   Modala,
   ModalaConfirmare,
+  PaletaCulori,
   useNotificari,
   type OptiuneCombobox,
 } from '@/ui'
 
-type CampArticol = 'denumire' | 'durata_minute' | 'pret_lista' | 'numar_sedinte' | 'categorie'
+type CampArticol =
+  | 'denumire'
+  | 'durata_minute'
+  | 'pret_lista'
+  | 'numar_sedinte'
+  | 'categorie'
+  | 'culoare'
 
 /**
  * Listele de prețuri cerute de clinică, propuse și înainte de primul produs
@@ -84,6 +91,8 @@ export function FormularArticol({
   const [categorie, setCategorie] = useState<string | null>(
     articol ? articol.categorie : categorieInitiala,
   )
+  // Culoarea din calendar — doar a serviciilor (articol_culoare_ck).
+  const [culoare, setCuloare] = useState<string | null>(articol?.culoare ?? null)
 
   const seTrimite = creeaza.isPending || modifica.isPending || sterge.isPending
 
@@ -107,8 +116,11 @@ export function FormularArticol({
     if (nou === 'produs') {
       setDurata('')
       setNumarSedinte('1')
+      // Culoarea din calendar e și ea doar a serviciilor.
+      setCuloare(null)
       erori.setCamp('durata_minute', null)
       erori.setCamp('numar_sedinte', null)
+      erori.setCamp('culoare', null)
     } else {
       // Și invers: categoria este doar a produselor (articol_categorie_ck).
       setCategorie(null)
@@ -168,6 +180,7 @@ export function FormularArticol({
       activ,
       numar_sedinte: tip === 'serviciu' ? (sedinteNumar ?? 1) : 1,
       categorie: tip === 'produs' ? categorie : null,
+      culoare: tip === 'serviciu' ? culoare : null,
     }
 
     try {
@@ -357,6 +370,30 @@ export function FormularArticol({
                 eroare={erori.peCamp.numar_sedinte}
                 ajutor="1 = o singură venire. Peste 1, serviciul se face ca tratament, în mai multe programări."
               />
+            )}
+
+            {/*
+              Culoarea procedurii în calendar (cerința clinicii, 9 nov. 2026):
+              programările acestui serviciu se văd în culoarea aleasă, ca să
+              se deosebească dintr-o privire.
+            */}
+            {tip === 'serviciu' && (
+              <PeToataLatimea>
+                <Camp
+                  eticheta="Culoare în calendar"
+                  ajutor="Programările acestui serviciu apar în calendar în culoarea aleasă. Fără culoare, programarea ia culoarea persoanei."
+                  eroare={erori.peCamp.culoare}
+                >
+                  {() => (
+                    <PaletaCulori
+                      eticheta="Culoarea serviciului în calendar"
+                      valoare={culoare}
+                      onSchimba={setCuloare}
+                      disabled={seTrimite}
+                    />
+                  )}
+                </Camp>
+              </PeToataLatimea>
             )}
 
             {/*

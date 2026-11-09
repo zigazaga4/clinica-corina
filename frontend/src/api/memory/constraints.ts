@@ -101,6 +101,20 @@ export function verificaDurataArticol(tip: TipArticol, durata_minute: number | n
   }
 }
 
+/**
+ * Culoarea din calendar — a unei persoane sau a unui serviciu: #rrggbb cu
+ * litere mici, sau null (gol sau lipsă). Ca pe server, `verificaCuloare` din
+ * `validare.ts`: literele mari se aduc la mici, ca aceeași culoare să nu fie
+ * două valori.
+ */
+export function verificaCuloare(valoare: string | null | undefined): string | null {
+  if (valoare === null || valoare === undefined || valoare === '') return null
+  if (!/^#[0-9a-f]{6}$/i.test(valoare)) {
+    throw eroareValidare('Culoarea trebuie să fie de forma #a1b2c3.', 'culoare')
+  }
+  return valoare.toLowerCase()
+}
+
 /** CHECK (pret_lista >= 0) */
 export function verificaPret(pret: number, camp = 'pret_lista'): void {
   if (!Number.isFinite(pret) || pret < 0) {

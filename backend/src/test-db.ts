@@ -76,6 +76,8 @@ async function ruleaza(): Promise<void> {
     'cheltuiala_data_idx',
     // Semnul migrației 2026-10-04: fără ea, produsele n-au liste de prețuri.
     'articol_categorie_ck',
+    // Semnul migrației 2026-11-09: fără ea, serviciile n-au culoare în calendar.
+    'articol_culoare_ck',
     // Semnul migrației 2026-10-08: fără ea, abonamentele nu țin minte reducerea.
     'tratament_pret_lista_ck',
     // Semnul migrației 2026-11-03: fără el, abonamentele nu pot primi avans.

@@ -111,6 +111,7 @@ import {
   textOptional,
   verificaArticolProgramabil,
   verificaCantitate,
+  verificaCuloare,
   verificaDenumirePunctUnica,
   verificaDurataArticol,
   verificaEmailUnic,
@@ -333,6 +334,16 @@ function categoriaArticolului(tip: TipArticol, trimisa: string | null | undefine
   if (categorie === '') return null
   if (tip !== 'produs') throw eroareValidare('Doar produsele au categorie.', 'categorie')
   return categoriaFolosita(magazin.articol.values(), categorie)
+}
+
+/**
+ * CONSTRAINT articol_culoare_ck: doar serviciile au culoare. Lipsă sau goală
+ * = fără; pusă pe un produs se refuză, ca durata și categoria.
+ */
+function culoareaArticolului(tip: TipArticol, trimisa: string | null | undefined): string | null {
+  const culoare = verificaCuloare(trimisa)
+  if (culoare !== null && tip !== 'serviciu') throw eroareValidare('Doar serviciile au culoare.', 'culoare')
+  return culoare
 }
 
 // ---------------------------------------------------------------------------
@@ -2306,6 +2317,7 @@ export function creeazaApiInMemorie(): ApiClient {
           actualizat_la: acum(),
           numar_sedinte,
           categorie: categoriaArticolului(date.tip, date.categorie),
+          culoare: culoareaArticolului(date.tip, date.culoare),
         }
         magazin.articol.set(rand.id, rand)
 
@@ -2353,9 +2365,16 @@ export function creeazaApiInMemorie(): ApiClient {
           date.categorie !== undefined
             ? categoriaArticolului(tip, date.categorie)
             : tip === 'produs' ? rand.categorie : null
+        // Și culoarea: un serviciu devenit produs o pierde; trimisă explicit pe
+        // un produs, se refuză.
+        const culoare =
+          date.culoare !== undefined
+            ? culoareaArticolului(tip, date.culoare)
+            : tip === 'serviciu' ? rand.culoare : null
 
         rand.tip = tip
         rand.categorie = categorie
+        rand.culoare = culoare
         rand.durata_minute = durata ?? null
         rand.numar_sedinte = numar_sedinte
         if (date.denumire !== undefined) {
@@ -2553,11 +2572,7 @@ export function creeazaApiInMemorie(): ApiClient {
         }
         if (date.nume !== undefined) rand.nume = ceruteText(date.nume, 'nume', 'Numele')
         // Culoarea din calendar, ca pe server: #rrggbb cu litere mici, sau null.
-        if (date.culoare !== undefined) {
-          if (date.culoare === null || date.culoare === '') rand.culoare = null
-          else if (/^#[0-9a-f]{6}$/i.test(date.culoare)) rand.culoare = date.culoare.toLowerCase()
-          else throw eroareValidare('Culoarea trebuie să fie de forma #a1b2c3.', 'culoare')
-        }
+        if (date.culoare !== undefined) rand.culoare = verificaCuloare(date.culoare)
 
         // Un administrator care își retrage singur rolul sau își dezactivează
         // contul ar rămâne blocat afară, iar clinica ar putea rămâne fără

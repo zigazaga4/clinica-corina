@@ -322,6 +322,85 @@ it('administrator: produsul vândut nu se șterge — se dezactivează și dispa
   await waitFor(() => expect(randurileTabelului().join(' ')).toMatch(/Cremă vândută/))
 })
 
+it('administrator: alege culoarea unui serviciu — albastru, galben, verde — și o schimbă sau o scoate', async () => {
+  await autentifica('admin@clinica.ro')
+  randeaza(<PaginaNomenclator />)
+  await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBeGreaterThan(1))
+
+  // Serviciu nou, albastru.
+  fireEvent.click(screen.getByRole('button', { name: /Serviciu nou/ }))
+  let fereastra = within(document.querySelector('dialog') as HTMLElement)
+  const paleta = fereastra.getByRole('group', { name: 'Culoarea serviciului în calendar' })
+  // Cele trei culori cerute de clinică, pe nume, plus „fără culoare”.
+  for (const nume of ['Fără culoare', 'Albastru', 'Galben', 'Verde']) {
+    expect(within(paleta).getByRole('button', { name: nume })).toBeInTheDocument()
+  }
+  // Un serviciu nou pornește fără culoare.
+  expect(within(paleta).getByRole('button', { name: 'Fără culoare' })).toHaveAttribute('aria-pressed', 'true')
+
+  fireEvent.change(fereastra.getByLabelText(/Denumire/), { target: { value: 'Epilare colorată' } })
+  fireEvent.change(fereastra.getByLabelText(/Durată/), { target: { value: '30' } })
+  fireEvent.change(fereastra.getByLabelText(/Preț listă/), { target: { value: '100' } })
+  fireEvent.click(within(paleta).getByRole('button', { name: 'Albastru' }))
+  expect(within(paleta).getByRole('button', { name: 'Albastru' })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(fereastra.getByRole('button', { name: 'Adaugă' }))
+
+  await waitFor(async () => {
+    expect((await api.articole.list({ q: 'Epilare colorată' }))[0]?.culoare).toBe('#3b82f6')
+  })
+  // Punctul albastru stă lângă denumire, în lista Nomenclatorului.
+  await waitFor(() => {
+    const rand = [...document.querySelectorAll('tbody tr')].find((tr) => tr.textContent?.includes('Epilare colorată'))
+    expect(rand?.querySelector('span[aria-hidden][style*="background-color"]')).not.toBeNull()
+  })
+
+  // Se redeschide: culoarea salvată e cea apăsată; o schimbă pe galben, apoi o scoate.
+  fereastra = await deschideArticolul('Epilare colorată')
+  let paletaSalvata = fereastra.getByRole('group', { name: 'Culoarea serviciului în calendar' })
+  expect(within(paletaSalvata).getByRole('button', { name: 'Albastru' })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(within(paletaSalvata).getByRole('button', { name: 'Galben' }))
+  fireEvent.click(fereastra.getByRole('button', { name: 'Salvează' }))
+  await waitFor(async () => {
+    expect((await api.articole.list({ q: 'Epilare colorată' }))[0]?.culoare).toBe('#eab308')
+  })
+
+  fereastra = await deschideArticolul('Epilare colorată')
+  paletaSalvata = fereastra.getByRole('group', { name: 'Culoarea serviciului în calendar' })
+  fireEvent.click(within(paletaSalvata).getByRole('button', { name: 'Fără culoare' }))
+  fireEvent.click(fereastra.getByRole('button', { name: 'Salvează' }))
+  await waitFor(async () => {
+    expect((await api.articole.list({ q: 'Epilare colorată' }))[0]?.culoare).toBeNull()
+  })
+})
+
+it('produsele nu au culoare: paleta dispare la comutarea pe produs, iar culoarea aleasă nu pleacă', async () => {
+  await autentifica('admin@clinica.ro')
+  randeaza(<PaginaNomenclator />)
+  await waitFor(() => expect(document.querySelectorAll('tbody tr').length).toBeGreaterThan(1))
+
+  fireEvent.click(screen.getByRole('button', { name: /Serviciu nou/ }))
+  const fereastra = within(document.querySelector('dialog') as HTMLElement)
+  fireEvent.click(
+    within(fereastra.getByRole('group', { name: 'Culoarea serviciului în calendar' })).getByRole('button', {
+      name: 'Verde',
+    }),
+  )
+
+  fireEvent.click(fereastra.getByRole('button', { name: 'Produs' }))
+  expect(fereastra.queryByRole('group', { name: 'Culoarea serviciului în calendar' })).toBeNull()
+
+  fireEvent.change(fereastra.getByLabelText(/Denumire/), { target: { value: 'Cremă fără culoare' } })
+  fireEvent.change(fereastra.getByLabelText(/Preț listă/), { target: { value: '20' } })
+  fireEvent.click(fereastra.getByRole('button', { name: 'Adaugă' }))
+
+  // Verdele ales pe când era serviciu n-a ajuns pe produs (articol_culoare_ck).
+  await waitFor(async () => {
+    const lista = await api.articole.list({ q: 'Cremă fără culoare' })
+    expect(lista).toHaveLength(1)
+    expect(lista[0]?.culoare).toBeNull()
+  })
+})
+
 it('nu mai există filă de puncte de lucru', async () => {
   // Clinica are o singură locație. Testul rămâne ca regresie: dacă selectorul
   // sau fila reapar, cineva a readus un câmp pe care Beneficiarul l-a cerut scos.

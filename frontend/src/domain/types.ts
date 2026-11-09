@@ -118,6 +118,12 @@ export interface Articol {
    * Text liber; NULL = fără categorie. Serviciile n-au (articol_categorie_ck).
    */
   categorie: string | null
+  /**
+   * Culoarea serviciului în calendar, #rrggbb cu litere mici, ca procedurile să
+   * se deosebească dintr-o privire. NULL = fără culoare (programarea rămâne în
+   * culoarea persoanei). Produsele n-au (articol_culoare_ck).
+   */
+  culoare: string | null
 }
 
 /** Tabela `client` — fișa de client. */
