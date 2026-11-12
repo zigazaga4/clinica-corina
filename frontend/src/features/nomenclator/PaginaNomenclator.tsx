@@ -191,35 +191,37 @@ export function PaginaNomenclator() {
             : 'Procedurile din ofertă, cu durata și culoarea lor din calendar.'
         }
         actiuni={
-          esteAdministrator || peProduse ? (
-            <>
-              {/* Culoarea fiecărei proceduri, toate pe o listă — aceeași fereastră ca din calendar. */}
-              {esteAdministrator && !peProduse && (
-                <Buton onClick={() => setCuloriDeschise(true)}>
-                  <Palette className="size-4" />
-                  Culori
-                </Buton>
-              )}
-              {esteAdministrator && (
-                <Buton
-                  // Pe produse, vânzarea e gestul de zi cu zi; adăugarea în
-                  // nomenclator trece pe planul doi.
-                  varianta={peProduse ? 'secundar' : 'primar'}
-                  onClick={actiuneNoua.porneste}
-                >
-                  <Plus className="size-4" />
-                  <span className="hidden sm:inline">{actiuneNoua.eticheta}</span>
-                  <span className="sm:hidden">Adaugă</span>
-                </Buton>
-              )}
-              {peProduse && (
-                <Buton varianta="primar" onClick={() => setVanzareNoua(true)}>
-                  <ShoppingBag className="size-4" />
-                  Vinde produse
-                </Buton>
-              )}
-            </>
-          ) : undefined
+          <>
+            {/*
+              Culoarea fiecărei proceduri, toate pe o listă — aceeași fereastră
+              ca din calendar. Pentru ORICE cont: culoarea nu atinge prețul sau
+              durata, iar serverul o lasă și recepției (PATCH doar cu `culoare`).
+            */}
+            {!peProduse && (
+              <Buton onClick={() => setCuloriDeschise(true)}>
+                <Palette className="size-4" />
+                Culori
+              </Buton>
+            )}
+            {esteAdministrator && (
+              <Buton
+                // Pe produse, vânzarea e gestul de zi cu zi; adăugarea în
+                // nomenclator trece pe planul doi.
+                varianta={peProduse ? 'secundar' : 'primar'}
+                onClick={actiuneNoua.porneste}
+              >
+                <Plus className="size-4" />
+                <span className="hidden sm:inline">{actiuneNoua.eticheta}</span>
+                <span className="sm:hidden">Adaugă</span>
+              </Buton>
+            )}
+            {peProduse && (
+              <Buton varianta="primar" onClick={() => setVanzareNoua(true)}>
+                <ShoppingBag className="size-4" />
+                Vinde produse
+              </Buton>
+            )}
+          </>
         }
       />
 
@@ -252,7 +254,7 @@ export function PaginaNomenclator() {
         <p className="mb-3 flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-[13px] text-ink-soft">
           <Info className="mt-px size-4 shrink-0 text-ink-faint" aria-hidden />
           Nomenclatorul poate fi consultat de oricine, dar adăugarea și modificarea se fac din
-          contul de administrator.
+          contul de administrator. Culorile procedurilor le poți schimba și tu, din „Culori”.
         </p>
       )}
 
@@ -297,7 +299,7 @@ export function PaginaNomenclator() {
 
       {peProduse && <VanzariNeachitate />}
 
-      {esteAdministrator && culoriDeschise && (
+      {culoriDeschise && (
         <ModalaCuloriProceduri onInchide={() => setCuloriDeschise(false)} />
       )}
 

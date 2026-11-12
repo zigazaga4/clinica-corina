@@ -253,13 +253,24 @@ describe('culorile procedurilor', () => {
     await waitFor(() => expect(magazin.articol.get(serviciu.id)?.culoare).toBeNull(), ASTEPTARE)
   })
 
-  it('butonul „Culori” nu apare pentru un cont fără drept de modificare a nomenclatorului', async () => {
-    const operator = [...magazin.utilizator.values()].find((u) => u.rol !== 'administrator' && u.activ)
-    if (!operator) return
-    await autentifica(operator.email)
+  it('butonul „Culori” apare și pe conturile obișnuite, iar culoarea se salvează și de acolo', async () => {
+    // Recepția: cont fără drepturi de administrator (nu poate schimba prețuri).
+    const operator = await autentifica('andreea.popescu@clinica.ro')
+    expect(operator.rol).not.toBe('administrator')
+    const serviciu = [...magazin.articol.values()].find((a) => a.tip === 'serviciu' && a.activ)!
     randeaza(<PaginaProgramari />)
-    await screen.findByRole('button', { name: 'Mai multe' }, ASTEPTARE)
 
-    expect(screen.queryByRole('button', { name: /^Culori/ })).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: /^Culori/ }, ASTEPTARE))
+    const fereastra = within(await screen.findByRole('dialog', {}, ASTEPTARE))
+    const paleta = await fereastra.findByRole(
+      'group',
+      { name: `Culoarea procedurii ${serviciu.denumire}` },
+      ASTEPTARE,
+    )
+    fireEvent.click(within(paleta).getByRole('button', { name: 'Albastru' }))
+
+    await waitFor(() => expect(magazin.articol.get(serviciu.id)?.culoare).toBe('#3b82f6'), ASTEPTARE)
+    // Nicio eroare de drepturi: bulina rămâne pe culoarea aleasă.
+    expect(within(paleta).getByRole('button', { name: 'Albastru' })).toHaveAttribute('aria-pressed', 'true')
   })
 })

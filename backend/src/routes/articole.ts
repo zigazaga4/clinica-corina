@@ -3,13 +3,14 @@
  *
  * Citirea este pentru toată lumea: fără ea nu se poate face nici o programare.
  * Scrierea este a administratorului — prețul de listă din nomenclator este
- * punctul de plecare al fiecărei sume încasate.
+ * punctul de plecare al fiecărei sume încasate. Singura excepție: culoarea unui
+ * serviciu din calendar, pe care o poate schimba orice cont (v. PATCH).
  */
 
 import { Router, Response } from 'express'
 import pool, { alege, dynamicInsert, dynamicUpdate, multe, tranzactie, unu, type Executor } from '../lib/db.js'
 import { categoriaFolosita } from '../lib/categorii.js'
-import { eroareConflict, eroareValidare, ruta } from '../lib/erori.js'
+import { eroareConflict, eroareInterzis, eroareValidare, ruta } from '../lib/erori.js'
 import { boolDin, Conditii, textDin } from '../lib/filtre.js'
 import { adresaCererii, diferenta, instantaneu, scrieJurnal } from '../lib/jurnal.js'
 import {
@@ -143,11 +144,28 @@ router.post('/', requireRole('administrator'), ruta(async (req: AuthRequest, res
   res.status(201).json(articol)
 }))
 
-// PATCH /articole/:id — doar administrator
-router.patch('/:id', requireRole('administrator'), ruta(async (req: AuthRequest, res: Response) => {
+/**
+ * Cererea schimbă DOAR culoarea? Atunci o poate face orice cont.
+ *
+ * Culoarea nu atinge prețul, durata sau denumirea — nimic din ce se încasează —
+ * ci doar cum se vede serviciul în calendar, iar calendarul îl folosește toată
+ * recepția. Cererea cu orice alt câmp lângă ea rămâne a administratorului: nu
+ * se taie în tăcere câmpurile în plus, se refuză cererea întreagă.
+ */
+function doarCuloare(corp: Record<string, unknown> | undefined): boolean {
+  const chei = Object.keys(corp ?? {})
+  return chei.length > 0 && chei.every((c) => c === 'culoare')
+}
+
+// PATCH /articole/:id — administrator; orice cont, dar numai pentru `culoare`
+router.patch('/:id', ruta(async (req: AuthRequest, res: Response) => {
   const autor = cont(req)
   const id = req.params['id']!
   const corp = req.body as Record<string, unknown>
+  // Rolul se ia din bază (`cont`), nu din token — ca în `requireRole`.
+  if (autor.rol !== 'administrator' && !doarCuloare(corp)) {
+    throw eroareInterzis('Această operațiune este permisă doar administratorului.')
+  }
 
   const articol = await tranzactie(async (ex: Executor) => {
     const inainte = await unu<Articol>(

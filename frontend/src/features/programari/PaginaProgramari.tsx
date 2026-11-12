@@ -292,15 +292,13 @@ export function PaginaProgramari() {
             <>
               {/*
                 Culorile procedurilor: buton cu nume, la vedere, nu o pictogramă
-                de ghicit. Doar administratorul — PATCH /articole nu e deschis
-                celorlalți.
+                de ghicit. Pentru toate conturile — serverul lasă orice cont să
+                schimbe culoarea unui serviciu (și numai ea).
               */}
-              {esteAdministrator && (
-                <Buton onClick={() => setCuloriDeschise(true)}>
-                  <Palette className="size-4" />
-                  Culori
-                </Buton>
-              )}
+              <Buton onClick={() => setCuloriDeschise(true)}>
+                <Palette className="size-4" />
+                Culori
+              </Buton>
               {/*
                 Notița stă lângă programare, dar în plan secund: se face de câteva
                 ori pe săptămână, programarea de câteva ori pe oră.
@@ -379,12 +377,10 @@ export function PaginaProgramari() {
           <ComutatorVedere vedere={vedere} onSchimba={setVedere} scurt />
 
           <div className="ml-auto flex items-center gap-1.5">
-            {esteAdministrator && (
-              <Buton dimensiune="sm" onClick={() => setCuloriDeschise(true)}>
-                <Palette className="size-4" />
-                Culori
-              </Buton>
-            )}
+            <Buton dimensiune="sm" onClick={() => setCuloriDeschise(true)}>
+              <Palette className="size-4" />
+              Culori
+            </Buton>
             <Buton
               dimensiune="sm"
               onClick={() => setFiltreDeschise((d) => !d)}
@@ -517,7 +513,7 @@ export function PaginaProgramari() {
         utilizatorInitial={executantId}
       />
 
-      {esteAdministrator && culoriDeschise && (
+      {culoriDeschise && (
         <ModalaCuloriProceduri onInchide={() => setCuloriDeschise(false)} />
       )}
     </Pagina>

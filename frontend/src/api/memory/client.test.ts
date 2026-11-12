@@ -462,6 +462,36 @@ describe('articol_culoare_ck — culoarea serviciilor în calendar', () => {
     const dupa = await api.articole.update(serviciu.id, { tip: 'produs' })
     expect(dupa.culoare).toBeNull()
   })
+
+  describe('de la un cont obișnuit (recepție)', () => {
+    it('poate schimba culoarea unui serviciu, și numai culoarea', async () => {
+      const serviciu = await serviciuNou('#eab308')
+      await autentificaCa(OPERATOR)
+
+      expect((await api.articole.update(serviciu.id, { culoare: '#22c55e' })).culoare).toBe('#22c55e')
+      expect((await api.articole.update(serviciu.id, { culoare: null })).culoare).toBeNull()
+      // Prețul și durata au rămas neatinse.
+      expect(magazin.articol.get(serviciu.id)).toMatchObject({ pret_lista: 100, durata_minute: 30 })
+    })
+
+    it('refuză orice altă modificare, și culoarea însoțită de alt câmp (cererea întreagă)', async () => {
+      const serviciu = await serviciuNou('#eab308')
+      await autentificaCa(OPERATOR)
+
+      for (const date of [{ pret_lista: 1 }, { denumire: 'Altceva' }, { culoare: '#ef4444', pret_lista: 1 }, {}]) {
+        const eroare = await api.articole.update(serviciu.id, date).catch((e) => e)
+        expect(esteEroareApi(eroare) && eroare.cod, JSON.stringify(date)).toBe('interzis')
+      }
+      expect(magazin.articol.get(serviciu.id)).toMatchObject({ culoare: '#eab308', pret_lista: 100 })
+    })
+
+    it('rămâne refuzată culoarea pe un produs (nu e serviciu)', async () => {
+      const produs = await api.articole.create({ tip: 'produs', denumire: 'Cremă', pret_lista: 10 })
+      await autentificaCa(OPERATOR)
+      const eroare = await api.articole.update(produs.id, { culoare: '#22c55e' }).catch((e) => e)
+      expect(esteEroareApi(eroare) && eroare.camp).toBe('culoare')
+    })
+  })
 })
 
 describe('DELETE /articole — doar nefolosit, ca ON DELETE RESTRICT', () => {

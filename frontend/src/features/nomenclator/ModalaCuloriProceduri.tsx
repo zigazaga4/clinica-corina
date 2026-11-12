@@ -18,8 +18,9 @@ import { Buton, Modala, PaletaCulori, PunctCuloare, StareEroare, useNotificari }
   calendar își schimbă culoarea de îndată ce serverul confirmă, fiindcă citesc
   aceeași listă de servicii.
 
-  Ecranul e al administratorului: PATCH /articole cere acest rol, iar cine
-  deschide ferestra fără el ar primi o eroare la prima culoare aleasă.
+  Orice cont o poate folosi: PATCH /articole e rezervat administratorului,
+  dar o cerere care schimbă doar `culoare` e lăsată și recepției — culoarea nu
+  atinge prețul sau durata, ci doar felul în care se vede calendarul.
 */
 
 /**

@@ -2332,10 +2332,14 @@ export function creeazaApiInMemorie(): ApiClient {
         return { ...rand }
       },
 
-      /** PATCH /articole/:id — doar administrator */
+      /** PATCH /articole/:id — administrator; orice cont, dar doar pentru `culoare` */
       async update(id, date: DateArticolModificat): Promise<Articol> {
         await intarziere()
-        const autor = cereAdministrator()
+        // Culoarea nu atinge prețul sau durata, deci o schimbă orice cont; o
+        // cerere cu orice alt câmp lângă ea rămâne a administratorului.
+        const chei = Object.keys(date)
+        const doarCuloare = chei.length > 0 && chei.every((c) => c === 'culoare')
+        const autor = doarCuloare ? cereUtilizator() : cereAdministrator()
         const rand = ceruta(magazin.articol, id, 'Articolul')
         const inainte = { ...rand }
 

@@ -806,7 +806,10 @@ export interface ApiArticole {
   list(filtru?: FiltruArticole): Promise<Articol[]>
   /** POST /articole — doar administrator. */
   create(date: DateArticolNou): Promise<Articol>
-  /** PATCH /articole/:id — doar administrator. */
+  /**
+   * PATCH /articole/:id — administrator. Orice cont, dar doar pentru `culoare`
+   * (singurul câmp trimis); cu orice alt câmp lângă el, cererea e refuzată (403).
+   */
   update(id: Uuid, date: DateArticolModificat): Promise<Articol>
   /**
    * DELETE /articole/:id — doar administrator, doar un articol nefolosit.
