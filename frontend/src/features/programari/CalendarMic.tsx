@@ -128,12 +128,14 @@ export function ButonCalendar({
   eticheta,
   deschis,
   onComuta,
+  className,
 }: {
   valoare: Date
   /** Textul de pe buton; implicit, luna afișată. */
   eticheta?: string
   deschis: boolean
   onComuta: () => void
+  className?: string
 }) {
   return (
     <Buton
@@ -143,7 +145,7 @@ export function ButonCalendar({
       aria-controls="panou-calendar"
       // Deschis, butonul rămâne vizibil apăsat: altfel, cu panoul desfăcut sub
       // el, nu s-ar mai vedea de unde a apărut și cum se închide.
-      className={cn(deschis && 'bg-muted text-ink ring-line-strong')}
+      className={cn(deschis && 'bg-muted text-ink ring-line-strong', className)}
     >
       <CalendarDays className="size-4" />
       <span className="capitalize">{eticheta ?? formateazaLuna(valoare)}</span>

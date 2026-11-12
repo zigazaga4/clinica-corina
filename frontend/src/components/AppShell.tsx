@@ -117,9 +117,14 @@ function BaraLaterala({ elemente }: { elemente: ElementNavigare[] }) {
   )
 }
 
-function SiglaClinica() {
+function SiglaClinica({ className }: { className?: string }) {
   return (
-    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white">
+    <span
+      className={cn(
+        'flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white',
+        className,
+      )}
+    >
       <svg viewBox="0 0 24 24" fill="none" className="size-5" aria-hidden>
         <path
           d="M12 21c4.97-3.2 7.5-6.5 7.5-9.9A5.1 5.1 0 0 0 12 6.6a5.1 5.1 0 0 0-7.5 4.5c0 3.4 2.53 6.7 7.5 9.9Z"
@@ -145,14 +150,15 @@ function AntetMobil() {
   return (
     <header
       className={cn(
-        'flex items-center justify-between gap-3 border-b border-line bg-surface px-4 py-2.5',
+        // Subțire dinadins: fiecare pixel de aici e luat din lista de programări.
+        'flex items-center justify-between gap-3 border-b border-line bg-surface px-3 py-1',
         // `sticky` din același motiv ca la bara de jos, și de la aceeași margine
         // opusă: antetul și bara de file se pierd sau rămân împreună.
         'sticky top-0 z-20 pt-sigur lg:hidden',
       )}
     >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <SiglaClinica />
+      <div className="flex min-w-0 items-center gap-2">
+        <SiglaClinica className="size-7 rounded-lg" />
         <p className="truncate text-[15px] font-semibold text-ink">
           {curent?.eticheta ?? 'Gestiune Clinică'}
         </p>

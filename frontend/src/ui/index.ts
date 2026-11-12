@@ -53,6 +53,7 @@ export {
 } from './Modal'
 export { Paginare } from './Pagination'
 export { CULORI_PALETA, PaletaCulori, PunctCuloare, type CuloarePaleta } from './PaletaCulori'
+export { CampOra, oreDinPas, type CampOraProps } from './CampOra'
 export { CampCautare } from './SearchInput'
 export { IncarcarePagina, Schelet, Spinner, type SpinnerProps } from './Spinner'
 export { CelulaDubla, Tabel, type Coloana, type TabelProps } from './Table'

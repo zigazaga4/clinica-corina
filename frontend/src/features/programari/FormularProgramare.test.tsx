@@ -177,6 +177,21 @@ describe('programare nouă din locul apăsat în calendar', () => {
     ASTEPTARE)
   })
 
+  it('ora poate fi și neobișnuită: 09:43, cu durata și sfârșitul după ea', async () => {
+    await autentifica('admin@clinica.ro')
+    const formular = await deschideLa(loc(null))
+    expect(durata(formular)).toBe('60')
+
+    // „Altă oră…” schimbă lista într-un câmp de oră, iar minutul exact se scrie.
+    fireEvent.change(formular.getByLabelText(/^Ora/), { target: { value: '__alta_ora__' } })
+    fireEvent.change(formular.getByLabelText(/^Ora/), { target: { value: '09:43' } })
+
+    expect(formular.getByLabelText(/^Ora/)).toHaveValue('09:43')
+    // Durata nu se schimbă, ora de sfârșit o urmează: 09:43 + 60 min.
+    expect(durata(formular)).toBe('60')
+    expect(formular.getByText('Se termină la 10:43')).toBeInTheDocument()
+  })
+
   it('un interval tras rămâne așa și după alegerea serviciului', async () => {
     await autentifica('admin@clinica.ro')
     const formular = await deschideLa(loc(null, new Date(2026, 9, 6, 12, 0)))

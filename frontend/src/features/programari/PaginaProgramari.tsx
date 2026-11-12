@@ -1,5 +1,14 @@
 import { useMemo, useState } from 'react'
-import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, StickyNote } from 'lucide-react'
+import {
+  CalendarDays,
+  CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
+  Ellipsis,
+  Palette,
+  SlidersHorizontal,
+  StickyNote,
+} from 'lucide-react'
 import {
   useArticole,
   useNotite,
@@ -36,10 +45,14 @@ import {
   Buton,
   ButonGrup,
   Card,
+  Contor,
+  ElementMeniu,
   GrupButoane,
   IncarcarePagina,
+  Meniu,
   StareEroare,
 } from '@/ui'
+import { ModalaCuloriProceduri } from '../nomenclator/ModalaCuloriProceduri'
 import { ButonCalendar, PanouCalendar } from './CalendarMic'
 import { FurnizorCulori, LegendaCulori } from './culoriExecutanti'
 import { FurnizorCuloriProceduri } from './culoriProceduri'
@@ -99,6 +112,9 @@ export function PaginaProgramari() {
   const [notitaDeModificat, setNotitaDeModificat] = useState<NotitaDetaliu | null>(null)
   const [notitaDeVazuta, setNotitaDeVazuta] = useState<NotitaDetaliu | null>(null)
   const [programLucruDeschis, setProgramLucruDeschis] = useState(false)
+  const [culoriDeschise, setCuloriDeschise] = useState(false)
+  // Pe telefon filtrele stau strânse: bara lor ocupa jumătate din ecran.
+  const [filtreDeschise, setFiltreDeschise] = useState(false)
 
   const interval = useMemo(() => intervalPentruVedere(ancora, vedere), [ancora, vedere])
 
@@ -191,41 +207,124 @@ export function PaginaProgramari() {
     })
   }
 
+  // Câte filtre sunt puse, pentru semnul de pe butonul „Filtre” al telefonului:
+  // un filtru ascuns în panou și uitat pus ar face programările să pară dispărute.
+  const stariSchimbate = stariAscunse.size !== 1 || !stariAscunse.has('anulat')
+  const filtrePuse = Number(executantId !== null) + Number(clientId !== null) + Number(stariSchimbate)
+
+  /*
+    Filtrele, într-un singur loc: pe calculator stau în bara de sub navigare,
+    pe telefon în panoul desfăcut de butonul „Filtre”. Același conținut, fără
+    să fie scris de două ori.
+  */
+  const filtre = (
+    <>
+      {/*
+        Legenda culorilor este și filtrul rapid pe persoană: o apăsare arată
+        doar ședințele ei, încă una le aduce pe toate înapoi. Selectorul de
+        mai jos rămâne — el caută și printre conturile fără culoare.
+      */}
+      <LegendaCulori valoare={executantId} onSchimba={setExecutantId} />
+      <SelectorUtilizator
+        valoare={executantId}
+        onSchimba={setExecutantId}
+        eticheta={null}
+        placeholder="Toată clinica"
+        cuGolire
+        className="w-full sm:w-52"
+      />
+      {/*
+        Filtrul de client răspunde la „când mai vine doamna X?”, întrebarea
+        pusă cel mai des la telefon. Căutarea după nume se face pe server, în
+        selector — lista de clienți nu încape în memorie și nici pe ecran.
+      */}
+      <SelectorClient
+        valoare={clientId}
+        onSchimba={setClientId}
+        eticheta={null}
+        placeholder="Toți clienții"
+        cuGolire
+        className="w-full sm:w-52"
+      />
+
+      {/*
+        Filtrele de stare sunt „ascunde”, nu „arată”: implicit se vede tot,
+        iar o programare nu poate dispărea din calendar fără ca cineva să fi
+        apăsat explicit pe starea ei.
+      */}
+      <div className="flex items-center gap-1">
+        {STARE_PROGRAMARE.map((stare) => (
+          <button
+            key={stare}
+            type="button"
+            onClick={() => comutaStare(stare)}
+            aria-pressed={!stariAscunse.has(stare)}
+            className={cn(
+              'rounded-full px-2.5 py-1 text-[12px] font-medium ring-1 ring-inset transition-colors',
+              stariAscunse.has(stare)
+                ? 'text-ink-faint ring-line line-through'
+                : 'bg-muted text-ink ring-line',
+            )}
+          >
+            {etichetaStareProgramare[stare]}
+          </button>
+        ))}
+      </div>
+    </>
+  )
+
   return (
     // Culorile persoanelor se împart o singură dată, sus, ca fiecare chip din
     // calendar și fiecare rând din agendă să citească aceeași hartă.
     <FurnizorCulori utilizatori={utilizatori}>
     <FurnizorCuloriProceduri articole={serviciiNomenclator}>
-    <Pagina className="flex h-full flex-col">
-      <AntetPagina
-        titlu="Programări"
-        descriere={eticheteInterval(interval.zile, vedere, ancora)}
-        actiuni={
-          <>
-            {/*
-              Notița stă lângă programare, dar în plan secund: se face de câteva
-              ori pe săptămână, programarea de câteva ori pe oră.
-            */}
-            {/* Zilele pare / impare ale fiecăreia, pe lună. */}
-            <Buton onClick={() => setProgramLucruDeschis(true)} aria-label="Program de lucru">
-              <CalendarDays className="size-4" />
-              <span className="hidden sm:inline">Program de lucru</span>
-            </Buton>
-            <Buton onClick={() => deschideFormularNotita()} aria-label="Notiță nouă">
-              <StickyNote className="size-4" />
-              <span className="hidden sm:inline">Notiță</span>
-            </Buton>
-            <Buton varianta="primar" onClick={() => deschideFormular()}>
-              <CalendarPlus className="size-4" />
-              <span className="hidden sm:inline">Programare nouă</span>
-              <span className="sm:hidden">Adaugă</span>
-            </Buton>
-          </>
-        }
-      />
+    /*
+      Pe telefon marginile sunt mai mici (`p-2`) și antetul are două rânduri în
+      loc de titlu + descriere + butoane + navigare + filtre: programările
+      trebuie să ocupe ecranul, nu butoanele.
+    */
+    <Pagina className="flex h-full flex-col p-2 sm:p-4 lg:p-6">
+      {!ecranMic && (
+        <AntetPagina
+          titlu="Programări"
+          descriere={eticheteInterval(interval.zile, vedere, ancora)}
+          actiuni={
+            <>
+              {/*
+                Culorile procedurilor: buton cu nume, la vedere, nu o pictogramă
+                de ghicit. Doar administratorul — PATCH /articole nu e deschis
+                celorlalți.
+              */}
+              {esteAdministrator && (
+                <Buton onClick={() => setCuloriDeschise(true)}>
+                  <Palette className="size-4" />
+                  Culori
+                </Buton>
+              )}
+              {/*
+                Notița stă lângă programare, dar în plan secund: se face de câteva
+                ori pe săptămână, programarea de câteva ori pe oră.
+              */}
+              {/* Zilele pare / impare ale fiecăreia, pe lună. */}
+              <Buton onClick={() => setProgramLucruDeschis(true)} aria-label="Program de lucru">
+                <CalendarDays className="size-4" />
+                <span className="hidden sm:inline">Program de lucru</span>
+              </Buton>
+              <Buton onClick={() => deschideFormularNotita()} aria-label="Notiță nouă">
+                <StickyNote className="size-4" />
+                <span className="hidden sm:inline">Notiță</span>
+              </Buton>
+              <Buton varianta="primar" onClick={() => deschideFormular()}>
+                <CalendarPlus className="size-4" />
+                Programare nouă
+              </Buton>
+            </>
+          }
+        />
+      )}
 
-      {/* Navigarea în timp și comutarea vederii */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      {/* Navigarea în timp; pe telefon, aici stă și „Adaugă”, ca să încapă pe un rând. */}
+      <div className={cn('flex items-center gap-2', ecranMic ? 'mb-1.5' : 'mb-3 flex-wrap')}>
         <div className="flex items-center gap-1">
           <Buton
             dimensiune="icon-sm"
@@ -251,22 +350,82 @@ export function PaginaProgramari() {
           o lună; pentru „15 octombrie” ar fi însemnat zeci de apăsări.
           Alegerea unei zile comută și pe vederea pe zi, la fel ca apăsarea unei
           zile din grila lunii: cine caută o dată anume vrea să o vadă întreagă.
+
+          Pe telefon butonul poartă și intervalul („9 nov – 15 nov”): titlul și
+          descrierea de sub el nu mai există, ca să nu mănânce un rând.
         */}
         <ButonCalendar
           valoare={ancora}
-          eticheta={formateazaZiScurta(ancora)}
+          eticheta={
+            ecranMic ? eticheteInterval(interval.zile, vedere, ancora, true) : formateazaZiScurta(ancora)
+          }
           deschis={calendarDeschis}
           onComuta={() => setCalendarDeschis((d) => !d)}
+          {...(ecranMic ? { className: 'min-w-0 flex-1' } : {})}
         />
 
-        <GrupButoane eticheta="Vedere calendar" className="ml-auto">
-          {(['zi', 'saptamana', 'luna'] as VedereCalendar[]).map((v) => (
-            <ButonGrup key={v} activ={vedere === v} onClick={() => setVedere(v)}>
-              {v === 'zi' ? 'Zi' : v === 'saptamana' ? 'Săptămână' : 'Lună'}
-            </ButonGrup>
-          ))}
-        </GrupButoane>
+        {ecranMic ? (
+          <Buton varianta="primar" dimensiune="sm" onClick={() => deschideFormular()}>
+            <CalendarPlus className="size-4" />
+            Adaugă
+          </Buton>
+        ) : (
+          <ComutatorVedere vedere={vedere} onSchimba={setVedere} className="ml-auto" />
+        )}
       </div>
+
+      {ecranMic && (
+        <div className="mb-1.5 flex items-center gap-1.5">
+          <ComutatorVedere vedere={vedere} onSchimba={setVedere} scurt />
+
+          <div className="ml-auto flex items-center gap-1.5">
+            {esteAdministrator && (
+              <Buton dimensiune="sm" onClick={() => setCuloriDeschise(true)}>
+                <Palette className="size-4" />
+                Culori
+              </Buton>
+            )}
+            <Buton
+              dimensiune="sm"
+              onClick={() => setFiltreDeschise((d) => !d)}
+              aria-expanded={filtreDeschise}
+              aria-controls="filtre-calendar"
+              className={cn(filtreDeschise && 'bg-muted ring-line-strong')}
+            >
+              <SlidersHorizontal className="size-4" />
+              Filtre
+              {filtrePuse > 0 && <Contor valoare={filtrePuse} className="min-w-4 px-1" />}
+            </Buton>
+            {/* Acțiunile din plan secund, strânse sub un singur buton. */}
+            <Meniu
+              declansator={({ deschis, comuta }) => (
+                <Buton
+                  dimensiune="icon-sm"
+                  onClick={comuta}
+                  aria-label="Mai multe"
+                  aria-haspopup="menu"
+                  aria-expanded={deschis}
+                >
+                  <Ellipsis className="size-4" />
+                </Buton>
+              )}
+            >
+              <ElementMeniu
+                pictograma={<StickyNote className="size-4" />}
+                onClick={() => deschideFormularNotita()}
+              >
+                Notiță nouă
+              </ElementMeniu>
+              <ElementMeniu
+                pictograma={<CalendarDays className="size-4" />}
+                onClick={() => setProgramLucruDeschis(true)}
+              >
+                Program de lucru
+              </ElementMeniu>
+            </Meniu>
+          </div>
+        </div>
+      )}
 
       {calendarDeschis && (
         <PanouCalendar
@@ -279,59 +438,14 @@ export function PaginaProgramari() {
         />
       )}
 
-      <BaraFiltre>
-        {/*
-          Legenda culorilor este și filtrul rapid pe persoană: o apăsare arată
-          doar ședințele ei, încă una le aduce pe toate înapoi. Selectorul de
-          mai jos rămâne — el caută și printre conturile fără culoare.
-        */}
-        <LegendaCulori valoare={executantId} onSchimba={setExecutantId} />
-        <SelectorUtilizator
-          valoare={executantId}
-          onSchimba={setExecutantId}
-          eticheta={null}
-          placeholder="Toată clinica"
-          cuGolire
-          className="w-52"
-        />
-        {/*
-          Filtrul de client răspunde la „când mai vine doamna X?”, întrebarea
-          pusă cel mai des la telefon. Căutarea după nume se face pe server, în
-          selector — lista de clienți nu încape în memorie și nici pe ecran.
-        */}
-        <SelectorClient
-          valoare={clientId}
-          onSchimba={setClientId}
-          eticheta={null}
-          placeholder="Toți clienții"
-          cuGolire
-          className="w-52"
-        />
-
-        {/*
-          Filtrele de stare sunt „ascunde”, nu „arată”: implicit se vede tot,
-          iar o programare nu poate dispărea din calendar fără ca cineva să fi
-          apăsat explicit pe starea ei.
-        */}
-        <div className="flex items-center gap-1">
-          {STARE_PROGRAMARE.map((stare) => (
-            <button
-              key={stare}
-              type="button"
-              onClick={() => comutaStare(stare)}
-              aria-pressed={!stariAscunse.has(stare)}
-              className={cn(
-                'rounded-full px-2.5 py-1 text-[12px] font-medium ring-1 ring-inset transition-colors',
-                stariAscunse.has(stare)
-                  ? 'text-ink-faint ring-line line-through'
-                  : 'bg-muted text-ink ring-line',
-              )}
-            >
-              {etichetaStareProgramare[stare]}
-            </button>
-          ))}
-        </div>
-      </BaraFiltre>
+      {(!ecranMic || filtreDeschise) && (
+        <BaraFiltre
+          id="filtre-calendar"
+          className={cn(ecranMic && 'mb-1.5 rounded-xl bg-surface p-2 ring-1 ring-line ring-inset')}
+        >
+          {filtre}
+        </BaraFiltre>
+      )}
 
       <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {error ? (
@@ -402,6 +516,10 @@ export function PaginaProgramari() {
         lunaInitiala={ancora}
         utilizatorInitial={executantId}
       />
+
+      {esteAdministrator && culoriDeschise && (
+        <ModalaCuloriProceduri onInchide={() => setCuloriDeschise(false)} />
+      )}
     </Pagina>
     </FurnizorCuloriProceduri>
     </FurnizorCulori>
@@ -597,9 +715,59 @@ function esteAcum(zile: Date[]): boolean {
   return zile.some((zi) => isToday(zi))
 }
 
-/** Eticheta intervalului afișat, potrivită vederii. */
-function eticheteInterval(zile: Date[], vedere: VedereCalendar, ancora: Date): string {
-  if (vedere === 'zi') return capitalizeaza(formateazaZiLunga(zile[0] ?? ancora))
+const ETICHETE_VEDERE: Record<VedereCalendar, { lunga: string; scurta: string }> = {
+  zi: { lunga: 'Zi', scurta: 'Zi' },
+  saptamana: { lunga: 'Săptămână', scurta: 'Săpt.' },
+  luna: { lunga: 'Lună', scurta: 'Lună' },
+}
+
+/**
+ * Zi / Săptămână / Lună. `scurt` strânge „Săptămână” în „Săpt.” pentru telefon;
+ * numele întreg rămâne în `aria-label`, deci cititorul de ecran nu pierde nimic.
+ */
+function ComutatorVedere({
+  vedere,
+  onSchimba,
+  scurt = false,
+  className,
+}: {
+  vedere: VedereCalendar
+  onSchimba: (vedere: VedereCalendar) => void
+  scurt?: boolean
+  className?: string
+}) {
+  return (
+    <GrupButoane eticheta="Vedere calendar" {...(className ? { className } : {})}>
+      {(['zi', 'saptamana', 'luna'] as VedereCalendar[]).map((v) => (
+        <ButonGrup
+          key={v}
+          activ={vedere === v}
+          onClick={() => onSchimba(v)}
+          aria-label={ETICHETE_VEDERE[v].lunga}
+          className={cn(scurt && 'px-2')}
+        >
+          {scurt ? ETICHETE_VEDERE[v].scurta : ETICHETE_VEDERE[v].lunga}
+        </ButonGrup>
+      ))}
+    </GrupButoane>
+  )
+}
+
+/**
+ * Eticheta intervalului afișat, potrivită vederii. `scurt` pentru butonul de pe
+ * telefon: ziua fără numele lunii întregi („12 nov”), nu „Joi, 12 noiembrie”.
+ */
+function eticheteInterval(
+  zile: Date[],
+  vedere: VedereCalendar,
+  ancora: Date,
+  scurt = false,
+): string {
+  if (vedere === 'zi') {
+    return scurt
+      ? formateazaZiScurta(zile[0] ?? ancora)
+      : capitalizeaza(formateazaZiLunga(zile[0] ?? ancora))
+  }
   if (vedere === 'luna') return capitalizeaza(formateazaLuna(ancora))
   const prima = zile[0]
   const ultima = zile[zile.length - 1]

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { addMinutes, differenceInMinutes, formateazaDurata, laInputDatetime } from '@/lib/dates'
-import { Input, Select } from '@/ui'
+import { CampOra, Input, Select } from '@/ui'
 
 /*
   Ziua, ora și durata — trei alegeri simple în loc de două câmpuri de tip
@@ -26,24 +26,6 @@ export const DURATE_SEDINTA = [15, 30, 45, 60, 75, 90, 105, 120, 150, 180, 240]
 
 /** O notiță ține adesea o jumătate de zi sau o zi întreagă. */
 export const DURATE_NOTITA = [...DURATE_SEDINTA, 300, 360, 480, 600]
-
-/*
-  Orele care se pot alege, din sfert în sfert.
-
-  Intervalul este mai larg decât grila calendarului (8–20, v. `constante.ts`):
-  se mai face o ședință la 7 dimineața sau la 9 seara, iar o listă care nu
-  permite asta ar trimite operatoarea înapoi la tastat. Sfertul de oră este
-  pasul la care se gândește o recepție; minutul exact nu i-a trebuit niciodată.
-*/
-const ORE_ROTUNDE: string[] = (() => {
-  const rezultat: string[] = []
-  for (let minut = 6 * 60; minut <= 22 * 60; minut += 15) {
-    const h = Math.floor(minut / 60)
-    const m = minut % 60
-    rezultat.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
-  }
-  return rezultat
-})()
 
 export function CampuriInterval({
   incepeLa,
@@ -102,17 +84,14 @@ export function CampuriInterval({
   }
 
   /*
-    Listele conțin ÎNTOTDEAUNA valoarea curentă, chiar dacă nu e rotundă.
+    Lista duratelor conține ÎNTOTDEAUNA valoarea curentă, chiar dacă nu e rotundă.
 
-    O programare veche poate începe la 14:07 sau dura 37 de minute — puse în
-    bază înainte, sau mutate din altă parte. Fără rândul lor în listă,
-    deschiderea formularului ar fi arătat altă oră decât cea adevărată și ar fi
-    rescris-o în tăcere la prima salvare.
+    O programare veche poate dura 37 de minute — pusă în bază înainte, sau
+    mutată din altă parte. Fără rândul ei în listă, deschiderea formularului ar
+    fi arătat altă durată decât cea adevărată și ar fi rescris-o în tăcere la
+    prima salvare. Ora se ocupă singură de același lucru: `CampOra` trece pe
+    câmpul liber când ora nu e în listă (14:07).
   */
-  const oreDisponibile = useMemo(
-    () => (ora && !ORE_ROTUNDE.includes(ora) ? [...ORE_ROTUNDE, ora].sort() : ORE_ROTUNDE),
-    [ora],
-  )
   const durateDisponibile = useMemo(
     () =>
       durata > 0 && !durate.includes(durata) ? [...durate, durata].sort((a, b) => a - b) : durate,
@@ -129,13 +108,7 @@ export function CampuriInterval({
         onChange={(e) => schimbaZiua(e.target.value)}
         eroare={erori.incepe_la ?? null}
       />
-      <Select eticheta="Ora" obligatoriu value={ora} onChange={(e) => schimbaOra(e.target.value)}>
-        {oreDisponibile.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </Select>
+      <CampOra eticheta="Ora" obligatoriu value={ora} onChange={schimbaOra} />
 
       <Select
         eticheta="Durata"

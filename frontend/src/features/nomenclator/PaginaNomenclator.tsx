@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Info, Plus, ShoppingBag, Tags } from 'lucide-react'
+import { Info, Palette, Plus, ShoppingBag, Tags } from 'lucide-react'
 import { mesajEroare } from '@/api/errors'
 import { useAutentificare } from '@/app/auth'
 import { useArticole } from '@/app/queries'
@@ -21,6 +21,7 @@ import {
 import { FormularVanzare } from '../vanzari/FormularVanzare'
 import { VanzariNeachitate } from '../vanzari/VanzariNeachitate'
 import { FormularArticol } from './FormularArticol'
+import { ModalaCuloriProceduri } from './ModalaCuloriProceduri'
 import { ListaArticole } from './liste'
 
 /*
@@ -90,6 +91,7 @@ export function PaginaNomenclator() {
   // `'nou'` distinge „formular deschis pentru o înregistrare nouă” de „închis”.
   const [articolEditat, setArticolEditat] = useState<Articol | 'nou' | null>(null)
   const [vanzareNoua, setVanzareNoua] = useState(false)
+  const [culoriDeschise, setCuloriDeschise] = useState(false)
   // Produsul al cărui „Vinde” s-a apăsat: pornește vânzarea cu el pe bon.
   const [produsDeVandut, setProdusDeVandut] = useState<Articol | null>(null)
 
@@ -191,6 +193,13 @@ export function PaginaNomenclator() {
         actiuni={
           esteAdministrator || peProduse ? (
             <>
+              {/* Culoarea fiecărei proceduri, toate pe o listă — aceeași fereastră ca din calendar. */}
+              {esteAdministrator && !peProduse && (
+                <Buton onClick={() => setCuloriDeschise(true)}>
+                  <Palette className="size-4" />
+                  Culori
+                </Buton>
+              )}
               {esteAdministrator && (
                 <Buton
                   // Pe produse, vânzarea e gestul de zi cu zi; adăugarea în
@@ -287,6 +296,10 @@ export function PaginaNomenclator() {
       </Card>
 
       {peProduse && <VanzariNeachitate />}
+
+      {esteAdministrator && culoriDeschise && (
+        <ModalaCuloriProceduri onInchide={() => setCuloriDeschise(false)} />
+      )}
 
       {articolEditat !== null && (
         <FormularArticol

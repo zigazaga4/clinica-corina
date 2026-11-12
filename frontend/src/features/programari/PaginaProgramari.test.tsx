@@ -32,6 +32,19 @@ const ASTEPTARE = { timeout: 10_000 }
 const randulNotitei = (titlu: string) =>
   screen.findByRole('button', { name: new RegExp(titlu) }, ASTEPTARE)
 
+/*
+  Pe telefon (forma din jsdom) acțiunile secundare stau sub „Mai multe”, iar
+  filtrele sub „Filtre”: antetul are două rânduri, nu o jumătate de ecran.
+*/
+async function deschideNotitaNoua() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Mai multe' }, ASTEPTARE))
+  fireEvent.click(await screen.findByRole('menuitem', { name: /Notiță nouă/ }, ASTEPTARE))
+}
+
+async function deschideFiltrele() {
+  fireEvent.click(await screen.findByRole('button', { name: /^Filtre/ }, ASTEPTARE))
+}
+
 /** Notița de azi din datele demo — „Curățenie generală”, 8:00–10:00. */
 function notitaDeAzi() {
   const azi = new Date()
@@ -78,7 +91,7 @@ describe('notițe în calendar', () => {
     randeaza(<PaginaProgramari />)
     const inainte = magazin.notita.size
 
-    fireEvent.click(await screen.findByRole('button', { name: /Notiță nouă/ }, ASTEPTARE))
+    await deschideNotitaNoua()
     const formular = within(await screen.findByRole('dialog', {}, ASTEPTARE))
     expect(formular.queryByRole('combobox', { name: /^Client/ })).not.toBeInTheDocument()
     expect(formular.queryByLabelText(/Preț/)).not.toBeInTheDocument()
@@ -100,7 +113,7 @@ describe('notițe în calendar', () => {
     randeaza(<PaginaProgramari />)
     const inainte = magazin.notita.size
 
-    fireEvent.click(await screen.findByRole('button', { name: /Notiță nouă/ }, ASTEPTARE))
+    await deschideNotitaNoua()
     const formular = within(await screen.findByRole('dialog', {}, ASTEPTARE))
     fireEvent.click(formular.getByRole('button', { name: 'Adaugă notița' }))
 
@@ -115,8 +128,9 @@ describe('notițe în calendar', () => {
     randeaza(<PaginaProgramari />)
     await randulNotitei(notita.titlu)
 
-    // Selectorul de client din bara de filtre nu are etichetă; se găsește
+    // Selectorul de client din panoul de filtre nu are etichetă; se găsește
     // după substituentul afișat în el.
+    await deschideFiltrele()
     fireEvent.click(screen.getByText('Toți clienții').closest('button')!)
     const optiune = await screen.findByRole('option', { name: new RegExp(client.nume) }, ASTEPTARE)
     fireEvent.click(optiune)
@@ -153,5 +167,99 @@ describe('programare direct din calendar', () => {
     expect(formular.getByText('Programare nouă')).toBeInTheDocument()
     expect(formular.getByLabelText(/^Ziua/)).toHaveValue(laInputDate(luni))
     expect(formular.getByLabelText(/^Ora/)).toHaveValue('08:00')
+  })
+})
+
+/*
+  Antetul de telefon: două rânduri, nu o jumătate de ecran.
+
+  jsdom se crede telefon (v. mai sus), deci aceste teste văd exact forma pe care
+  o vede recepția pe mobil.
+*/
+describe('antet compact pe telefon', () => {
+  it('nu are rând de titlu: intervalul stă pe butonul calendarului', async () => {
+    await autentifica()
+    randeaza(<PaginaProgramari />)
+    await screen.findByRole('button', { name: 'Mai multe' }, ASTEPTARE)
+
+    expect(screen.queryByRole('heading', { name: 'Programări' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Interval anterior' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Adaugă' })).toBeInTheDocument()
+  })
+
+  it('ține filtrele strânse până se apasă „Filtre”, și numără filtrele puse', async () => {
+    await autentifica()
+    const client = (await api.clienti.list({ pe_pagina: 1 })).randuri[0]!
+    randeaza(<PaginaProgramari />)
+
+    // Strânse: selectoarele nu sunt pe ecran, deci programările au tot locul.
+    const buton = await screen.findByRole('button', { name: /^Filtre/ }, ASTEPTARE)
+    expect(buton).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('Toți clienții')).not.toBeInTheDocument()
+
+    fireEvent.click(buton)
+    expect(buton).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(screen.getByText('Toți clienții').closest('button')!)
+    fireEvent.click(await screen.findByRole('option', { name: new RegExp(client.nume) }, ASTEPTARE))
+
+    // Panoul se strânge la loc, dar un filtru uitat pus se vede pe buton.
+    fireEvent.click(buton)
+    expect(buton).toHaveAttribute('aria-expanded', 'false')
+    expect(buton).toHaveTextContent(/Filtre\s*1/)
+  })
+
+  it('comută vederea din butoanele scurte, cu numele întreg pentru cititorul de ecran', async () => {
+    await autentifica()
+    randeaza(<PaginaProgramari />)
+
+    const luna = await screen.findByRole('button', { name: 'Lună' }, ASTEPTARE)
+    expect(luna).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(luna)
+    expect(luna).toHaveAttribute('aria-pressed', 'true')
+    // „Săpt.” pe ecran, „Săptămână” pentru cititorul de ecran.
+    expect(screen.getByRole('button', { name: 'Săptămână' })).toHaveTextContent('Săpt.')
+  })
+})
+
+/*
+  Culorile procedurilor, dintr-un buton cu nume.
+
+  Clinica a cerut „un buton care să se vadă clar” pentru culori, cu o paletă
+  pentru fiecare procedură. Fereastra citește aceeași listă de servicii ca
+  Nomenclatorul și calendarul, deci culoarea aleasă ajunge pe chipuri imediat.
+*/
+describe('culorile procedurilor', () => {
+  it('„Culori” deschide lista procedurilor; culoarea apăsată se salvează pe loc', async () => {
+    await autentifica()
+    const serviciu = [...magazin.articol.values()].find((a) => a.tip === 'serviciu' && a.activ)!
+    randeaza(<PaginaProgramari />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /^Culori/ }, ASTEPTARE))
+    const fereastra = within(await screen.findByRole('dialog', {}, ASTEPTARE))
+    const paleta = await fereastra.findByRole(
+      'group',
+      { name: `Culoarea procedurii ${serviciu.denumire}` },
+      ASTEPTARE,
+    )
+
+    fireEvent.click(within(paleta).getByRole('button', { name: 'Verde' }))
+    // Bulina se mută pe loc, fără să aștepte serverul…
+    expect(within(paleta).getByRole('button', { name: 'Verde' })).toHaveAttribute('aria-pressed', 'true')
+    // …iar serverul primește culoarea, fără „Salvează” de apăsat.
+    await waitFor(() => expect(magazin.articol.get(serviciu.id)?.culoare).toBe('#22c55e'), ASTEPTARE)
+
+    // O scoate: înapoi la culoarea persoanei.
+    fireEvent.click(within(paleta).getByRole('button', { name: 'Fără culoare' }))
+    await waitFor(() => expect(magazin.articol.get(serviciu.id)?.culoare).toBeNull(), ASTEPTARE)
+  })
+
+  it('butonul „Culori” nu apare pentru un cont fără drept de modificare a nomenclatorului', async () => {
+    const operator = [...magazin.utilizator.values()].find((u) => u.rol !== 'administrator' && u.activ)
+    if (!operator) return
+    await autentifica(operator.email)
+    randeaza(<PaginaProgramari />)
+    await screen.findByRole('button', { name: 'Mai multe' }, ASTEPTARE)
+
+    expect(screen.queryByRole('button', { name: /^Culori/ })).not.toBeInTheDocument()
   })
 })

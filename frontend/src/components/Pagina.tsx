@@ -79,9 +79,19 @@ export function AntetPagina({
  * Pe ecrane mici filtrele se derulează orizontal, fără bară vizibilă, în loc să
  * se împacheteze pe trei rânduri și să împingă lista sub marginea ecranului.
  */
-export function BaraFiltre({ children, className }: { children: ReactNode; className?: string }) {
+export function BaraFiltre({
+  children,
+  className,
+  id,
+}: {
+  children: ReactNode
+  className?: string
+  /** Pentru `aria-controls` al butonului care o desface. */
+  id?: string
+}) {
   return (
     <div
+      id={id}
       className={cn(
         /*
           Filtrele se așază pe mai multe rânduri, nu pe unul singur derulabil.
