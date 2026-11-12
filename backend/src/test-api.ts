@@ -437,16 +437,22 @@ async function ruleaza(): Promise<void> {
   })
   verifica('recepția nu poate schimba prețul -> 403', pretDeLaOperator.status === 403)
 
+  const gasesteServiciul = async () =>
+    (await cere('GET', '/articole?tip=serviciu', { token: admin })).corp?.find(
+      (a: any) => a.id === faraCuloare.corp?.id,
+    )
+  const inainteDeRefuz = await gasesteServiciul()
+
   const culoareSiPretDeLaOperator = await cere('PATCH', `/articole/${faraCuloare.corp?.id}`, {
     token: operator, corp: { culoare: '#ef4444', pret_lista: 1 },
   })
   verifica('culoarea însoțită de alt câmp de la recepție -> 403, cererea întreagă refuzată',
     culoareSiPretDeLaOperator.status === 403)
-  const dupaRefuz = await cere('GET', '/articole?tip=serviciu', { token: admin })
-  const dupaRefuzRand = dupaRefuz.corp?.find((a: any) => a.id === faraCuloare.corp?.id)
-  verifica('cererea refuzată nu a schimbat nimic (culoarea rămâne cea de dinainte)',
-    dupaRefuzRand?.culoare === '#22c55e' && Number(dupaRefuzRand?.pret_lista) === 100,
-    JSON.stringify(dupaRefuzRand))
+  const dupaRefuz = await gasesteServiciul()
+  verifica('cererea refuzată nu a schimbat nimic (culoarea și prețul rămân cele de dinainte)',
+    dupaRefuz?.culoare === '#22c55e' && dupaRefuz?.culoare === inainteDeRefuz?.culoare &&
+      Number(dupaRefuz?.pret_lista) === Number(inainteDeRefuz?.pret_lista) && Number(dupaRefuz?.pret_lista) !== 1,
+    JSON.stringify(dupaRefuz))
 
   // `albastru` a devenit produs mai sus: e produsul de încercat.
   const culoarePeProdusDeLaOperator = await cere('PATCH', `/articole/${albastru.corp?.id}`, {
