@@ -43,6 +43,7 @@ process.on('uncaughtException', (eroare) => {
 import cors from 'cors'
 import helmet from 'helmet'
 import { trateazaErori } from './lib/erori.js'
+import { antetMemorareApp, MEMORARE_INDEX } from './lib/memorareApp.js'
 import authRouter from './routes/auth.js'
 import cheltuieliRouter from './routes/cheltuieli.js'
 import clientiRouter from './routes/clienti.js'
@@ -246,18 +247,16 @@ app.get('/', (_req, res) => res.redirect(302, '/app/'))
 
   Fișierele cu amprentă în nume (`index-a1b2c3.js`) nu se schimbă niciodată la
   același nume, deci pot fi ținute în memoria telefonului un an. `index.html`
-  este singurul care trebuie recitit la fiecare pornire, altfel telefonul ar
-  rămâne pe o versiune veche a aplicației după o actualizare.
+  este singurul care trebuie adus de fiecare dată, altfel telefonul ar rămâne
+  pe o versiune veche a aplicației după o actualizare. Regulile stau în
+  `lib/memorareApp.ts`, cu motivele lor.
 */
 const DOSAR_APP = path.join(process.cwd(), 'public', 'app')
 
 app.use('/app', express.static(DOSAR_APP, {
   index: false,
-  maxAge: '1y',
   setHeaders: (res, caleFisier) => {
-    if (caleFisier.endsWith('index.html') || caleFisier.endsWith('.webmanifest')) {
-      res.setHeader('Cache-Control', 'no-cache')
-    }
+    res.setHeader('Cache-Control', antetMemorareApp(DOSAR_APP, caleFisier))
   },
 }))
 
@@ -285,14 +284,12 @@ app.get(/^\/app(\/.*)?$/, (req, res, next) => {
     scripturile vechi — iar clinica ar rămâne pe o versiune de acum o
     săptămână, fără ca cineva să înțeleagă de ce.
 
-    `no-cache` nu înseamnă „nu păstra”, ci „întreabă întâi”: copia rămâne pe
-    telefon, dar la fiecare pornire se verifică dacă s-a schimbat. Nu s-a
-    schimbat — serverul răspunde 304, gol, și pornirea e la fel de rapidă.
-    S-a schimbat — vine noua pagină, cu noile amprente, și aplicația se
-    reîmprospătează singură. `must-revalidate` taie și cazul în care un
-    intermediar ar servi o copie expirată fiindcă rețeaua e slabă.
+    Nu `no-cache`: acela înseamnă „întreabă întâi”, dar butonul Înapoi,
+    „redeschide fila închisă” și restaurarea sesiunii nu întreabă — iau copia
+    veche și pornesc scripturile vechi, până când omul apasă Ctrl+Shift+R.
+    `no-store` le oprește pe toate; pagina are 2 KB, deci costul e neglijabil.
   */
-  res.setHeader('Cache-Control', 'no-cache, must-revalidate')
+  res.setHeader('Cache-Control', MEMORARE_INDEX)
   res.sendFile(path.join(DOSAR_APP, 'index.html'), (err) => {
     if (err) next()
   })

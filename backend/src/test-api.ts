@@ -12,6 +12,7 @@
 
 import 'dotenv/config'
 import pool from './lib/db.js'
+import { antetMemorareApp } from './lib/memorareApp.js'
 
 const BAZA = process.env.API_URL ?? `http://localhost:${process.env.PORT ?? 3000}`
 const EMAIL_ADMIN = 'admin@clinica.ro'
@@ -81,6 +82,42 @@ function interval(indice: number, ora: number, minute = 45) {
 
 async function ruleaza(): Promise<void> {
   console.log(`\n=== Contractul API === ${BAZA}\n`)
+
+  // -------------------------------------------------------------------------
+  console.log('Interfața web — ce ține browserul minte')
+
+  /*
+    După o actualizare, oamenii rămâneau pe versiunea veche până la
+    Ctrl+Shift+R. Vezi `lib/memorareApp.ts` pentru motiv; aici se păzește regula.
+  */
+  const app = '/srv/public/app'
+  verifica('index.html -> no-store',
+    antetMemorareApp(app, `${app}/index.html`) === 'no-store')
+  verifica('scriptul cu amprentă -> un an, neschimbat',
+    antetMemorareApp(app, `${app}/assets/index-DtCRfWAv.js`) === 'public, max-age=31536000, immutable')
+  verifica('fontul cu amprentă -> un an, neschimbat',
+    antetMemorareApp(app, `${app}/assets/FiraSans-Bold-Ceas-h-k.ttf`) === 'public, max-age=31536000, immutable')
+  verifica('pictograma cu nume fix -> no-cache, nu un an',
+    antetMemorareApp(app, `${app}/apple-touch-icon.png`) === 'no-cache')
+  verifica('manifestul -> no-cache',
+    antetMemorareApp(app, `${app}/manifest.webmanifest`) === 'no-cache')
+  verifica('un „index.html” din alt dosar nu e luat drept pagina principală',
+    antetMemorareApp(app, `${app}/docs/index.html`) === 'no-cache')
+
+  // Serverul chiar trebuie să le pună. Merge doar dacă interfața e instalată
+  // lângă el (pe un calculator de lucru, `public/app` lipsește).
+  const paginaApp = await fetch(`${BAZA}/app/`)
+  if (paginaApp.status === 200) {
+    verifica('GET /app/ -> no-store',
+      paginaApp.headers.get('cache-control') === 'no-store',
+      `a venit „${paginaApp.headers.get('cache-control')}”`)
+    const direct = await fetch(`${BAZA}/app/index.html`)
+    verifica('GET /app/index.html -> no-store',
+      direct.headers.get('cache-control') === 'no-store',
+      `a venit „${direct.headers.get('cache-control')}”`)
+  } else {
+    console.log('  (interfața web nu e instalată aici — verificarea HTTP e sărită)')
+  }
 
   // -------------------------------------------------------------------------
   console.log('Autentificare')

@@ -22,8 +22,11 @@ import type { DownloadEvent, Update } from '@tauri-apps/plugin-updater'
  *    versiune nouă.
  */
 
-/** La cât timp se întreabă din nou, cât timp aplicația stă deschisă. */
-const INTERVAL_VERIFICARE = 15 * 60 * 1000
+/**
+ * La cât timp se întreabă din nou, cât timp aplicația stă deschisă. Același
+ * ritm îl folosește și verificarea versiunii web (`versiuneWeb.ts`).
+ */
+export const INTERVAL_VERIFICARE = 15 * 60 * 1000
 
 export type StareActualizare =
   /** Nimic de făcut: fie e la zi, fie nu s-a putut afla. Aplicația merge. */

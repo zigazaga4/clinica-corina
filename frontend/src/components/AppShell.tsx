@@ -5,6 +5,7 @@ import { esteModDemo } from '@/api'
 import { useAutentificare } from '@/app/auth'
 import { esteInElement, navigarePentru, type ElementNavigare } from '@/app/navigation'
 import { useTema, type Tema } from '@/app/theme'
+import { useVersiuneNoua } from '@/app/versiuneWeb'
 import { cn } from '@/lib/cn'
 import { Avatar, Buton, ElementMeniu, Meniu, SeparatorMeniu, TitluMeniu } from '@/ui'
 
@@ -51,6 +52,7 @@ export function CadruAplicatie() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <AntetMobil />
         {esteModDemo && <PanglicaDemo />}
+        <PanglicaVersiuneNoua />
 
         {/*
           Derularea se întâmplă AICI, nu în document: cadrul are exact înălțimea
@@ -381,6 +383,30 @@ function MeniuCont({ compact = false }: { compact?: boolean }) {
  * într-o versiune care le pierde la închiderea ferestrei — și, potrivit
  * art. 8.3, acelea pot fi date privind sănătatea.
  */
+/**
+ * Apare când serverul are o versiune mai nouă decât cea din fila deschisă (vezi
+ * `useVersiuneNoua`). Nu reîncarcă singură: omul poate avea ceva început.
+ */
+function PanglicaVersiuneNoua() {
+  const { disponibila, actualizeaza } = useVersiuneNoua()
+  if (!disponibila) return null
+
+  return (
+    <div
+      role="status"
+      className="flex items-center gap-2 border-b border-info/25 bg-info-soft px-4 py-1.5 text-[12px] text-info"
+    >
+      <span className="flex-1">
+        <strong className="font-semibold">Versiune nouă.</strong> Aplicația a fost actualizată.
+        Termină ce ai început, apoi reîncarcă.
+      </span>
+      <Buton varianta="primar" dimensiune="sm" onClick={actualizeaza} className="h-6 px-2 text-[12px]">
+        Reîncarcă
+      </Buton>
+    </div>
+  )
+}
+
 function PanglicaDemo() {
   const [ascunsa, setAscunsa] = useState(false)
   if (ascunsa) return null
