@@ -266,7 +266,14 @@ export function LegendaCulori({
   if (persoane.length === 0) return null
 
   return (
-    <div className="flex items-center gap-1" role="group" aria-label="Filtrează după persoană">
+    // `flex-wrap` + `max-w-full`: cu cinci-șase persoane legenda trece pe al
+    // doilea rând, în loc să iasă din ecran (bara de filtre își ține copiii la
+    // lățimea lor întreagă, deci fără plafon nu s-ar împacheta niciodată).
+    <div
+      className="flex max-w-full flex-wrap items-center gap-1"
+      role="group"
+      aria-label="Filtrează după persoană"
+    >
       {persoane.map((p) => {
         const activa = valoare === p.id
         return (

@@ -278,12 +278,12 @@ export function PaginaProgramari() {
     // calendar și fiecare rând din agendă să citească aceeași hartă.
     <FurnizorCulori utilizatori={utilizatori}>
     <FurnizorCuloriProceduri articole={serviciiNomenclator}>
-    /*
-      Pe telefon marginile sunt mai mici (`p-2`) și antetul are două rânduri în
-      loc de titlu + descriere + butoane + navigare + filtre: programările
-      trebuie să ocupe ecranul, nu butoanele.
-    */
     <Pagina className="flex h-full flex-col p-2 sm:p-4 lg:p-6">
+      {/*
+        Pe telefon marginile sunt mai mici (`p-2`) și antetul are două rânduri în
+        loc de titlu + descriere + butoane + navigare + filtre: programările
+        trebuie să ocupe ecranul, nu butoanele.
+      */}
       {!ecranMic && (
         <AntetPagina
           titlu="Programări"
