@@ -48,12 +48,13 @@ const fundal: Record<StareProgramare, string> = {
  * neprezentată. Programată nu are semn — e cazul obișnuit — iar anulata e
  * oricum tăiată.
  */
-function SemnStare({ stare }: { stare: StareProgramare }) {
+function SemnStare({ stare, mare = false }: { stare: StareProgramare; mare?: boolean }) {
   // Culoarea textului chipului, nu verde/roșu: pe un chip plin verde sau roșu
   // (culoarea unei proceduri) semnul colorat ar dispărea în fundal. Forma —
   // bifă sau om tăiat — spune oricum starea.
-  if (stare === 'onorat') return <Check className="size-3 shrink-0" strokeWidth={3} aria-hidden />
-  if (stare === 'neprezentat') return <UserX className="size-3 shrink-0" strokeWidth={3} aria-hidden />
+  const marime = mare ? 'size-4' : 'size-3'
+  if (stare === 'onorat') return <Check className={cn(marime, 'shrink-0')} strokeWidth={3} aria-hidden />
+  if (stare === 'neprezentat') return <UserX className={cn(marime, 'shrink-0')} strokeWidth={3} aria-hidden />
   return null
 }
 
@@ -67,6 +68,7 @@ export function ChipProgramare({
   onClick,
   compact = false,
   ampla = false,
+  mare = false,
   className,
   style,
 }: {
@@ -78,6 +80,8 @@ export function ChipProgramare({
   compact?: boolean
   /** Peste ~50px înălțime (o oră sau mai mult): trei rânduri — interval, client, procedură. */
   ampla?: boolean
+  /** Ziua mare de pe telefon: text mare, care se rupe pe rânduri în loc să fie tăiat cu „…”. */
+  mare?: boolean
   className?: string
   style?: React.CSSProperties
 }) {
@@ -93,6 +97,7 @@ export function ChipProgramare({
       style={{ ...style, ...culoare?.stil }}
       className={cn(
         'relative flex w-full cursor-pointer flex-col overflow-hidden rounded-md border px-1.5 py-1 text-left',
+        mare && 'px-2',
         // Sub cursor iese în față, cu umbră și contur: se vede că se apasă.
         'transition-all hover:z-10 hover:shadow-(--umbra-card) hover:ring-2 hover:ring-ink/20 focus-visible:z-10',
         // Cu persoana cunoscută, TOT chipul îi poartă culoarea (cerința
@@ -108,12 +113,13 @@ export function ChipProgramare({
     >
       <span
         className={cn(
-          'flex items-center gap-0.5 truncate text-[11px] leading-tight font-semibold',
-          compact && 'text-[10px]',
+          'flex items-center gap-0.5 font-semibold',
+          mare ? 'text-[15px] leading-tight font-bold' : 'truncate text-[11px] leading-tight',
+          compact && !mare && 'text-[10px]',
         )}
       >
-        {culoare && <SemnStare stare={programare.stare} />}
-        <span className="truncate">
+        {culoare && <SemnStare stare={programare.stare} mare={mare} />}
+        <span className={mare ? 'min-w-0 break-words' : 'truncate'}>
           {/* Ca în softul vechi, intervalul întreg: „14:30–15:30”. Pe chipul
               scund încape doar ora de început, lângă nume. */}
           {formateazaOra(programare.incepe_la)}
@@ -124,10 +130,22 @@ export function ChipProgramare({
       {/* Pe chipul înalt, numele clientului are rândul lui: într-o coloană de
           săptămână, „14:30–15:30 Maria Popescu” pe un singur rând ar tăia numele. */}
       {ampla && (
-        <span className="truncate text-[11px] leading-tight font-semibold">{programare.client_nume}</span>
+        <span
+          className={cn(
+            'leading-tight font-semibold',
+            mare ? 'text-[15px] break-words' : 'truncate text-[11px]',
+          )}
+        >
+          {programare.client_nume}
+        </span>
       )}
       {!compact && (
-        <span className="truncate text-[11px] leading-tight opacity-80">
+        <span
+          className={cn(
+            'leading-tight',
+            mare ? 'text-[14px] break-words opacity-90' : 'truncate text-[11px] opacity-80',
+          )}
+        >
           {/* „3/8”: a câta ședință a tratamentului e — recepția vede din grilă
               cât mai are clienta de venit. Lângă serviciul ei: o programare
               poate avea ședințe din două tratamente deodată. */}

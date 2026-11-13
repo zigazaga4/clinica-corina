@@ -63,7 +63,7 @@ import { FormularNotita } from './FormularNotita'
 import { FormularProgramare } from './FormularProgramare'
 import { GrilaLuna } from './GrilaLuna'
 import { GrilaOre, type ColoanaGrila, type LocGrila } from './GrilaOre'
-import { ListaAgenda } from './ListaAgenda'
+import { ListaAgenda, rezumatZilei } from './ListaAgenda'
 import { inceputPeZi, type LocAles } from './locAles'
 import { ModalaProgramLucru } from './ModalaProgramLucru'
 import { lucreaza, persoaneleZilei } from './programLucru'
@@ -76,8 +76,9 @@ import { numarProgramari } from './vizite'
  * „pentru întreaga clinică sau pentru o singură persoană”: filtrul de executant
  * comută între cele două, fără un ecran separat.
  *
- * Pe telefon, toate vederile devin liste cronologice. O grilă cu șapte coloane
- * pe 360px ar da coloane de 44px, în care nu încape nici măcar ora.
+ * Pe telefon, săptămâna și luna devin liste cronologice. O grilă cu șapte
+ * coloane pe 360px ar da coloane de 44px, în care nu încape nici măcar ora.
+ * Ziua are grila ei „mare”: o coloană, blocuri colorate, text mare.
  */
 export function PaginaProgramari() {
   const ecranMic = useEcranMic()
@@ -560,8 +561,8 @@ function Continut({
   /** O zi apăsată fără oră (luna, agenda): ora o propune `inceputPeZi`. */
   onProgrameazaZi: (zi: Date) => void
 }) {
-  // Pe telefon, orice vedere devine listă.
-  if (ecranMic) {
+  // Pe telefon, săptămâna și luna sunt liste; ziua are grila ei mare, mai jos.
+  if (ecranMic && vedere !== 'zi') {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto">
         <ListaAgenda
@@ -572,6 +573,8 @@ function Continut({
           onAlegeProgramare={onAlegeProgramare}
           onAlegeNotita={onAlegeNotita}
           onProgrameaza={onProgrameazaZi}
+          // Antetul fiecărei zile deschide ziua aceea, singură, pe ore.
+          onDeschideZiua={onAlegeZi}
           cuExecutant={executantId === null}
           ascundeZileleGoale={vedere === 'luna'}
         />
@@ -628,6 +631,36 @@ function Continut({
 
   const aleZilei = dinZiua(programari, zi)
   const notiteZilei = dinZiua(notite, zi)
+
+  /*
+    Telefonul: ziua „mare” (cerința Corinei, 13 nov. 2026) — o singură coloană,
+    toată ziua, pe ore, cu fiecare programare ca un bloc colorat cu text mare,
+    ca în softul vechi. Coloanele pe persoane nu încap pe 360px; cine lucrează
+    se vede sub dată, iar legenda și filtrul de persoană rămân în „Filtre”.
+  */
+  if (ecranMic) {
+    return (
+      <GrilaOre
+        mare
+        coloane={[
+          {
+            id: 'ziua',
+            eticheta: capitalizeaza(formateazaZiLunga(zi)),
+            subeticheta: rezumatZilei(numarProgramari(aleZilei), notiteZilei.length),
+            zi,
+            programari: aleZilei,
+            notite: notiteZilei,
+            ...(executantId
+              ? { libera: lucreaza(programe, executantId, zi) === false }
+              : { persoaneZilei: persoaneleZilei(programe, zi) }),
+          },
+        ]}
+        onAlegeProgramare={onAlegeProgramare}
+        onAlegeNotita={onAlegeNotita}
+      />
+    )
+  }
+
   const notiteClinicii = notiteZilei.filter((n) => n.executant_id === null)
 
   // Fără lista conturilor (operator obișnuit), coloanele se deduc din

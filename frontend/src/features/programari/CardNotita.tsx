@@ -32,12 +32,15 @@ export function ChipNotita({
   notita,
   onClick,
   compact = false,
+  mare = false,
   className,
   style,
 }: {
   notita: NotitaDetaliu
   onClick: (notita: NotitaDetaliu) => void
   compact?: boolean
+  /** Ziua mare de pe telefon: text mare, rupt pe rânduri în loc de „…”. */
+  mare?: boolean
   className?: string
   style?: React.CSSProperties
 }) {
@@ -49,6 +52,7 @@ export function ChipNotita({
       style={style}
       className={cn(
         'relative flex w-full cursor-pointer flex-col overflow-hidden rounded-md border px-1.5 py-1 text-left',
+        mare && 'px-2',
         'transition-all hover:z-10 hover:shadow-(--umbra-card) hover:ring-2 hover:ring-ink/20 focus-visible:z-10',
         STIL_NOTITA,
         className,
@@ -56,17 +60,23 @@ export function ChipNotita({
     >
       <span
         className={cn(
-          'flex items-center gap-1 truncate text-[11px] leading-tight font-semibold',
-          compact && 'text-[10px]',
+          'flex items-center gap-1 leading-tight font-semibold',
+          mare ? 'text-[15px] font-bold' : 'truncate text-[11px]',
+          compact && !mare && 'text-[10px]',
         )}
       >
-        <StickyNote className="size-3 shrink-0" aria-hidden />
-        <span className="truncate">
+        <StickyNote className={cn('shrink-0', mare ? 'size-4' : 'size-3')} aria-hidden />
+        <span className={mare ? 'min-w-0 break-words' : 'truncate'}>
           {formateazaOra(notita.incepe_la)} {notita.titlu}
         </span>
       </span>
       {!compact && (
-        <span className="truncate text-[11px] leading-tight opacity-80">
+        <span
+          className={cn(
+            'leading-tight',
+            mare ? 'text-[14px] break-words opacity-90' : 'truncate text-[11px] opacity-80',
+          )}
+        >
           {notita.detalii ?? pentruCine(notita)}
         </span>
       )}

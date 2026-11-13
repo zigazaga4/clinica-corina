@@ -17,8 +17,21 @@ export const ORA_SFARSIT = 20
 /** Înălțimea unei ore. 56px lasă loc pentru două rânduri de text la 30 min. */
 export const PIXELI_PE_ORA = 56
 
+/**
+ * Înălțimea unei ore în ziua „mare” de pe telefon (cerința Corinei, 13 nov.
+ * 2026): blocuri înalte, cu text mare, ca în softul vechi. 96px dau 48px unei
+ * ședințe de 30 de minute — loc pentru două rânduri de 15px.
+ */
+export const PIXELI_PE_ORA_MARE = 96
+
 export const MINUTE_VIZIBILE = (ORA_SFARSIT - ORA_INCEPUT) * 60
-export const INALTIME_GRILA = (ORA_SFARSIT - ORA_INCEPUT) * PIXELI_PE_ORA
+
+/** Înălțimea întregii grile, la înălțimea dată a unei ore. */
+export function inaltimeGrila(pixeliPeOra: number = PIXELI_PE_ORA): number {
+  return (ORA_SFARSIT - ORA_INCEPUT) * pixeliPeOra
+}
+
+export const INALTIME_GRILA = inaltimeGrila()
 
 /** Orele afișate pe coloana din stânga. */
 export const ORE = Array.from({ length: ORA_SFARSIT - ORA_INCEPUT + 1 }, (_, i) => ORA_INCEPUT + i)
@@ -27,14 +40,18 @@ export const ORE = Array.from({ length: ORA_SFARSIT - ORA_INCEPUT + 1 }, (_, i) 
  * Poziția verticală a unui moment, în pixeli de la vârful grilei.
  * Valorile din afara intervalului se decupează la capete.
  */
-export function pozitieVerticala(moment: Date): number {
+export function pozitieVerticala(moment: Date, pixeliPeOra: number = PIXELI_PE_ORA): number {
   const minute = moment.getHours() * 60 + moment.getMinutes() - ORA_INCEPUT * 60
-  return Math.max(0, Math.min(MINUTE_VIZIBILE, minute)) * (PIXELI_PE_ORA / 60)
+  return Math.max(0, Math.min(MINUTE_VIZIBILE, minute)) * (pixeliPeOra / 60)
 }
 
 /** Înălțimea unei programări; minimum 20px, altfel textul devine ilizibil. */
-export function inaltimeInterval(inceput: Date, sfarsit: Date): number {
-  return Math.max(20, pozitieVerticala(sfarsit) - pozitieVerticala(inceput))
+export function inaltimeInterval(
+  inceput: Date,
+  sfarsit: Date,
+  pixeliPeOra: number = PIXELI_PE_ORA,
+): number {
+  return Math.max(20, pozitieVerticala(sfarsit, pixeliPeOra) - pozitieVerticala(inceput, pixeliPeOra))
 }
 
 /** Pasul în care se alege ora direct pe grilă: sfertul, ca în lista de ore a formularului. */

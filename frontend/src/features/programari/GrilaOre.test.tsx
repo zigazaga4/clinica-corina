@@ -123,3 +123,34 @@ describe('minutLaPozitie', () => {
     expect(minutLaPozitie(la(23))).toBe(11 * 60 + 45)
   })
 })
+
+/*
+  Ziua „mare” de pe telefon (cerința Corinei, 13 nov. 2026): ore înalte, text
+  mare, blocuri pe toată lățimea — și doar de citit, fiindcă degetul care
+  derulează nu are voie să deschidă un formular.
+*/
+describe('ziua mare', () => {
+  const mare = (onProgrameaza?: (loc: LocGrila) => void) =>
+    render(
+      <GrilaOre
+        mare
+        coloane={[{ id: 'ziua', eticheta: 'Marți', zi: ZI, programari: [], executantId: 'u-1' }]}
+        onAlegeProgramare={() => undefined}
+        {...(onProgrameaza ? { onProgrameaza } : {})}
+      />,
+    ).container
+
+  it('rămâne doar de citit, chiar dacă primește `onProgrameaza`', () => {
+    expect(mare(vi.fn()).querySelector('[data-strat-selectie]')).toBeNull()
+  })
+
+  it('are ore de 96px, nu de 56px: 12 ore = 1152px', () => {
+    expect(mare().querySelector('[style*="height: 1152px"]')).not.toBeNull()
+    expect(mare().querySelector('[style*="height: 672px"]')).toBeNull()
+  })
+
+  it('desenează și jumătățile de oră, punctate', () => {
+    // Câte una pentru fiecare dintre cele 12 ore pline ale zilei (8:30 … 19:30).
+    expect(mare().querySelectorAll('.border-dashed')).toHaveLength(12)
+  })
+})

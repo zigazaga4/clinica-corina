@@ -274,3 +274,75 @@ describe('culorile procedurilor', () => {
     expect(within(paleta).getByRole('button', { name: 'Albastru' })).toHaveAttribute('aria-pressed', 'true')
   })
 })
+
+/*
+  Ziua „mare” de pe telefon (cerința Corinei, 13 nov. 2026): „când deschid pagina
+  cu ziua de programări, fă-o mare, ca în softul vechi — cu culoarea pe tot
+  blocul și scris mare”. jsdom se crede telefon, deci aici se vede forma ei.
+*/
+describe('ziua mare pe telefon', () => {
+  /** O programare de 30 de minute, azi la 9:00, la o procedură cu culoare. */
+  async function programareColorataAzi(nume: string) {
+    const admin = await autentifica()
+    const serviciu = [...magazin.articol.values()].find((a) => a.tip === 'serviciu' && a.activ)!
+    await api.articole.update(serviciu.id, { culoare: '#3b82f6' })
+    const clienta = await api.clienti.create({ nume })
+    const inceput = new Date()
+    inceput.setHours(9, 0, 0, 0)
+    await api.programari.create({
+      client_id: clienta.id,
+      executant_id: admin.id,
+      incepe_la: inceput.toISOString(),
+      se_termina_la: new Date(inceput.getTime() + 30 * 60_000).toISOString(),
+      servicii: [{ articol_id: serviciu.id, pret: 0 }],
+    })
+  }
+
+  it('„Zi” arată ziua pe ore, cu blocul umplut în culoarea procedurii', async () => {
+    await programareColorataAzi('Clientă Ziua Mare')
+    randeaza(<PaginaProgramari />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Zi' }, ASTEPTARE))
+    const bloc = await screen.findByTitle(/Clientă Ziua Mare/, {}, ASTEPTARE)
+
+    // Tot blocul poartă culoarea, nu doar un punct lângă nume…
+    expect(bloc).toHaveClass('bg-(--persoana)')
+    expect(bloc.style.getPropertyValue('--persoana')).toBe('#3b82f6')
+    // …și e înalt: 30 de minute la 96px/oră = 48px (−2 de aer), nu 26px.
+    expect(bloc.style.height).toBe('46px')
+    // Textul e mare.
+    expect(bloc.querySelector('.text-\\[15px\\]')).not.toBeNull()
+  })
+
+  it('apăsat, blocul deschide detaliul programării', async () => {
+    await programareColorataAzi('Clientă Detaliu Mare')
+    randeaza(<PaginaProgramari />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Zi' }, ASTEPTARE))
+    fireEvent.click(await screen.findByTitle(/Clientă Detaliu Mare/, {}, ASTEPTARE))
+
+    const detaliu = within(await screen.findByRole('dialog', {}, ASTEPTARE))
+    expect(detaliu.getByText('Clientă Detaliu Mare')).toBeInTheDocument()
+  })
+
+  it('antetul unei zile din listă deschide ziua aceea, singură, pe ore', async () => {
+    await autentifica()
+    randeaza(<PaginaProgramari />)
+
+    // Săptămâna e listă; a treia zi a ei, nu azi, ca să se vadă că ALEGE ziua.
+    const zi = intervalPentruVedere(new Date(), 'saptamana').zile[2]!
+    fireEvent.click(
+      await screen.findByRole('button', { name: `Deschide ziua ${formateazaZiLunga(zi)}` }, ASTEPTARE),
+    )
+
+    // Vederea s-a mutat pe „Zi”, lista a dispărut, iar grila poartă data zilei.
+    expect(screen.getByRole('button', { name: 'Zi' })).toHaveAttribute('aria-pressed', 'true')
+    // Grila mare: 12 ore × 96px (cea obișnuită ar avea 672px).
+    await waitFor(
+      () => expect(document.querySelector('[style*="height: 1152px"]')).not.toBeNull(),
+      ASTEPTARE,
+    )
+    expect(screen.getByText(formateazaZiLunga(zi), { exact: false })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Deschide ziua/ })).not.toBeInTheDocument()
+  })
+})

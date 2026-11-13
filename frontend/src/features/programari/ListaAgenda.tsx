@@ -1,4 +1,4 @@
-import { CalendarOff, Plus } from 'lucide-react'
+import { CalendarOff, ChevronRight, Plus } from 'lucide-react'
 import type { NotitaDetaliu, ProgramLucru, ProgramareDetaliu } from '@/domain/types'
 import { cn } from '@/lib/cn'
 import { formateazaZiLunga, isToday } from '@/lib/dates'
@@ -13,7 +13,7 @@ import { numarProgramari } from './vizite'
 /**
  * Agenda, ca listă cronologică.
  *
- * Este forma folosită pe telefon pentru toate vederile, și pe desktop pentru
+ * Este forma folosită pe telefon pentru săptămână și lună, și pe desktop pentru
  * agenda unei singure persoane. Motivul nu este simplitatea, ci lățimea: o
  * grilă orară cu șapte coloane pe un ecran de 360px dă coloane de 44px, în
  * care nu încape nici ora, necum numele clientului.
@@ -30,6 +30,7 @@ export function ListaAgenda({
   onAlegeProgramare,
   onAlegeNotita,
   onProgrameaza,
+  onDeschideZiua,
   cuExecutant = true,
   ascundeZileleGoale = false,
 }: {
@@ -42,6 +43,8 @@ export function ListaAgenda({
   onAlegeNotita?: (notita: NotitaDetaliu) => void
   /** Prezentă = fiecare zi deschide o programare nouă în ea. */
   onProgrameaza?: (zi: Date) => void
+  /** Prezentă = antetul fiecărei zi se apasă și deschide ziua aceea, singură, pe ore. */
+  onDeschideZiua?: (zi: Date) => void
   cuExecutant?: boolean
   /** În vederea pe lună, treizeci de zile goale ar îneca cele câteva pline. */
   ascundeZileleGoale?: boolean
@@ -79,31 +82,13 @@ export function ListaAgenda({
     <div className="divide-y divide-line">
       {grupuri.map(({ zi, aleZilei, programari: nrProgramari, notite: nrNotite }) => (
         <section key={zi.toISOString()}>
-          <h3
-            className={cn(
-              'sticky top-0 z-10 flex items-baseline justify-between gap-3 px-4 py-2',
-              'border-b border-line text-[13px] font-semibold backdrop-blur-sm',
-              isToday(zi) ? 'bg-primary-50/90 text-primary-700' : 'bg-surface/90 text-ink',
-            )}
-          >
-            <span className="flex min-w-0 flex-col">
-              <span className="capitalize">{formateazaZiLunga(zi)}</span>
-              <PersoaneZilei persoane={persoaneleZilei(programe, zi)} className="text-[12px]" />
-            </span>
-            <span className="flex shrink-0 items-center gap-2 text-[12px] font-normal text-ink-faint">
-              {rezumatZilei(nrProgramari, nrNotite)}
-              {onProgrameaza && (
-                <button
-                  type="button"
-                  onClick={() => onProgrameaza(zi)}
-                  aria-label={`Programare nouă pe ${formateazaZiLunga(zi)}`}
-                  className="tinta-atingere -my-1 flex size-7 items-center justify-center rounded-full text-primary-600 hover:bg-primary-100"
-                >
-                  <Plus className="size-4" aria-hidden />
-                </button>
-              )}
-            </span>
-          </h3>
+          <AntetZi
+            zi={zi}
+            rezumat={rezumatZilei(nrProgramari, nrNotite)}
+            programe={programe}
+            {...(onProgrameaza ? { onProgrameaza } : {})}
+            {...(onDeschideZiua ? { onDeschideZiua } : {})}
+          />
 
           {aleZilei.length === 0 ? (
             onProgrameaza ? (
@@ -144,8 +129,89 @@ export function ListaAgenda({
   )
 }
 
+/**
+ * Antetul lipicios al unei zile din agendă: data, cine lucrează, câte sunt și
+ * „+” pentru o programare nouă.
+ *
+ * Cu `onDeschideZiua` (cerința Corinei, 13 nov. 2026), data și rezumatul sunt
+ * un singur buton: apăsat, deschide ziua aceea, singură, pe ore — fără restul
+ * săptămânii sau al lunii. Chevronul arată că se apasă; „+” rămâne alături.
+ */
+function AntetZi({
+  zi,
+  rezumat,
+  programe,
+  onProgrameaza,
+  onDeschideZiua,
+}: {
+  zi: Date
+  rezumat: string
+  programe: ProgramLucru[]
+  onProgrameaza?: (zi: Date) => void
+  onDeschideZiua?: (zi: Date) => void
+}) {
+  const titlu = (
+    <span className="flex min-w-0 flex-col text-left">
+      <span className="capitalize">{formateazaZiLunga(zi)}</span>
+      <PersoaneZilei persoane={persoaneleZilei(programe, zi)} className="text-[12px]" />
+    </span>
+  )
+  const plus = onProgrameaza && (
+    <button
+      type="button"
+      onClick={() => onProgrameaza(zi)}
+      aria-label={`Programare nouă pe ${formateazaZiLunga(zi)}`}
+      className={cn(
+        'tinta-atingere -my-1 flex size-7 items-center justify-center rounded-full text-primary-600 hover:bg-primary-100',
+        // Lângă butonul zilei, ținta de 44px iese puțin în margine: data
+        // încape pe un rând, pe 360px.
+        onDeschideZiua && '-mr-2',
+      )}
+    >
+      <Plus className="size-4" aria-hidden />
+    </button>
+  )
+
+  return (
+    <h3
+      className={cn(
+        'sticky top-0 z-10 flex items-baseline justify-between px-4 py-2',
+        onDeschideZiua ? 'gap-1' : 'gap-3',
+        'border-b border-line text-[13px] font-semibold backdrop-blur-sm',
+        isToday(zi) ? 'bg-primary-50/90 text-primary-700' : 'bg-surface/90 text-ink',
+      )}
+    >
+      {onDeschideZiua ? (
+        <>
+          <button
+            type="button"
+            onClick={() => onDeschideZiua(zi)}
+            aria-label={`Deschide ziua ${formateazaZiLunga(zi)}`}
+            className="tinta-atingere -my-2 flex min-w-0 flex-1 items-center justify-between gap-2 py-2"
+          >
+            {titlu}
+            <span className="flex shrink-0 items-center gap-0.5 text-[12px] font-normal text-ink-faint">
+              {rezumat}
+              <ChevronRight className="size-4 text-primary-600" aria-hidden />
+            </span>
+          </button>
+          {plus}
+        </>
+      ) : (
+        <>
+          {titlu}
+          <span className="flex shrink-0 items-center gap-2 text-[12px] font-normal text-ink-faint">
+            {rezumat}
+            {plus}
+          </span>
+        </>
+      )}
+    </h3>
+  )
+}
+
 /** „3 programări · 1 notiță”, „liber”, „2 notițe”. */
-function rezumatZilei(programari: number, notite: number): string {
+export function rezumatZilei(programari: number, notite: number): string {
   const parti: string[] = []
   if (programari > 0) parti.push(`${programari} ${plural(programari, 'programare', 'programări')}`)
   if (notite > 0) parti.push(`${notite} ${plural(notite, 'notiță', 'notițe')}`)
