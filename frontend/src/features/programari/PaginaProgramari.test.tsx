@@ -4,6 +4,7 @@ import { api } from '@/api'
 import { magazin } from '@/api/memory/store'
 import { addDays, formateazaZiLunga, intervalPentruVedere, laInputDate } from '@/lib/dates'
 import { autentifica, randeaza } from '@/test/render'
+import { PIXELI_PE_ORA_MARE, inaltimeGrila } from './constante'
 import { PaginaProgramari } from './PaginaProgramari'
 
 /*
@@ -337,9 +338,12 @@ describe('ziua mare pe telefon', () => {
 
     // Vederea s-a mutat pe „Zi”, lista a dispărut, iar grila poartă data zilei.
     expect(screen.getByRole('button', { name: 'Zi' })).toHaveAttribute('aria-pressed', 'true')
-    // Grila mare: 12 ore × 96px (cea obișnuită ar avea 672px).
+    // Grila mare: orele zilei × 96px (cea obișnuită ar fi mai scundă).
     await waitFor(
-      () => expect(document.querySelector('[style*="height: 1152px"]')).not.toBeNull(),
+      () =>
+        expect(
+          document.querySelector(`[style*="height: ${inaltimeGrila(PIXELI_PE_ORA_MARE)}px"]`),
+        ).not.toBeNull(),
       ASTEPTARE,
     )
     expect(screen.getByText(formateazaZiLunga(zi), { exact: false })).toBeInTheDocument()

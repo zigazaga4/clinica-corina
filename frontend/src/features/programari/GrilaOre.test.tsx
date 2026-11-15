@@ -1,7 +1,14 @@
 import { fireEvent, render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { GrilaOre, type ColoanaGrila, type LocGrila } from './GrilaOre'
-import { PIXELI_PE_ORA, minutLaPozitie } from './constante'
+import {
+  ORA_INCEPUT,
+  ORA_SFARSIT,
+  PIXELI_PE_ORA,
+  PIXELI_PE_ORA_MARE,
+  inaltimeGrila,
+  minutLaPozitie,
+} from './constante'
 
 /*
   Programarea direct din grilă: apăsare pe un loc liber, sau tragere cu mouse-ul.
@@ -119,8 +126,9 @@ describe('minutLaPozitie', () => {
     expect(minutLaPozitie(la(8, 14))).toBe(0)
     expect(minutLaPozitie(la(8, 15))).toBe(15)
     expect(minutLaPozitie(-40)).toBe(0)
-    // Ultimul sfert începe la 19:45: un interval nu poate ieși din grilă.
-    expect(minutLaPozitie(la(23))).toBe(11 * 60 + 45)
+    // Ultimul sfert începe cu un pas înainte de închidere (21:45): un interval
+    // nu poate ieși din grilă.
+    expect(minutLaPozitie(la(ORA_SFARSIT + 1))).toBe((ORA_SFARSIT - ORA_INCEPUT) * 60 - 15)
   })
 })
 
@@ -144,13 +152,18 @@ describe('ziua mare', () => {
     expect(mare(vi.fn()).querySelector('[data-strat-selectie]')).toBeNull()
   })
 
-  it('are ore de 96px, nu de 56px: 12 ore = 1152px', () => {
-    expect(mare().querySelector('[style*="height: 1152px"]')).not.toBeNull()
-    expect(mare().querySelector('[style*="height: 672px"]')).toBeNull()
+  it('are ore de 96px, nu de 56px: toată ziua, de la 8:00 la 22:00', () => {
+    expect(mare().querySelector(`[style*="height: ${inaltimeGrila(PIXELI_PE_ORA_MARE)}px"]`)).not.toBeNull()
+    expect(mare().querySelector(`[style*="height: ${inaltimeGrila(PIXELI_PE_ORA)}px"]`)).toBeNull()
   })
 
   it('desenează și jumătățile de oră, punctate', () => {
-    // Câte una pentru fiecare dintre cele 12 ore pline ale zilei (8:30 … 19:30).
-    expect(mare().querySelectorAll('.border-dashed')).toHaveLength(12)
+    // Câte una pentru fiecare oră plină a zilei (8:30 … 21:30).
+    expect(mare().querySelectorAll('.border-dashed')).toHaveLength(ORA_SFARSIT - ORA_INCEPUT)
+  })
+
+  it('programul ajunge la 22:00: ultima oră de pe coloană e 22:00', () => {
+    expect(ORA_SFARSIT).toBe(22)
+    expect(mare().textContent).toContain('22:00')
   })
 })

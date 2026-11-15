@@ -1,18 +1,22 @@
 /**
  * Reperele grilei de calendar.
  *
- * Ziua afișată începe la 8:00 și se termină la 20:00 — programul unei clinici,
- * nu 24 de ore. O grilă de la miezul nopții ar irosi două treimi din înălțimea
+ * Ziua afișată începe la 8:00 și se termină la 22:00 — programul unei clinici,
+ * nu 24 de ore. O grilă de la miezul nopții ar irosi o treime din înălțimea
  * ecranului pe ore în care nu se lucrează niciodată, iar programările s-ar
  * înghesui într-o bandă subțire la mijloc.
  *
- * Programările care ies din interval (o ședință prelungită după 20:00) nu se
+ * Corina lucrează până seara târziu (cerința ei, 15 nov. 2026), deci grila
+ * ajunge la 22:00 — la clinica Zian, care închide mai devreme, se oprește la
+ * 20:00.
+ *
+ * Programările care ies din interval (o ședință prelungită după 22:00) nu se
  * pierd: sunt decupate la marginea grilei, iar lista de agendă le arată
  * oricum integral.
  */
 
 export const ORA_INCEPUT = 8
-export const ORA_SFARSIT = 20
+export const ORA_SFARSIT = 22
 
 /** Înălțimea unei ore. 56px lasă loc pentru două rânduri de text la 30 min. */
 export const PIXELI_PE_ORA = 56
