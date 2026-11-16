@@ -657,6 +657,7 @@ function Continut({
         ]}
         onAlegeProgramare={onAlegeProgramare}
         onAlegeNotita={onAlegeNotita}
+        onProgrameaza={onProgrameaza}
       />
     )
   }

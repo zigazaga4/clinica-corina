@@ -134,8 +134,8 @@ describe('minutLaPozitie', () => {
 
 /*
   Ziua „mare” de pe telefon (cerința Corinei, 13 nov. 2026): ore înalte, text
-  mare, blocuri pe toată lățimea — și doar de citit, fiindcă degetul care
-  derulează nu are voie să deschidă un formular.
+  mare, blocuri pe toată lățimea. Din 16 nov. 2026 golul se apasă pentru o
+  programare nouă, ca pe calculator; derularea cu degetul tot nu deschide nimic.
 */
 describe('ziua mare', () => {
   const mare = (onProgrameaza?: (loc: LocGrila) => void) =>
@@ -148,8 +148,28 @@ describe('ziua mare', () => {
       />,
     ).container
 
-  it('rămâne doar de citit, chiar dacă primește `onProgrameaza`', () => {
-    expect(mare(vi.fn()).querySelector('[data-strat-selectie]')).toBeNull()
+  it('o atingere pe gol programează la ora de sub deget, pe orele înalte', () => {
+    const alege = vi.fn()
+    const strat = mare(alege).querySelector<HTMLElement>('[data-strat-selectie]')!
+    // 14:40 pe orele de 96px cade în sfertul 14:30 — nu în cel de pe grila mică.
+    const y = ((14 - 8) * 60 + 40) * (PIXELI_PE_ORA_MARE / 60)
+    const deget = { clientY: y, button: 0, pointerId: 4, pointerType: 'touch' }
+    fireEvent.pointerDown(strat, deget)
+    fireEvent.pointerUp(strat, deget)
+    expect((alege.mock.calls[0]![0] as LocGrila).inceput).toEqual(ora(14, 30))
+  })
+
+  it('derularea cu degetul nu programează', () => {
+    const alege = vi.fn()
+    const strat = mare(alege).querySelector<HTMLElement>('[data-strat-selectie]')!
+    const deget = { clientY: 200, button: 0, pointerId: 5, pointerType: 'touch' }
+    fireEvent.pointerDown(strat, deget)
+    fireEvent.pointerCancel(strat, deget)
+    expect(alege).not.toHaveBeenCalled()
+  })
+
+  it('fără `onProgrameaza` rămâne doar de citit', () => {
+    expect(mare().querySelector('[data-strat-selectie]')).toBeNull()
   })
 
   it('are ore de 96px, nu de 56px: toată ziua, de la 8:00 la 22:00', () => {

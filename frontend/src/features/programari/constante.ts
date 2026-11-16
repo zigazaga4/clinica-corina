@@ -67,8 +67,8 @@ export const PAS_MINUTE = 15
  * cursorul, nu cel mai apropiat — și ținut în grilă, ca ultimul sfert să
  * înceapă cel târziu cu un pas înainte de închidere.
  */
-export function minutLaPozitie(pixeli: number): number {
-  const sfert = Math.floor((pixeli / PIXELI_PE_ORA) * 60 / PAS_MINUTE) * PAS_MINUTE
+export function minutLaPozitie(pixeli: number, pixeliPeOra: number = PIXELI_PE_ORA): number {
+  const sfert = Math.floor((pixeli / pixeliPeOra) * 60 / PAS_MINUTE) * PAS_MINUTE
   return Math.max(0, Math.min(MINUTE_VIZIBILE - PAS_MINUTE, sfert))
 }
 

@@ -2,7 +2,7 @@ import { useRef, useState, type PointerEvent } from 'react'
 import { Plus } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { formateazaOra } from '@/lib/dates'
-import { PAS_MINUTE, minutLaPozitie, momentInZi, pozitieVerticala } from './constante'
+import { PAS_MINUTE, PIXELI_PE_ORA, minutLaPozitie, momentInZi, pozitieVerticala } from './constante'
 
 /*
   Stratul de sub programările unei coloane: locul pe care se apasă pentru o
@@ -36,11 +36,14 @@ function intervalIntre(a: number, b: number): Interval {
 export function StratSelectie({
   zi,
   onAlege,
+  pixeliPeOra = PIXELI_PE_ORA,
 }: {
   /** Ziua coloanei. */
   zi: Date
   /** `sfarsit` este `null` la o simplă apăsare — durata o hotărăște formularul. */
   onAlege: (inceput: Date, sfarsit: Date | null) => void
+  /** Înălțimea unei ore în grila de deasupra (ziua mare are ore mai înalte). */
+  pixeliPeOra?: number
 }) {
   // Ce se desenează: sfertul de sub cursor sau intervalul tras.
   const [umbra, setUmbra] = useState<(Interval & { trasa: boolean }) | null>(null)
@@ -49,7 +52,7 @@ export function StratSelectie({
   const tragere = useRef<{ ancora: number; acum: number } | null>(null)
 
   const sfertLa = (e: PointerEvent<HTMLDivElement>) =>
-    minutLaPozitie(e.clientY - e.currentTarget.getBoundingClientRect().top)
+    minutLaPozitie(e.clientY - e.currentTarget.getBoundingClientRect().top, pixeliPeOra)
 
   const apasa = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
@@ -107,16 +110,22 @@ export function StratSelectie({
         if (!tragere.current) setUmbra(null)
       }}
     >
-      {umbra && <Umbra zi={zi} {...umbra} />}
+      {umbra && <Umbra zi={zi} pixeliPeOra={pixeliPeOra} {...umbra} />}
     </div>
   )
 }
 
 /** Sfertul de sub cursor, sau intervalul tras, cu orele lui. */
-function Umbra({ zi, de, pana, trasa }: Interval & { zi: Date; trasa: boolean }) {
+function Umbra({
+  zi,
+  de,
+  pana,
+  trasa,
+  pixeliPeOra,
+}: Interval & { zi: Date; trasa: boolean; pixeliPeOra: number }) {
   const inceput = momentInZi(zi, de)
   const sfarsit = momentInZi(zi, pana)
-  const sus = pozitieVerticala(inceput)
+  const sus = pozitieVerticala(inceput, pixeliPeOra)
 
   return (
     <div
@@ -127,7 +136,7 @@ function Umbra({ zi, de, pana, trasa }: Interval & { zi: Date; trasa: boolean })
           ? 'items-start bg-primary-500/15 pt-0.5 ring-1 ring-primary-500/60 ring-inset'
           : 'items-center bg-primary-500/10',
       )}
-      style={{ top: sus, height: pozitieVerticala(sfarsit) - sus }}
+      style={{ top: sus, height: pozitieVerticala(sfarsit, pixeliPeOra) - sus }}
     >
       <Plus className="size-3 shrink-0" aria-hidden />
       {formateazaOra(inceput)}

@@ -83,9 +83,10 @@ export function GrilaOre({
   /**
    * Ziua „mare” de pe telefon (cerința Corinei, 13 nov. 2026): ore înalte, text
    * mare, blocurile pe toată lățimea coloanei și o coloană care încape în
-   * ecran, nu una de 160px cu derulare pe orizontală. E o grilă de CITIT:
-   * spațiul liber nu deschide o programare — degetul care derulează ar deschide
-   * formularul fără să vrea; pentru una nouă există „Adaugă”.
+   * ecran, nu una de 160px cu derulare pe orizontală. Spațiul liber se apasă
+   * pentru o programare nouă (cerința din 16 nov. 2026), ca pe calculator: o
+   * atingere scurtă alege sfertul de oră, iar degetul care derulează nu
+   * deschide nimic — browserul preia gestul și anulează apăsarea.
    */
   mare?: boolean
 }) {
@@ -146,7 +147,7 @@ export function GrilaOre({
                 onAlegeProgramare={onAlegeProgramare}
                 onAlegeNotita={onAlegeNotita}
                 onAlegeLoc={
-                  onProgrameaza && !mare && !coloana.doarNotite
+                  onProgrameaza && !coloana.doarNotite
                     ? (inceput, sfarsit) => onProgrameaza({ inceput, sfarsit, coloana })
                     : undefined
                 }
@@ -184,7 +185,8 @@ function ColoanaElemente({
     spațiu gol, deci apăsat — chiar lângă o programare existentă — deschide o
     programare nouă la ora aceea, pentru aceeași persoană, ca într-o zi goală.
   */
-  const latimeElemente = onAlegeLoc ? LATIME_ELEMENTE : 100
+  // Ziua mare păstrează blocurile pe toată lățimea: se programează în golurile dintre ele.
+  const latimeElemente = onAlegeLoc && !mare ? LATIME_ELEMENTE : 100
   // Câte ședințe stau cel mult una lângă alta: de ele depinde lățimea minimă.
   const suprapuneriMax = Math.max(1, ...asezate.map((a) => a.total))
 
@@ -200,7 +202,7 @@ function ColoanaElemente({
       }}
     >
       {/* Primul, deci dedesubt: programările și notițele se apasă peste el. */}
-      {zi && onAlegeLoc && <StratSelectie zi={zi} onAlege={onAlegeLoc} />}
+      {zi && onAlegeLoc && <StratSelectie zi={zi} onAlege={onAlegeLoc} pixeliPeOra={pxOra} />}
 
       {/* Liniile orelor */}
       {ORE.map((ora) => (
