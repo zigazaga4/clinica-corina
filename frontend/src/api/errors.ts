@@ -113,5 +113,8 @@ export function campVinovat(e: unknown): string | null {
 export function mesajEroare(e: unknown): string {
   if (esteEroareApi(e)) return e.message
   if (e instanceof Error) return e.message
+  // Partea de Windows a aplicației (Tauri) respinge cu text simplu, nu cu
+  // `Error`: fără rândul acesta, motivul adevărat („forbidden path…”) se pierdea.
+  if (typeof e === 'string' && e.trim()) return e
   return 'A apărut o eroare neașteptată.'
 }

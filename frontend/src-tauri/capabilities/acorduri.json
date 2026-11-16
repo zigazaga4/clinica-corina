@@ -1,17 +1,18 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "acorduri",
-  "description": "Îi dă interfeței voie să salveze acordurile GDPR semnate în dosarul Documente și să le deschidă în cititorul obișnuit de PDF. Îngrădirea la Documente este intenționată: aplicația nu poate scrie nicăieri altundeva pe disc, oricât ar cere pagina.",
+  "description": "Îi dă interfeței voie să salveze acordurile GDPR semnate în dosarul Documente (sau, dacă acolo e refuzată, în Descărcări) și să le deschidă în cititorul obișnuit de PDF. Îngrădirea la aceste două dosare este intenționată: aplicația nu poate scrie nicăieri altundeva pe disc, oricât ar cere pagina.",
   "platforms": ["windows", "macOS", "linux"],
   "windows": ["main"],
   "permissions": [
     "fs:allow-document-write-recursive",
+    "fs:allow-download-write-recursive",
     "fs:allow-write-file",
     "fs:allow-mkdir",
     "fs:allow-exists",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "$DOCUMENT/**" }]
+      "allow": [{ "path": "$DOCUMENT/**" }, { "path": "$DOWNLOAD/**" }]
     }
   ]
 }

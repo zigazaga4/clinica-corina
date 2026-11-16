@@ -43,12 +43,12 @@ export function PanouAcorduri({ clientId }: { clientId: Uuid }) {
 
       if (apoiDeschide && salvat.cale) {
         await deschideAcord(salvat.cale)
-        notificari.succes('Acordul a fost deschis.', `Documente › ${DOSAR_ACORDURI}`)
+        notificari.succes('Acordul a fost deschis.', salvat.loc)
+      } else if (salvat.cale) {
+        notificari.succes('Acordul a fost salvat.', `${salvat.loc} › ${salvat.nume}`)
       } else {
-        notificari.succes(
-          'Acordul a fost salvat.',
-          salvat.cale ? `Documente › ${DOSAR_ACORDURI} › ${salvat.nume}` : salvat.nume,
-        )
+        // Drumul browserului: fișierul pleacă, dar unde ajunge hotărăște browserul.
+        notificari.succes('Descărcarea a pornit.', `${salvat.nume} › ${salvat.loc}`)
       }
     } catch (err) {
       notificari.eroare('Acordul nu a putut fi descărcat.', mesajEroare(err))

@@ -16,6 +16,12 @@
  * o fereastră de „Salvează ca…” la fiecare acord este o piedică, iar acordurile
  * risipite prin dosare aleatorii nu se mai găsesc când chiar trebuie. Toate
  * ajung în „Documente / Acorduri GDPR”, cu numele clientului și data în titlu.
+ *
+ * Dacă „Documente” nu se lasă scris (pe un calculator din recepție s-a întâmplat,
+ * 16 nov. 2026: dosar mutat în OneDrive, protecția Windows împotriva
+ * ransomware-ului ș.a.), acordul nu se pierde: merge în „Descărcări”, iar la
+ * nevoie pe drumul browserului. Abia dacă toate cad se arată eroarea — cu
+ * motivul fiecăreia, ca să se poată repara.
  */
 
 import { isTauri } from '@tauri-apps/api/core'
@@ -29,6 +35,29 @@ export interface Salvare {
   nume: string
   /** Calea întreagă, doar în aplicația instalată; browserul nu o cunoaște. */
   cale: string | null
+  /** Unde a ajuns, pe înțeles: „Documente › Acorduri GDPR”, „Descărcări”. */
+  loc: string
+}
+
+/** Motivul unui eșec, oricum ar fi aruncat: Tauri respinge cu text simplu. */
+function motiv(cauza: unknown): string {
+  if (cauza instanceof Error) return cauza.message
+  if (typeof cauza === 'string') return cauza
+  return String(cauza)
+}
+
+/** Descărcarea obișnuită a browserului, în dosarul de descărcări al omului. */
+function descarcaPrinBrowser(pdf: Blob, nume: string): void {
+  const adresa = URL.createObjectURL(pdf)
+  const legatura = document.createElement('a')
+  legatura.href = adresa
+  legatura.download = nume
+  document.body.appendChild(legatura)
+  legatura.click()
+  legatura.remove()
+  // Adresa ține fișierul în memorie până e eliberată. Se așteaptă o clipă,
+  // fiindcă descărcarea pornește după clic, nu în timpul lui.
+  setTimeout(() => URL.revokeObjectURL(adresa), 10_000)
 }
 
 /**
@@ -70,36 +99,51 @@ export async function salveazaAcord(pdf: Blob, client: string, semnatLa: string)
   const nume = numeFisier(client, semnatLa)
 
   if (!isTauri()) {
-    // Browser: descărcarea obișnuită, în dosarul de descărcări al omului.
-    const adresa = URL.createObjectURL(pdf)
-    const legatura = document.createElement('a')
-    legatura.href = adresa
-    legatura.download = nume
-    document.body.appendChild(legatura)
-    legatura.click()
-    legatura.remove()
-    // Adresa ține fișierul în memorie până e eliberată. Se așteaptă o clipă,
-    // fiindcă descărcarea pornește după clic, nu în timpul lui.
-    setTimeout(() => URL.revokeObjectURL(adresa), 10_000)
-    return { nume, cale: null }
+    descarcaPrinBrowser(pdf, nume)
+    return { nume, cale: null, loc: 'Descărcări' }
   }
 
-  const [{ mkdir, writeFile, BaseDirectory }, { documentDir, join }] = await Promise.all([
+  const [{ mkdir, writeFile }, { documentDir, downloadDir, join }] = await Promise.all([
     import('@tauri-apps/plugin-fs'),
     import('@tauri-apps/api/path'),
   ])
+  const octeti = new Uint8Array(await pdf.arrayBuffer())
 
-  // `recursive` face dosarul dacă lipsește și tace dacă există deja.
-  await mkdir(DOSAR_ACORDURI, { baseDir: BaseDirectory.Document, recursive: true })
+  /*
+    Căi ÎNTREGI, cu despărțitorul sistemului, nu „dosar/fișier” relativ la
+    `baseDir`: pe Windows calea relativă ieșea cu „/” amestecat printre „\”, iar
+    verificarea dosarelor permise a aplicației o putea refuza.
+  */
+  const incercari: { loc: string; dosar: () => Promise<string> }[] = [
+    {
+      loc: `Documente › ${DOSAR_ACORDURI}`,
+      dosar: async () => join(await documentDir(), DOSAR_ACORDURI),
+    },
+    { loc: 'Descărcări', dosar: downloadDir },
+  ]
 
-  const relativa = `${DOSAR_ACORDURI}/${nume}`
-  await writeFile(relativa, new Uint8Array(await pdf.arrayBuffer()), {
-    baseDir: BaseDirectory.Document,
-  })
+  const esecuri: string[] = []
+  for (const { loc, dosar } of incercari) {
+    try {
+      const cale = await dosar()
+      // `recursive` face dosarul dacă lipsește și tace dacă există deja.
+      await mkdir(cale, { recursive: true })
+      const fisier = await join(cale, nume)
+      await writeFile(fisier, octeti)
+      return { nume, cale: fisier, loc }
+    } catch (cauza) {
+      esecuri.push(`${loc}: ${motiv(cauza)}`)
+    }
+  }
 
-  // Calea întreagă se află abia acum: `plugin-fs` a lucrat cu una relativă,
-  // dar ca să deschidem fișierul mai târziu trebuie știut unde stă exact.
-  return { nume, cale: await join(await documentDir(), DOSAR_ACORDURI, nume) }
+  // Ultima scăpare: descărcarea ferestrei, ca într-un browser.
+  try {
+    descarcaPrinBrowser(pdf, nume)
+    return { nume, cale: null, loc: 'Descărcări' }
+  } catch (cauza) {
+    esecuri.push(`descărcare: ${motiv(cauza)}`)
+  }
+  throw new Error(`Fișierul nu a putut fi scris. ${esecuri.join(' · ')}`)
 }
 
 /** Deschide fișierul salvat în cititorul obișnuit de PDF. */

@@ -21,7 +21,11 @@ vi.mock('./descarca', async (importActual) => {
   const real = await importActual<typeof import('./descarca')>()
   return {
     ...real,
-    salveazaAcord: vi.fn(async () => ({ nume: 'Acord.pdf', cale: 'C:/Documente/Acord.pdf' })),
+    salveazaAcord: vi.fn(async () => ({
+      nume: 'Acord.pdf',
+      cale: 'C:/Documente/Acord.pdf',
+      loc: 'Documente › Acorduri GDPR',
+    })),
     deschideAcord: vi.fn(async () => undefined),
   }
 })
