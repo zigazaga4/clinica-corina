@@ -1,8 +1,10 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { isTauri } from '@tauri-apps/api/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '@/api'
 import { magazin } from '@/api/memory/store'
 import { seteazaFunctii } from '@/config/functii'
+import { EroarePad, porneste } from '@/features/consimtamant/pad'
 import type { ProgramareDetaliu } from '@/domain/types'
 import { autentifica, randeaza } from '@/test/render'
 import { DetaliuProgramare } from './DetaliuProgramare'
@@ -24,8 +26,17 @@ const ASTEPTARE = { timeout: 10_000 }
 /** Zi departe de agenda generată, ca să nu se ciocnească de nimic. */
 const ZI = new Date(2033, 4, 17, 10, 0)
 
+// Implicit telefon / browser; probele cu tableta se mută pe calculatorul din recepție.
+vi.mock('@tauri-apps/api/core', () => ({ isTauri: vi.fn(() => false) }))
+vi.mock('@/features/consimtamant/pad', async (importActual) => {
+  const real = await importActual<typeof import('@/features/consimtamant/pad')>()
+  return { ...real, porneste: vi.fn() }
+})
+
 beforeEach(() => {
   seteazaFunctii({ costuri: false, tratamente: false })
+  vi.mocked(isTauri).mockReturnValue(false)
+  vi.mocked(porneste).mockReset()
 })
 
 const serviciul = (denumire: string) => {
@@ -123,5 +134,51 @@ describe('fereastra programării', () => {
     expect(screen.getAllByRole('dialog')).toHaveLength(1)
     expect(screen.queryByText('Programare efectuată')).toBeNull()
     expect([...magazin.vanzare_linie.values()].some((l) => l.programare_id === servicii[0]!.id)).toBe(false)
+  })
+
+  /*
+    Pe calculatorul din recepție, „Onorat” cere întâi acordul GDPR pe tabletă,
+    și fără bani: fereastra de încasare n-are ce întreba, dar semnătura da.
+  */
+  it('pe calculator, „Onorat” cere întâi acordul GDPR, apoi închide ședința fără plată', async () => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(porneste).mockRejectedValue(
+      new EroarePad('Nu s-a găsit nicio tabletă de semnat. Verificați cablul USB.'),
+    )
+    const servicii = await programare()
+    randeaza(
+      <DetaliuProgramare programare={servicii[0]!} onInchide={() => undefined} onModifica={() => undefined} />,
+    )
+    const detaliu = within(await screen.findByRole('dialog', {}, ASTEPTARE))
+    fireEvent.click(await detaliu.findByRole('button', { name: /^Onorat$/ }, ASTEPTARE))
+
+    expect(await screen.findByText('Acord privind prelucrarea datelor', {}, ASTEPTARE)).toBeInTheDocument()
+    expect(await screen.findByText(/Nu s-a găsit nicio tabletă/, {}, ASTEPTARE)).toBeInTheDocument()
+    expect(magazin.programare.get(servicii[0]!.id)?.stare).toBe('programat')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continuă fără acord' }))
+
+    await waitFor(() => expect(magazin.programare.get(servicii[0]!.id)?.stare).toBe('onorat'), ASTEPTARE)
+    // Fereastra cu plata nu s-a deschis deloc: deschis rămâne doar detaliul.
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(screen.queryByRole('dialog', { name: 'Ședință efectuată' })).toBeNull()
+    expect([...magazin.vanzare_linie.values()].some((l) => l.programare_id === servicii[0]!.id)).toBe(false)
+  })
+
+  it('pe calculator, „Renunță” la acord lasă ședința neatinsă', async () => {
+    vi.mocked(isTauri).mockReturnValue(true)
+    vi.mocked(porneste).mockRejectedValue(new EroarePad('Serviciul tabletei de semnat nu răspunde.'))
+    const servicii = await programare()
+    randeaza(
+      <DetaliuProgramare programare={servicii[0]!} onInchide={() => undefined} onModifica={() => undefined} />,
+    )
+    const detaliu = within(await screen.findByRole('dialog', {}, ASTEPTARE))
+    fireEvent.click(await detaliu.findByRole('button', { name: /^Onorat$/ }, ASTEPTARE))
+    await screen.findByText(/Serviciul tabletei de semnat nu răspunde/, {}, ASTEPTARE)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Renunță' }))
+
+    await waitFor(() => expect(screen.queryByText('Acord privind prelucrarea datelor')).toBeNull(), ASTEPTARE)
+    expect(magazin.programare.get(servicii[0]!.id)?.stare).toBe('programat')
   })
 })

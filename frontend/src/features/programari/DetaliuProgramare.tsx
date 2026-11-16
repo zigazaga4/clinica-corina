@@ -10,6 +10,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { esteDesktopNativ } from '@/app/platforma'
 import { useIncaseaza, useSchimbaStareProgramare, useServiciileProgramarii } from '@/app/queries'
 import { InsemnPlata, InsemnStareProgramare } from '@/components/insemne'
 import { functii } from '@/config/functii'
@@ -42,7 +43,9 @@ import { pretulProgramarii } from './vizite'
  *
  * Trecerea pe „onorat” este singura care nu se aplică direct: ea mișcă și bani,
  * deci trece prin `ModalaOnorare`, care întreabă dacă s-a plătit. Anularea,
- * neprezentarea și revenirea la „programat” nu ating încasările.
+ * neprezentarea și revenirea la „programat” nu ating încasările. Fără bani,
+ * pe calculatorul din recepție trece tot pe acolo, pentru acordul GDPR de pe
+ * tabletă; pe telefon, unde nu e tabletă, „onorat” se aplică direct.
  *
  * Fereastra arată programarea ÎNTREAGĂ, cu toate serviciile ei — fiecare cu
  * prețul, ședința din tratament și plata lui — oricare dintre ele ar fi fost
@@ -274,11 +277,11 @@ export function DetaliuProgramare({
                     dimensiune="sm"
                     varianta={stare === 'anulat' ? 'pericol' : 'secundar'}
                     disabled={schimbaStarea.isPending || incasare.isPending}
-                    // „Onorat” înseamnă și bani, deci întreabă întâi dacă s-a
-                    // plătit; celelalte stări se aplică direct — și „onorat”,
-                    // când aplicația nu arată bani.
+                    // „Onorat” înseamnă și bani și acordul GDPR, deci întreabă
+                    // întâi; celelalte stări se aplică direct — și „onorat”,
+                    // când nu e nici bani de cerut, nici tabletă de semnat.
                     onClick={() => {
-                      if (stare === 'onorat' && functii.costuri) setConfirmaOnorarea(true)
+                      if (stare === 'onorat' && (functii.costuri || esteDesktopNativ())) setConfirmaOnorarea(true)
                       else void schimba(stare)
                     }}
                   >

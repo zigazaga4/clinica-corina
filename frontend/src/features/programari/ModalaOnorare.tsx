@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Banknote, Clock3, CreditCard, ShieldCheck } from 'lucide-react'
 import { esteDesktopNativ } from '@/app/platforma'
+import { functii } from '@/config/functii'
 import {
   useClient,
   useConsimtaminte,
@@ -41,6 +42,10 @@ import { Buton, Input, Modala, Spinner, useNotificari } from '@/ui'
  * serviciu, iar „Achitat acum” le plătește pe toate, pe un singur bon. Nu se
  * poate „achita manichiura, dar nu și IPL-ul” de aici — ce rămâne neplătit se
  * încasează după aceea de pe fișă, unde se aleg ședințele una câte una.
+ *
+ * Fără bani (`functii.costuri` oprit — fork-ul Corinei) rămâne DOAR acordul:
+ * fereastra de încasare nu are ce întreba, deci nu se mai arată, iar ședința
+ * se închide singură îndată ce acordul s-a semnat, s-a sărit sau exista deja.
  */
 export function ModalaOnorare({
   deschisa,
@@ -121,6 +126,8 @@ export function ModalaOnorare({
   const cereAcord =
     deschisa && esteDesktopNativ() && !seVerifica && !areAcord && !acordRezolvat
 
+  const faraBani = !functii.costuri
+
   const inCurs = schimbaStarea.isPending
   // Indicatorul de încărcare stă pe butonul apăsat, nu pe toate: variabilele
   // mutației în curs spun exact ce cale a ales operatoarea.
@@ -156,13 +163,15 @@ export function ModalaOnorare({
       })
       notificari.succes(
         maiMulte ? 'Programare marcată ca onorată' : 'Ședință marcată ca onorată',
-        deIncasat.length === 0
-          ? dinAvans.length > 0
-            ? 'Plătită din avansul abonamentului.'
-            : undefined
-          : achitat
-            ? `Încasare ${formateazaBani(totalDeIncasat)} · ${metoda === 'card' ? 'card' : 'numerar'}.`
-            : `${formateazaBani(totalDeIncasat)} rămân de plată.`,
+        faraBani
+          ? undefined
+          : deIncasat.length === 0
+            ? dinAvans.length > 0
+              ? 'Plătită din avansul abonamentului.'
+              : undefined
+            : achitat
+              ? `Încasare ${formateazaBani(totalDeIncasat)} · ${metoda === 'card' ? 'card' : 'numerar'}.`
+              : `${formateazaBani(totalDeIncasat)} rămân de plată.`,
       )
       onOnorata()
     } catch (err) {
@@ -170,16 +179,34 @@ export function ModalaOnorare({
         maiMulte ? 'Programarea nu a putut fi marcată ca onorată' : 'Ședința nu a putut fi marcată ca onorată',
         err instanceof Error ? err.message : undefined,
       )
+      // Fără bani nu se vede nicio fereastră de unde s-ar putea reîncerca:
+      // se închide, ca un nou „Onorat” să pornească totul de la capăt.
+      if (faraBani) onInchide()
     }
   }
+
+  /*
+    Fără bani, ședința se închide singură, o singură dată pe deschidere, când
+    nu mai e nimic de așteptat: acordul s-a verificat și nu se mai cere.
+  */
+  const inchisaSingura = useRef(false)
+  const gataDeInchis = deschisa && faraBani && !seVerifica && !cereAcord
+  useEffect(() => {
+    if (!deschisa) inchisaSingura.current = false
+    if (!gataDeInchis || inchisaSingura.current) return
+    inchisaSingura.current = true
+    void confirma(null)
+    // `confirma` se reface la fiecare randare; contează doar momentul.
+  }, [deschisa, gataDeInchis])
 
   return (
     <>
       <Modala
         // Cât se semnează, fereastra cu banii se dă la o parte: două ferestre
         // suprapuse, cu clientul în față, ar fi însemnat o întrebare în plus
-        // pusă peste una la care nu s-a răspuns încă.
-        deschisa={deschisa && !cereAcord}
+        // pusă peste una la care nu s-a răspuns încă. Fără bani nu se arată
+        // deloc: nu are ce întreba.
+        deschisa={deschisa && !cereAcord && !faraBani}
         onInchide={onInchide}
         dimensiune="sm"
         blocata={inCurs}
