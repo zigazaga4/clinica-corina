@@ -17,10 +17,18 @@
  */
 
 /** Se schimbă la orice modificare a textului. Rămâne scrisă în fiecare acord. */
-export const VERSIUNE_ACORD = 'gdpr-2026-09'
+export const VERSIUNE_ACORD = 'gdpr-2026-11'
 
 /** Denumirea sub care semnează clinica. */
-export const OPERATOR = 'EVO CREAM PREMIUM S.R.L.'
+export const OPERATOR = 'PROBEAUTY DERMA S.R.L.'
+
+/**
+ * Sediul operatorului, așa cum figurează la ANAF (CUI 36404727). Se scrie fără
+ * diacritice, ca tot restul actului. Spre deosebire de e-mail și telefon,
+ * care rămân libere în text, adresa la care se trimit cererile este completă.
+ */
+export const ADRESA_OPERATOR =
+  'loc. Constanta, str. Mihai Viteazu, nr. 1, bl. F1, sc. B, ap. 24, jud. CONSTANTA'
 
 /**
  * Un rând din document.
@@ -156,7 +164,7 @@ export function construiesteAcord(date: DateAcord): BlocAcord[] {
       text:
         'Aceste drepturi pot fi exercitate prin transmiterea unei cereri, intocmita in forma scrisa, ' +
         'datata si semnata, care va cuprinde solicitarile formulate si motivele acestora, catre ' +
-        `${OPERATOR} la adresa: loc. Mircea Voda, str. , nr. , bl. , sc. , ap. , jud. CONSTANTA. ` +
+        `${OPERATOR} la adresa: ${ADRESA_OPERATOR}. ` +
         'Compania poate fi contactata pentru orice informatii in legatura cu prelucrarea datelor ' +
         'personale la adresa de email  sau telefonic',
     },

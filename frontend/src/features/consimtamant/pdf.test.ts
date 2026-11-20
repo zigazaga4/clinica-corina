@@ -63,15 +63,22 @@ it('numele clientului ajunge în fraza „Subsemnatul”', () => {
   expect(frazele.some((t) => t.includes('Subsemnatul Ștefania Țăndărică sunt de acord'))).toBe(true)
 })
 
-it('spaţiile lăsate libere rămân libere', () => {
-  // Cerinţă explicită: adresa, e-mailul şi telefonul cabinetului rămân
-  // necompletate, ca pe hârtia folosită acum.
-  const text = acordPentru('Ion Popescu')
+it('operatorul este PROBEAUTY DERMA, cu sediul complet; e-mailul şi telefonul rămân libere', () => {
+  // Firma şi adresa sunt cele din registrul ANAF. E-mailul şi telefonul
+  // cabinetului rămân necompletate, ca pe hârtia folosită acum.
+  const blocuri = acordPentru('Ion Popescu')
+  const text = blocuri
     .filter((b) => b.fel === 'paragraf')
     .map((b) => b.text)
     .join(' ')
-  expect(text).toContain('loc. Mircea Voda, str. , nr. , bl. , sc. , ap. , jud. CONSTANTA')
+  expect(blocuri[0]).toEqual({ fel: 'operator', text: 'Denumire cabinet PROBEAUTY DERMA S.R.L.' })
+  expect(text).toContain(
+    'PROBEAUTY DERMA S.R.L. la adresa: loc. Constanta, str. Mihai Viteazu, nr. 1, bl. F1, sc. B, ap. 24, jud. CONSTANTA.',
+  )
   expect(text).toContain('la adresa de email  sau telefonic')
+  // Firma de dinainte nu mai apare nicăieri în act.
+  const tot = blocuri.map((b) => ('text' in b ? b.text : '')).join(' ')
+  expect(tot).not.toMatch(/EVO CREAM|Mircea Voda/)
 })
 
 it('curăţarea păstrează diacriticele şi scoate ce nu se poate tipări', () => {

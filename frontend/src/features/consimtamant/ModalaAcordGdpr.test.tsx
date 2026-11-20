@@ -147,7 +147,7 @@ describe('semnătura culeasă', () => {
     expect(acorduri.total).toBe(1)
 
     const acord = acorduri.randuri[0]!
-    expect(acord.versiune).toBe('gdpr-2026-09')
+    expect(acord.versiune).toBe('gdpr-2026-11')
     expect(acord.dispozitiv).toBe('signotec Sigma (S/N 1000444927, firmware 2.5)')
     // Instantaneul fișei, așa cum arăta pe ecran în clipa semnării.
     expect(acord.date_semnatar.nume).toBe(client.nume)
